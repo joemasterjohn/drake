@@ -6,6 +6,8 @@
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/lcm/drake_lcm.h"
+#include "drake/math/rigid_transform.h"
+#include "drake/multibody/tree/rigid_body.h"
 #include "drake/multibody/benchmarks/acrobot/make_acrobot_plant.h"
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/systems/analysis/implicit_euler_integrator.h"
@@ -20,13 +22,19 @@ namespace drake {
 using geometry::SceneGraph;
 using geometry::SourceId;
 using lcm::DrakeLcm;
-using multibody::benchmarks::acrobot::AcrobotParameters;
-using multibody::benchmarks::acrobot::MakeAcrobotPlant;
 using multibody::MultibodyPlant;
 using multibody::RevoluteJoint;
+using multibody::benchmarks::acrobot::AcrobotParameters;
+using multibody::benchmarks::acrobot::MakeAcrobotPlant;
 using systems::ImplicitEulerIntegrator;
 using systems::RungeKutta3Integrator;
 using systems::SemiExplicitEulerIntegrator;
+
+using math::RigidTransform;
+using multibody::RigidBody;
+using multibody::UnitInertia;
+using multibody::SpatialInertia;
+using multibody::CoulombFriction;
 
 namespace examples {
 namespace multibody {
@@ -41,8 +49,13 @@ DEFINE_string(integration_scheme, "runge_kutta3",
               "Integration scheme to be used. Available options are:"
               "'runge_kutta3','implicit_euler','semi_explicit_euler'");
 
-DEFINE_double(simulation_time, 10.0,
+DEFINE_double(simulation_time, 5.0,
               "Desired duration of the simulation in seconds.");
+
+DEFINE_bool(lock_shoulder, false, "Lock state of the shoulder joint.");
+DEFINE_bool(lock_elbow, false, "Lock state of the elbow joint.");
+DEFINE_bool(lock_body, false, "Lock state of the free body.");
+
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -61,14 +74,33 @@ int do_main() {
 
   // Make and add the acrobot model.
   const AcrobotParameters acrobot_parameters;
-  const MultibodyPlant<double>& acrobot = *builder.AddSystem(MakeAcrobotPlant(
-      acrobot_parameters, true /* Finalize the plant */, &scene_graph));
-  const RevoluteJoint<double>& shoulder =
-      acrobot.GetJointByName<RevoluteJoint>(
-          acrobot_parameters.shoulder_joint_name());
-  const RevoluteJoint<double>& elbow =
-      acrobot.GetJointByName<RevoluteJoint>(
-          acrobot_parameters.elbow_joint_name());
+  MultibodyPlant<double>& acrobot = *builder.AddSystem(MakeAcrobotPlant(
+      acrobot_parameters, false /* Finalize the plant */, &scene_graph));
+  const RevoluteJoint<double>& shoulder = acrobot.GetJointByName<RevoluteJoint>(
+      acrobot_parameters.shoulder_joint_name());
+  const RevoluteJoint<double>& elbow = acrobot.GetJointByName<RevoluteJoint>(
+      acrobot_parameters.elbow_joint_name());
+
+  // Describe body B's mass, center of mass, and inertia properties.
+  const double massB = 5.0;
+  const double radiusB = 0.25;
+  const Vector3<double> p_BoBcm_B = Vector3<double>::Zero();
+  const UnitInertia<double> G_BBcm = UnitInertia<double>::SolidSphere(radiusB);
+  const SpatialInertia<double> M_BBcm_B(massB, p_BoBcm_B, G_BBcm);
+
+  const RigidBody<double>& sphereB = acrobot.AddRigidBody("sphere", M_BBcm_B);
+
+  const RigidTransform<double> X_BG;
+  const Vector4<double> lightBlue(0.5, 0.8, 1.0, 1.0);
+  acrobot.RegisterVisualGeometry(sphereB, X_BG, geometry::Sphere(radiusB),
+                                 "sphere_visual", lightBlue);
+  acrobot.RegisterCollisionGeometry(sphereB, X_BG,
+                                   geometry::Sphere(radiusB),
+                                   "sphere_collision",
+                                   CoulombFriction<double>(0.8, 0.5));
+  const RigidTransform<double> X_B(Vector3<double>(-1.5, 0, -0.5));
+  acrobot.SetDefaultFreeBodyPose(sphereB, X_B);
+  acrobot.Finalize();
 
   // A constant source for a zero applied torque at the elbow joint.
   double applied_torque(0.0);
@@ -84,6 +116,8 @@ int do_main() {
   builder.Connect(
       acrobot.get_geometry_poses_output_port(),
       scene_graph.get_source_pose_port(acrobot.get_source_id().value()));
+  builder.Connect(scene_graph.get_query_output_port(),
+                  acrobot.get_geometry_query_input_port());
 
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
   auto diagram = builder.Build();
@@ -96,32 +130,41 @@ int do_main() {
       diagram->GetMutableSubsystemContext(acrobot, diagram_context.get());
 
   // Set initial angles. Velocities are left to the default zero values.
-  shoulder.set_angle(&acrobot_context, 1.0);
-  elbow.set_angle(&acrobot_context, 1.0);
+  shoulder.set_angle(&acrobot_context, M_PI_2);
+  elbow.set_angle(&acrobot_context, 0.0);
 
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
 
   systems::IntegratorBase<double>* integrator{nullptr};
   if (FLAGS_integration_scheme == "implicit_euler") {
-    integrator =
-        &simulator.reset_integrator<ImplicitEulerIntegrator<double>>();
+    integrator = &simulator.reset_integrator<ImplicitEulerIntegrator<double>>();
   } else if (FLAGS_integration_scheme == "runge_kutta3") {
-    integrator =
-        &simulator.reset_integrator<RungeKutta3Integrator<double>>();
+    integrator = &simulator.reset_integrator<RungeKutta3Integrator<double>>();
   } else if (FLAGS_integration_scheme == "semi_explicit_euler") {
     integrator =
         &simulator.reset_integrator<SemiExplicitEulerIntegrator<double>>(
             max_time_step);
   } else {
-    throw std::runtime_error(
-        "Integration scheme '" + FLAGS_integration_scheme +
-        "' not supported for this example.");
+    throw std::runtime_error("Integration scheme '" + FLAGS_integration_scheme +
+                             "' not supported for this example.");
   }
   integrator->set_maximum_step_size(max_time_step);
 
   // Error control is only supported for variable time step integrators.
   if (!integrator->get_fixed_step_mode())
     integrator->set_target_accuracy(target_accuracy);
+
+  if (FLAGS_lock_shoulder) {
+    shoulder.lock(&acrobot_context);
+  }
+
+  if (FLAGS_lock_elbow) {
+    elbow.lock(&acrobot_context);
+  }
+
+  if (FLAGS_lock_body) {
+      sphereB.lock(&acrobot_context);
+  }
 
   simulator.set_publish_every_time_step(false);
   simulator.set_target_realtime_rate(FLAGS_target_realtime_rate);
@@ -138,27 +181,26 @@ int do_main() {
     // From IntegratorBase::set_maximum_step_size():
     // "The integrator may stretch the maximum step size by as much as 1% to
     // reach discrete event." Thus the 1.01 factor in this DRAKE_DEMAND.
-    DRAKE_DEMAND(
-        integrator->get_largest_step_size_taken() <= 1.01 * max_time_step);
+    DRAKE_DEMAND(integrator->get_largest_step_size_taken() <=
+                 1.01 * max_time_step);
     DRAKE_DEMAND(integrator->get_smallest_adapted_step_size_taken() <=
-        integrator->get_largest_step_size_taken());
-    DRAKE_DEMAND(
-        integrator->get_num_steps_taken() >= simulation_time / max_time_step);
+                 integrator->get_largest_step_size_taken());
+    DRAKE_DEMAND(integrator->get_num_steps_taken() >=
+                 simulation_time / max_time_step);
   }
 
   // Checks for fixed time step integrators.
   if (integrator->get_fixed_step_mode()) {
     DRAKE_DEMAND(integrator->get_num_derivative_evaluations() ==
-        integrator->get_num_steps_taken());
-    DRAKE_DEMAND(
-        integrator->get_num_step_shrinkages_from_error_control() == 0);
+                 integrator->get_num_steps_taken());
+    DRAKE_DEMAND(integrator->get_num_step_shrinkages_from_error_control() == 0);
   }
 
   // We made a good guess for max_time_step and therefore we expect no
   // failures when taking a time step.
   DRAKE_DEMAND(integrator->get_num_substep_failures() == 0);
-  DRAKE_DEMAND(
-      integrator->get_num_step_shrinkages_from_substep_failures() == 0);
+  DRAKE_DEMAND(integrator->get_num_step_shrinkages_from_substep_failures() ==
+               0);
 
   return 0;
 }

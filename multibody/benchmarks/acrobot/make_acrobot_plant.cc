@@ -14,15 +14,30 @@ namespace acrobot {
 using Eigen::Vector3d;
 
 using geometry::Cylinder;
+using geometry::Box;
 using geometry::FrameId;
 using geometry::SceneGraph;
 using geometry::Sphere;
 using drake::math::RigidTransformd;
 
+void AddWall(MultibodyPlant<double>* plant) {
+  const Body<double>& wall = plant->AddRigidBody(
+      "wall",
+      SpatialInertia<double>(5.0, Vector3d::Zero(),
+                             UnitInertia<double>::SolidBox(0.1, 10, 10)));
+  plant->RegisterCollisionGeometry(wall, RigidTransformd::Identity(),
+                                   Box(0.1, 10, 10), "wall",
+                                   CoulombFriction<double>(0.8, 0.6));
+  plant->RegisterVisualGeometry(wall, RigidTransformd::Identity(),
+                                   Box(0.1, 10, 10), "wall");
+  plant->WeldFrames(plant->world_frame(), wall.body_frame(),
+                    RigidTransformd(Vector3d(2, 0, 0)));
+}
+
 std::unique_ptr<MultibodyPlant<double>>
 MakeAcrobotPlant(const AcrobotParameters& params, bool finalize,
                  SceneGraph<double>* scene_graph) {
-  auto plant = std::make_unique<MultibodyPlant<double>>(0.0);
+  auto plant = std::make_unique<MultibodyPlant<double>>(0.01);
 
   // COM's positions in each link (L1/L2) frame:
   // Frame L1's origin is located at the shoulder outboard frame.
@@ -56,11 +71,17 @@ MakeAcrobotPlant(const AcrobotParameters& params, bool finalize,
     const RigidTransformd X_L1G1(-params.l1() / 2.0 * Vector3d::UnitZ());
     plant->RegisterVisualGeometry(link1, X_L1G1,
                                   Cylinder(params.r1(), params.l1()), "visual");
+    plant->RegisterCollisionGeometry(link1, X_L1G1,
+                                  Cylinder(params.r1(), params.l1()), "visual",
+                                  CoulombFriction<double>(0.8, 0.6));
 
     // Pose of the geometry for link 2 in the link's frame.
     const RigidTransformd X_L2G2(-params.l2() / 2.0 * Vector3d::UnitZ());
     plant->RegisterVisualGeometry(link2, X_L2G2,
                                   Cylinder(params.r2(), params.l2()), "visual");
+    plant->RegisterCollisionGeometry(
+        link2, X_L2G2, Cylinder(params.r2(), params.l2()), "visual",
+        CoulombFriction<double>(0.8, 0.6));
 
     // Register some (anchored) geometry to the world.
     const RigidTransformd X_WG;  // Default is identity transform.
@@ -95,6 +116,9 @@ MakeAcrobotPlant(const AcrobotParameters& params, bool finalize,
   // Gravity acting in the -z direction.
   plant->mutable_gravity_field().set_gravity_vector(
       -params.g() * Vector3d::UnitZ());
+
+  // Add a wall for collision.
+  AddWall(plant.get());
 
   // We are done creating the plant.
   if (finalize) plant->Finalize();
