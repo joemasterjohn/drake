@@ -15,6 +15,8 @@ namespace drake {
 namespace geometry {
 namespace internal {
 
+class CollisionTransformCache;
+
 /* Oriented bounding box used in Bvh. The box is defined in a canonical
  frame B such that it is centered on Bo and its extents are aligned with
  B's axes. However, the box is posed in a hierarchical frame H (see pose()).
@@ -76,6 +78,9 @@ class Obb {
    box `b` has its frame B posed in hierarchy frame H. */
   static bool HasOverlap(const Obb& a_G, const Obb& b_H,
                          const math::RigidTransformd& X_GH);
+
+  static bool HasOverlap(const Obb& a_G, const Obb& b_H,
+                         CollisionTransformCache& collision_transform_cache);
 
   /* Checks whether bounding volume `bv` intersects the given plane. The
    bounding volume is centered on its canonical frame B, and B is posed in the
@@ -215,6 +220,119 @@ class ObbMaker {
   const std::set<typename MeshType::VertexIndex>& vertices_;
 
   friend class ObbMakerTester<MeshType>;
+};
+
+class CollisionTransformCache {
+ public:
+  CollisionTransformCache(const math::RigidTransformd& X_AB) : X_AB_(X_AB), total_queries(0), total_redundant_queries(0), total_compositions(0) {}
+
+  math::RigidTransformd get_transform(const Obb* a, const Obb* b) {
+
+    bool redundant = false;
+
+    if(bvh_a_hits.find(a) == bvh_a_hits.end()) {
+      bvh_a_hits[a] = 1;
+    } else {
+      bvh_a_hits[a]++;
+      redundant = true;
+    }
+
+    if(bvh_b_hits.find(b) == bvh_b_hits.end()) {
+      bvh_b_hits[b] = 1;
+    } else {
+      bvh_b_hits[b]++;
+      redundant = true;
+    }
+
+    total_queries++;
+    if(redundant) {
+      total_redundant_queries++;
+    }
+
+    // if (bvh_X_AB_b.find(b) == bvh_X_AB_b.end()) {
+    //   const math::RigidTransformd& X_AB_b = X_AB_ * b->pose();
+    //   bvh_X_AB_b.emplace(b, X_AB_b);
+    //   total_compositions += 2;
+    //   return a->pose().inverse() * X_AB_b;
+    // }
+
+    if (bvh_a_inv_X_AB.find(a) == bvh_a_inv_X_AB.end()) {
+      const math::RigidTransformd& a_inv_X_AB = a->pose().inverse() * X_AB_;
+      bvh_a_inv_X_AB.emplace(a, a_inv_X_AB);
+      total_compositions += 2;
+      return a_inv_X_AB * b->pose();
+    }
+    total_compositions += 1;
+    return bvh_a_inv_X_AB[a] * b->pose();
+  }
+
+  void report() {
+    int a_max = 0;
+    int b_max = 0;
+
+    for(auto kv : bvh_a_hits) {
+      a_max = std::max(a_max, kv.second);
+    }
+
+    for(auto kv : bvh_b_hits) {
+      b_max = std::max(a_max, kv.second);
+    }
+
+    std::vector<int> a_hist(a_max+1, 0);
+    std::vector<int> b_hist(b_max+1, 0);
+
+
+    for(auto kv : bvh_a_hits) {
+     a_hist[kv.second]++;
+    }
+
+    for(auto kv : bvh_b_hits) {
+      b_hist[kv.second]++;
+    }
+
+    int num_a_redundant = 0;
+    int num_b_redundant = 0;
+
+    std::cout << "a_hist:";
+    for(int i = 1; i < static_cast<int>(a_hist.size()); ++i) {
+      std::cout << " " << a_hist[i];
+      num_a_redundant += (a_hist[i]*(i-1));
+    }
+    std::cout << "\n";
+
+    std::cout << "b_hist:";
+    for(int i = 1; i < static_cast<int>(b_hist.size()); ++i) {
+      std::cout << " " << b_hist[i];
+      num_b_redundant += (b_hist[i]*(i-1));
+    }
+    std::cout << "\n";
+
+    std::cout << "num redundant from a: " << num_a_redundant << "\n";
+    std::cout << "num redundant from b: " << num_b_redundant << "\n";
+
+    std::cout << "num redundant : " << total_redundant_queries << "\n";
+
+    // each query costs two compositions
+    std::cout << "unoptimized # of transform compositions: "
+              << (total_queries * 2) << "\n";
+
+    // each redundant query can save a composition
+    std::cout << "ideal cached # of transform compositions: "
+              << (2 * total_queries - total_redundant_queries) << "\n";
+
+    std::cout << "total compositions: " << total_compositions << "\n";
+  }
+
+  std::unordered_map<const Obb*, math::RigidTransformd> bvh_a_inv_X_AB;
+  std::unordered_map<const Obb*, math::RigidTransformd> bvh_X_AB_b;
+
+  std::unordered_map<const Obb*, int> bvh_a_hits;
+  std::unordered_map<const Obb*, int> bvh_b_hits;
+
+  const math::RigidTransformd& X_AB_;
+  int total_queries;
+  int total_redundant_queries;
+  int total_compositions;
 };
 
 }  // namespace internal

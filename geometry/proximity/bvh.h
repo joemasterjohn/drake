@@ -199,12 +199,18 @@ class Bvh {
     std::stack<NodePair, std::vector<NodePair>> node_pairs;
     node_pairs.emplace(root_node(), bvh.root_node());
 
+    CollisionTransformCache collision_transform_cache(X_AB);
+
     while (!node_pairs.empty()) {
       const auto& [node_a, node_b] = node_pairs.top();
       node_pairs.pop();
 
       // Check if the bounding volumes overlap.
-      if (!Obb::HasOverlap(node_a.bv(), node_b.bv(), X_AB)) {
+      // if (!Obb::HasOverlap(node_a.bv(), node_b.bv(), X_AB)) {
+      //   continue;
+      // }
+      if (!Obb::HasOverlap(node_a.bv(), node_b.bv(),
+                           collision_transform_cache)) {
         continue;
       }
 
@@ -233,6 +239,8 @@ class Bvh {
         node_pairs.emplace(node_a.right(), node_b.right());
       }
     }
+
+    collision_transform_cache.report();
   }
 
   /* Culls the nodes of the BVH based on the nodes' bounding volumes'

@@ -159,7 +159,7 @@ class MeshIntersectionBenchmark : public benchmark::Fixture {
                    kEllipsoidDimension[2]},
         sphere_{kSphereDimension},
         mesh_S_(MakeEllipsoidVolumeMesh<double>(
-            ellipsoid_, 1, TessellationStrategy::kDenseInteriorVertices)),
+            ellipsoid_, 1, TessellationStrategy::kSingleInteriorVertex)),
         field_S_(MakeEllipsoidPressureField<double>(ellipsoid_, &mesh_S_,
                                                     kElasticModulus)),
         mesh_R_(MakeEllipsoidSurfaceMesh<double>(ellipsoid_, 1)) {}
@@ -179,7 +179,7 @@ class MeshIntersectionBenchmark : public benchmark::Fixture {
     const double resolution_hint = kResolutionHint[resolution];
     mesh_S_ = MakeEllipsoidVolumeMesh<double>(
         ellipsoid_, resolution_hint,
-        TessellationStrategy::kDenseInteriorVertices);
+        TessellationStrategy::kSingleInteriorVertex);
     field_S_ = MakeEllipsoidPressureField<double>(ellipsoid_, &mesh_S_,
                                                   kElasticModulus);
     mesh_R_ = MakeSphereSurfaceMesh<double>(sphere_, resolution_hint);
@@ -236,29 +236,34 @@ BENCHMARK_DEFINE_F(MeshIntersectionBenchmark, RigidSoftMesh)
   std::unique_ptr<SurfaceMesh<double>> surface_SR;
   std::unique_ptr<SurfaceMeshFieldLinear<double, double>> e_SR;
   std::vector<Vector3<double>> grad_eM_Ms;
+  std::cout << "volume mesh tets:  " << mesh_S_.num_elements() << "\n";
+  std::cout << "surface mesh tris: " << mesh_R_.num_elements() << "\n";
   for (auto _ : state) {
-    SurfaceVolumeIntersector<double>().SampleVolumeFieldOnSurface(
-        field_S_, bvh_S, mesh_R_, bvh_R, X_SR_, &surface_SR, &e_SR,
-        &grad_eM_Ms);
+    for (int i = 0; i < 1; ++i) {
+      SurfaceVolumeIntersector<double>().SampleVolumeFieldOnSurface(
+          field_S_, bvh_S, mesh_R_, bvh_R, X_SR_, &surface_SR, &e_SR,
+          &grad_eM_Ms);
+    }
   }
   RecordContactSurfaceResult(surface_SR.get(), "RigidSoftMesh", state);
 }
 BENCHMARK_REGISTER_F(MeshIntersectionBenchmark, RigidSoftMesh)
     ->Unit(benchmark::kMillisecond)
-    ->MinTime(2)
-    ->Args({0, 4, 0})   // 0 resolution, 4 contact overlap, 0 rotation factor.
-    ->Args({1, 4, 0})   // 1 resolution, 4 contact overlap, 0 rotation factor.
-    ->Args({2, 4, 0})   // 2 resolution, 4 contact overlap, 0 rotation factor.
-    ->Args({3, 4, 0})   // 3 resolution, 4 contact overlap, 0 rotation factor.
-    ->Args({2, 0, 0})   // 2 resolution, 0 contact overlap, 0 rotation factor.
-    ->Args({2, 1, 0})   // 2 resolution, 1 contact overlap, 0 rotation factor.
-    ->Args({2, 2, 0})   // 2 resolution, 2 contact overlap, 0 rotation factor.
-    ->Args({2, 3, 0})   // 2 resolution, 3 contact overlap, 0 rotation factor.
-    ->Args({2, 4, 1})   // 2 resolution, 4 contact overlap, 1 rotation factor.
-    ->Args({2, 4, 2})   // 2 resolution, 4 contact overlap, 2 rotation factor.
-    ->Args({2, 4, 3})   // 2 resolution, 4 contact overlap, 3 rotation factor.
-    ->Args({2, 3, 1})   // 2 resolution, 3 contact overlap, 1 rotation factor.
-    ->Args({2, 2, 2});  // 2 resolution, 2 contact overlap, 2 rotation factor.
+    ->MinTime(0.00001)
+    ->Args({0, 3, 0});  // 2 resolution, 2 contact overlap, 2 rotation factor.
+    // ->Args({0, 4, 0})   // 0 resolution, 4 contact overlap, 0 rotation factor.
+    // ->Args({1, 4, 0})   // 1 resolution, 4 contact overlap, 0 rotation factor.
+    // ->Args({2, 4, 0})   // 2 resolution, 4 contact overlap, 0 rotation factor.
+    // ->Args({3, 4, 0})   // 3 resolution, 4 contact overlap, 0 rotation factor.
+    // ->Args({2, 0, 0})   // 2 resolution, 0 contact overlap, 0 rotation factor.
+    // ->Args({2, 1, 0})   // 2 resolution, 1 contact overlap, 0 rotation factor.
+    // ->Args({2, 2, 0})   // 2 resolution, 2 contact overlap, 0 rotation factor.
+    // ->Args({2, 3, 0})   // 2 resolution, 3 contact overlap, 0 rotation factor.
+    // ->Args({2, 4, 1})   // 2 resolution, 4 contact overlap, 1 rotation factor.
+    // ->Args({2, 4, 2})   // 2 resolution, 4 contact overlap, 2 rotation factor.
+    // ->Args({2, 4, 3})   // 2 resolution, 4 contact overlap, 3 rotation factor.
+    // ->Args({2, 3, 1})   // 2 resolution, 3 contact overlap, 1 rotation factor.
+    // ->Args({2, 2, 2});  // 2 resolution, 2 contact overlap, 2 rotation factor.
 
 void ReportContactSurfaces() {
   std::cout << "Resulting contact surface sizes:" << std::endl;
