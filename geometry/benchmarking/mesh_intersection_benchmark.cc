@@ -144,7 +144,7 @@ const double kElasticModulus = 1.0e5;
 const double kMaxRotationFactor = 3.;
 const double kSphereDimension = 3.;
 const Vector3d kEllipsoidDimension{3.01, 3.5, 4.};
-const double kResolutionHint[4] = {4., 3., 2., 1.};
+const double kResolutionHint[6] = {4., 3., 2., 1., 0.5, 0.1};
 const Vector3d kContactOverlapTranslation[5] = {
     Vector3d{7, 7, 7},        // 0: No overlap at all.
     Vector3d{4, 4, 4},        // 1: Overlapping bounding volumes.
@@ -236,10 +236,12 @@ BENCHMARK_DEFINE_F(MeshIntersectionBenchmark, RigidSoftMesh)
   std::unique_ptr<SurfaceMesh<double>> surface_SR;
   std::unique_ptr<SurfaceMeshFieldLinear<double, double>> e_SR;
   std::vector<Vector3<double>> grad_eM_Ms;
-  std::cout << "volume mesh tets:  " << mesh_S_.num_elements() << "\n";
-  std::cout << "surface mesh tris: " << mesh_R_.num_elements() << "\n";
+  // std::cout << "volume mesh tets:  " << mesh_S_.num_elements() << "\n";
+  // std::cout << "surface mesh tris: " << mesh_R_.num_elements() << "\n";
+  // std::cout << "quadratic # queries: "
+  //           << mesh_S_.num_elements() * mesh_R_.num_elements() << "\n";
   for (auto _ : state) {
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < 100; ++i) {
       SurfaceVolumeIntersector<double>().SampleVolumeFieldOnSurface(
           field_S_, bvh_S, mesh_R_, bvh_R, X_SR_, &surface_SR, &e_SR,
           &grad_eM_Ms);
@@ -249,8 +251,13 @@ BENCHMARK_DEFINE_F(MeshIntersectionBenchmark, RigidSoftMesh)
 }
 BENCHMARK_REGISTER_F(MeshIntersectionBenchmark, RigidSoftMesh)
     ->Unit(benchmark::kMillisecond)
-    ->MinTime(0.00001)
-    ->Args({0, 3, 0});  // 2 resolution, 2 contact overlap, 2 rotation factor.
+    ->MinTime(1)
+    ->Args({5, 2, 2})
+    ->Args({5, 1, 2})
+    ->Args({5, 0, 2})
+    ->Args({4, 2, 2})
+    ->Args({4, 1, 2})
+    ->Args({4, 0, 2});
     // ->Args({0, 4, 0})   // 0 resolution, 4 contact overlap, 0 rotation factor.
     // ->Args({1, 4, 0})   // 1 resolution, 4 contact overlap, 0 rotation factor.
     // ->Args({2, 4, 0})   // 2 resolution, 4 contact overlap, 0 rotation factor.

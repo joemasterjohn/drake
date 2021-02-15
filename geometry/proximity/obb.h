@@ -82,6 +82,9 @@ class Obb {
   static bool HasOverlap(const Obb& a_G, const Obb& b_H,
                          CollisionTransformCache& collision_transform_cache);
 
+    static bool HasOverlap(const Obb& a_G, const Obb& b_H,
+                         const math::RigidTransformd& X_AB, bool);
+
   /* Checks whether bounding volume `bv` intersects the given plane. The
    bounding volume is centered on its canonical frame B, and B is posed in the
    corresponding hierarchy frame H. The plane is defined in frame P.
@@ -226,28 +229,28 @@ class CollisionTransformCache {
  public:
   CollisionTransformCache(const math::RigidTransformd& X_AB) : X_AB_(X_AB), total_queries(0), total_redundant_queries(0), total_compositions(0) {}
 
-  math::RigidTransformd get_transform(const Obb* a, const Obb* b) {
+  inline math::RigidTransformd get_transform(const Obb* a, const Obb* b) {
 
-    bool redundant = false;
+    // bool redundant = false;
 
-    if(bvh_a_hits.find(a) == bvh_a_hits.end()) {
-      bvh_a_hits[a] = 1;
-    } else {
-      bvh_a_hits[a]++;
-      redundant = true;
-    }
+    // if(bvh_a_hits.find(a) == bvh_a_hits.end()) {
+    //   bvh_a_hits[a] = 1;
+    // } else {
+    //   bvh_a_hits[a]++;
+    //   redundant = true;
+    // }
 
-    if(bvh_b_hits.find(b) == bvh_b_hits.end()) {
-      bvh_b_hits[b] = 1;
-    } else {
-      bvh_b_hits[b]++;
-      redundant = true;
-    }
+    // if(bvh_b_hits.find(b) == bvh_b_hits.end()) {
+    //   bvh_b_hits[b] = 1;
+    // } else {
+    //   bvh_b_hits[b]++;
+    //   redundant = true;
+    // }
 
-    total_queries++;
-    if(redundant) {
-      total_redundant_queries++;
-    }
+    // total_queries++;
+    // if(redundant) {
+    //   total_redundant_queries++;
+    // }
 
     // if (bvh_X_AB_b.find(b) == bvh_X_AB_b.end()) {
     //   const math::RigidTransformd& X_AB_b = X_AB_ * b->pose();
@@ -259,10 +262,10 @@ class CollisionTransformCache {
     if (bvh_a_inv_X_AB.find(a) == bvh_a_inv_X_AB.end()) {
       const math::RigidTransformd& a_inv_X_AB = a->pose().inverse() * X_AB_;
       bvh_a_inv_X_AB.emplace(a, a_inv_X_AB);
-      total_compositions += 2;
+      // total_compositions += 2;
       return a_inv_X_AB * b->pose();
     }
-    total_compositions += 1;
+    // total_compositions += 1;
     return bvh_a_inv_X_AB[a] * b->pose();
   }
 

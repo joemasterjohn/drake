@@ -240,7 +240,7 @@ class Bvh {
       }
     }
 
-    collision_transform_cache.report();
+    //collision_transform_cache.report();
   }
 
   /* Culls the nodes of the BVH based on the nodes' bounding volumes'
