@@ -48,9 +48,35 @@ class WeldJoint final : public Joint<T> {
     return name.access();
   }
 
-  /// Returns the pose X_PC of frame C in P.
+  /// Returns the default pose X_PC of frame C in P.
   const math::RigidTransform<double>& X_PC() const {
     return X_PC_;
+  }
+
+  /// Sets the default pose X_PC of frame C in P.
+  void set_X_PC(const math::RigidTransform<double>& X_PC) {
+    X_PC_ = X_PC;
+    // If the model has been finalized, update the mobilizer for this joint.
+    if(this->has_implementation()) {
+      get_mutable_mobilizer()->set_X_FM(X_PC_);
+    }
+  }
+
+  /// Gets the value of X_PC, the pose of the outboard frame C in the
+  /// inboard frame P, stored in `context`.
+  math::RigidTransform<T> X_PC(const systems::Context<T>& context) const {
+    DRAKE_DEMAND(this->has_implementation());
+
+    return get_mobilizer()->get_X_FM(context);
+  }
+
+  /// Sets the value of X_PC, the pose of the outboard frame C in the
+  /// inboard frame P, in `context`.
+  void set_X_PC(systems::Context<T>* context,
+                const math::RigidTransform<T>& X_PC) const {
+    DRAKE_DEMAND(this->has_implementation());
+
+    get_mobilizer()->set_X_FM(context, X_PC);
   }
 
  protected:
@@ -135,7 +161,7 @@ class WeldJoint final : public Joint<T> {
       const internal::MultibodyTree<ToScalar>& tree_clone) const;
 
   // The pose of frame C in P.
-  const math::RigidTransform<double> X_PC_;
+  math::RigidTransform<double> X_PC_;
 };
 
 template <typename T> const char WeldJoint<T>::kTypeName[] = "weld";

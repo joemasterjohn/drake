@@ -37,6 +37,29 @@ class WeldMobilizer final : public MobilizerImpl<T, 0, 0> {
   // @retval X_FM The pose of the outboard frame M in the inboard frame F.
   const math::RigidTransform<double>& get_X_FM() const { return X_FM_; }
 
+  // Sets the default value of X_FM, the pose of the outboard frame M in the
+  // inboard frame F.
+  void set_X_FM(const math::RigidTransform<double>& X_FM) { X_FM_ = X_FM; }
+
+  // Gets the value of X_FM, the pose of the outboard frame M in the
+  // inboard frame F, stored in `context`.
+  math::RigidTransform<T> get_X_FM(const systems::Context<T>& context) const {
+    const systems::BasicVector<T>& X_FM_parameter =
+        context.get_numeric_parameter(X_FM_parameter_index_);
+    return math::RigidTransform<T>(Eigen::Map<const Eigen::Matrix<T, 3, 4>>(
+        X_FM_parameter.get_value().data()));
+  }
+
+  // Sets the value of X_FM, the pose of the outboard frame M in the
+  // inboard frame F, in `context`.
+  void set_X_FM(systems::Context<T>* context,
+                const math::RigidTransform<T>& X_FM) const {
+    systems::BasicVector<T>& X_FM_parameter =
+        context->get_mutable_numeric_parameter(X_FM_parameter_index_);
+    X_FM_parameter.set_value(
+        Eigen::Map<const VectorX<T>>(X_FM.GetAsMatrix34().data(), 12, 1));
+  }
+
   // Computes the across-mobilizer transform `X_FM`, which for this mobilizer
   // is independent of the state stored in `context`.
   math::RigidTransform<T> CalcAcrossMobilizerTransform(
@@ -92,6 +115,19 @@ class WeldMobilizer final : public MobilizerImpl<T, 0, 0> {
   std::unique_ptr<Mobilizer<symbolic::Expression>> DoCloneToScalar(
       const MultibodyTree<symbolic::Expression>& tree_clone) const final;
 
+  // Implementation for MultibodyElement::DoDeclareParameters().
+  // WeldMobilizer declares a single parameter for X_FM_.
+  void DoDeclareParameters(
+      internal::MultibodyTreeSystem<T>* tree_system) override {
+    // Declare parent classes' parameters
+    MobilizerImpl<T, 0, 0>::DoDeclareParameters(tree_system);
+
+    X_FM_parameter_index_ = this->DeclareNumericParameter(
+        tree_system,
+        systems::BasicVector<T>(Eigen::Map<const VectorX<T>>(
+            X_FM_.template cast<T>().GetAsMatrix34().data(), 12, 1)));
+  }
+
  private:
   typedef MobilizerImpl<T, 0, 0> MobilizerBase;
   // Bring the handy number of position and velocities MobilizerImpl enums into
@@ -110,6 +146,9 @@ class WeldMobilizer final : public MobilizerImpl<T, 0, 0> {
 
   // Pose of the outboard frame M in the inboard frame F.
   math::RigidTransform<double> X_FM_;
+
+  // System parameter index the value of X_FM_ stored in the context.
+  systems::NumericParameterIndex X_FM_parameter_index_;
 };
 
 }  // namespace internal

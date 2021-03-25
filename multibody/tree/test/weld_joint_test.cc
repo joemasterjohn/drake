@@ -39,10 +39,14 @@ class WeldJointTest : public ::testing::Test {
         *body_, std::nullopt,               // X_BM
         X_FM_);                             // X_FM
 
+    mutable_joint_ = &model->GetMutableJointByName<WeldJoint>(joint_->name());
+
     // We are done adding modeling elements. Transfer tree to system for
     // computation.
     system_ = std::make_unique<internal::MultibodyTreeSystem<double>>(
         std::move(model));
+
+    context_ = system_->CreateDefaultContext();
   }
 
   const internal::MultibodyTree<double>& tree() const {
@@ -51,9 +55,11 @@ class WeldJointTest : public ::testing::Test {
 
  protected:
   std::unique_ptr<internal::MultibodyTreeSystem<double>> system_;
+  std::unique_ptr<Context<double>> context_;
 
   const RigidBody<double>* body_{nullptr};
   const WeldJoint<double>* joint_{nullptr};
+  WeldJoint<double>* mutable_joint_{nullptr};
   const Translation3d X_FM_{0, 0.5, 0};
 };
 
@@ -74,9 +80,33 @@ TEST_F(WeldJointTest, NumDOFs) {
   DRAKE_EXPECT_NO_THROW(joint_->velocity_start());
 }
 
-// Verify we can retrieve the fixed posed between the welded frames.
-TEST_F(WeldJointTest, GetX_PC) {
+// Verify we can retrieve and set the fixed pose between the welded frames.
+TEST_F(WeldJointTest, GetSetX_PC) {
   EXPECT_TRUE(joint_->X_PC().IsExactlyEqualTo(X_FM_));
+
+  // Set a new default X_FM
+  const Translation3d X_FM_new{0.5, 1.6, 0.3};
+  mutable_joint_->set_X_PC(X_FM_new);
+  EXPECT_TRUE(joint_->X_PC().IsExactlyEqualTo(X_FM_new));
+}
+
+// Verify we can retrieve and set the fixed pose between the welded frames,
+// for context dependent methods.
+TEST_F(WeldJointTest, GetSetX_PC_context) {
+  // Value in the context is equal to the default value.
+  EXPECT_TRUE(joint_->X_PC(*context_).IsExactlyEqualTo(X_FM_));
+  EXPECT_TRUE(joint_->X_PC(*context_).IsExactlyEqualTo(joint_->X_PC()));
+
+  // Set a new X_FM in the context.
+  const Translation3d X_FM_new{0.5, 1.6, 0.3};
+  joint_->set_X_PC(context_.get(), X_FM_new);
+  EXPECT_TRUE(joint_->X_PC(*context_).IsExactlyEqualTo(X_FM_new));
+
+  // Set a new default X_FM and verify that a new context gets that value.
+  mutable_joint_->set_X_PC(X_FM_new);
+  std::unique_ptr<Context<double>> context_new =
+      system_->CreateDefaultContext();
+  EXPECT_TRUE(joint_->X_PC(*context_new).IsExactlyEqualTo(X_FM_new));
 }
 
 TEST_F(WeldJointTest, GetJointLimits) {

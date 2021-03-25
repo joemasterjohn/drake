@@ -10,7 +10,7 @@ namespace internal {
 
 template <typename T>
 math::RigidTransform<T> WeldMobilizer<T>::CalcAcrossMobilizerTransform(
-    const systems::Context<T>&) const { return X_FM_.cast<T>(); }
+    const systems::Context<T>& context) const { return get_X_FM(context); }
 
 template <typename T>
 SpatialVelocity<T> WeldMobilizer<T>::CalcAcrossMobilizerSpatialVelocity(

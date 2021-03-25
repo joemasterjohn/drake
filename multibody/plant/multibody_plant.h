@@ -2001,6 +2001,16 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     internal_tree().SetRandomState(context, state, generator);
   }
 
+  /// Sets `parameters` according to defaults set by the user for various
+  /// multibody elements.
+  /// @throws std::exception if called pre-finalize. See Finalize().
+  void SetDefaultParameters(const systems::Context<T>& context,
+                            systems::Parameters<T>* parameters) const override {
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    this->ValidateContext(context);
+    internal_tree().SetDefaultParameters(context, parameters);
+  }
+
   /// Returns a vector of actuation values for `model_instance` from a
   /// vector `u` of actuation values for the entire model. This method throws an
   /// exception if `u` is not of size MultibodyPlant::num_actuated_dofs().

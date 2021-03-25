@@ -95,6 +95,12 @@ class MultibodyElement {
     DoDeclareParameters(tree_system);
   }
 
+  /// Sets values in `parameters` for this element's parameters.
+  /// @param[in] context
+  /// @param[out] parameters
+  virtual void set_default_parameters(const systems::Context<T>& context,
+                                      systems::Parameters<T>* parameters) {}
+
  protected:
   /// Default constructor made protected so that sub-classes can still declare
   /// their default constructors if they need to.

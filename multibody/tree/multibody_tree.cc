@@ -369,6 +369,36 @@ void MultibodyTree<T>::SetRandomState(const systems::Context<T>& context,
 }
 
 template <typename T>
+void MultibodyTree<T>::SetDefaultParameters(const systems::Context<T>& context,
+                                            Parameters<T>* parameters) const {
+  // Mobilizers.
+  for (const auto& mobilizer : owned_mobilizers_) {
+    mobilizer->set_default_parameters(context, parameters);
+  }
+  // Joints.
+  for (const auto& joint : owned_joints_) {
+    joint->set_default_parameters(context, parameters);
+  }
+  // JointActuators.
+  for (const auto& joint_actuator : owned_actuators_) {
+    joint_actuator->set_default_parameters(context, parameters);
+  }
+  // Bodies.
+  for (const auto& body : owned_bodies_) {
+    body->set_default_parameters(context, parameters);
+  }
+  // Frames.
+  for (const auto& frame : owned_frames_) {
+    frame->set_default_parameters(context, parameters);
+  }
+
+  // Force Elements.
+  for (const auto& force_element : owned_force_elements) {
+    force_element->set_default_parameters(context, parameters);
+  }
+}
+
+template <typename T>
 Eigen::VectorBlock<const VectorX<T>>
 MultibodyTree<T>::GetPositionsAndVelocities(
     const systems::Context<T>& context) const {

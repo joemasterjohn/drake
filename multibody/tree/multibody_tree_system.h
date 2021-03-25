@@ -301,6 +301,9 @@ class MultibodyTreeSystem : public systems::LeafSystem<T> {
   void SetDefaultState(const systems::Context<T>& context,
                        systems::State<T>* state) const override;
 
+  void SetDefaultParameters(const Context<T>& context,
+                            Parameters<T>* parameters) const override;
+
  private:
   // This is only meaningful in continuous mode.
   void DoCalcTimeDerivatives(

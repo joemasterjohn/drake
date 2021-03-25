@@ -689,6 +689,11 @@ class MultibodyTree {
     return *owned_mobilizers_[mobilizer_index];
   }
 
+  Mobilizer<T>& get_mutable_mobilizer(MobilizerIndex mobilizer_index) {
+    DRAKE_THROW_UNLESS(mobilizer_index < num_mobilizers());
+    return *owned_mobilizers_[mobilizer_index];
+  }
+
   // See MultibodyPlant method.
   template <template <typename> class ForceElementType = ForceElement>
   const ForceElementType<T>& GetForceElement(
@@ -1168,6 +1173,10 @@ class MultibodyTree {
   void SetRandomState(const systems::Context<T>& context,
                       systems::State<T>* state,
                       RandomGenerator* generator) const;
+
+  // See MultibodyPlant method.
+  void SetDefaultParameters(const systems::Context<T>& context,
+                            Parameters<T>* parameters) const;
 
   // Returns a const Eigen vector reference containing the vector
   // `[q; v]` of the model with `q` the vector of generalized positions and
