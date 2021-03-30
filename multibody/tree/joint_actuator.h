@@ -291,6 +291,13 @@ class JointActuator final
         tree_system, systems::BasicVector<T>(Vector1<T>(default_gear_ratio_)));
   }
 
+  // Implementation for MultibodyElement::DoSetDefaultParameters().
+  void DoSetDefaultParameters(const systems::Context<T>& context,
+                                         systems::Parameters<T>* parameters) {
+    MultibodyElement<JointActuator, T, JointActuatorIndex>::DoSetDefaultParameters(context, parameters);
+    parameters->
+                                         }
+
   // The actuator's unique name in the MultibodyTree model
   std::string name_;
 

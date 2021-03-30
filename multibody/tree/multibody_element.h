@@ -95,11 +95,15 @@ class MultibodyElement {
     DoDeclareParameters(tree_system);
   }
 
-  /// Sets values in `parameters` for this element's parameters.
+  /// Sets values in `parameters` for this element's parameters. NVI to the
+  /// virtual DoSetDefaultParameters().
   /// @param[in] context
   /// @param[out] parameters
-  virtual void set_default_parameters(const systems::Context<T>& context,
-                                      systems::Parameters<T>* parameters) {}
+  void SetDefaultParameters(const systems::Context<T>& context,
+                            systems::Parameters<T>* parameters) {
+    DRAKE_DEMAND(parameters != nullptr);
+    DoSetDefaultParameters(context, parameters);
+  }
 
  protected:
   /// Default constructor made protected so that sub-classes can still declare
@@ -140,6 +144,16 @@ class MultibodyElement {
   /// is not a direct descendent of MultibodyElement, it must invoke its parent
   /// classes' DoDeclareParameters() before declaring its own parameters.
   virtual void DoDeclareParameters(internal::MultibodyTreeSystem<T>*) {}
+
+  /// Implementation of the NVI DoSetDefaultParameters(). If a
+  /// MultibodyElement-derived object has default parameters that are mutable
+  /// after finalize, they must override this method to set their default
+  /// parameters in `parameters`. This ensures that modified default values are
+  /// correct for contexts created with LeafSystem::CreateDefaultContext().
+  /// If an object is not a direct descendent of MultibodyElement, it must
+  /// invoke its parent classes' do_set_default_parameters()
+  virtual void DoSetDefaultParameters(const systems::Context<T>& context,
+                                         systems::Parameters<T>* parameters) {}
 
   /// To be used by MultibodyElement-derived objects when declaring parameters
   /// in their implementation of DoDeclareParameters(). For an example, see
