@@ -484,6 +484,34 @@ TEST_F(MultibodyPlantReflectedInertiaTests, ScalarConversion) {
                               MatrixCompareType::relative));
 }
 
+// This test shows an existing bug in the MBP parameter framework.
+TEST_F(MultibodyPlantReflectedInertiaTests, Bug) {
+  // Arbitrary reflected inertia values.
+  VectorX<double> rotor_inertias(kNumJoints);
+  VectorX<double> gear_ratios(kNumJoints);
+  rotor_inertias << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9;
+  gear_ratios << 1, 2, 4, 8, 16, 32, 64, 128, 256;
+
+  // Load the models.
+  LoadBothModelsSetStateAndFinalize(rotor_inertias, gear_ratios);
+
+  JointActuator<double>& joint_actuator = dynamic_cast<JointActuator<double>&>(
+      plant_ri_.get_mutable_joint_actuator(JointActuatorIndex(0)));
+
+  // Default gear ratio of actuator 0 ends up in the context.
+  EXPECT_EQ(joint_actuator.default_gear_ratio(),
+            joint_actuator.gear_ratio(*context_));
+
+  // Set the model parameter to something different.
+  joint_actuator.set_default_gear_ratio(999);
+
+  auto context = plant_ri_.CreateDefaultContext();
+
+  // New default value should propagate to a new default context.
+  EXPECT_EQ(joint_actuator.default_gear_ratio(),
+            joint_actuator.gear_ratio(*context));
+}
+
 }  // namespace
 }  // namespace multibody
 }  // namespace drake
