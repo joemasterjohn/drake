@@ -8,6 +8,7 @@
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
+#include "drake/geometry/proximity/polygonal_surface_mesh.h"
 #include "drake/geometry/proximity/surface_mesh.h"
 #include "drake/geometry/proximity/surface_mesh_field.h"
 #include "drake/math/rigid_transform.h"
@@ -218,6 +219,30 @@ class ContactSurface {
     if (id_N_ < id_M_) SwapMAndN();
   }
 
+  ContactSurface(GeometryId id_M, GeometryId id_N,
+                 std::unique_ptr<SurfaceMesh<T>> mesh_W,
+                 std::unique_ptr<SurfaceMeshFieldLinear<T, T>> e_MN,
+                 std::unique_ptr<std::vector<Vector3<T>>> grad_eM_W,
+                 std::unique_ptr<std::vector<Vector3<T>>> grad_eN_W,
+                 std::unique_ptr<PolygonalSurfaceMesh<T>> polygonal_mesh_W)
+      : id_M_(id_M),
+        id_N_(id_N),
+        mesh_W_(std::move(mesh_W)),
+        polygonal_mesh_W_(std::move(polygonal_mesh_W)),
+        e_MN_(std::move(e_MN)),
+        grad_eM_W_(std::move(grad_eM_W)),
+        grad_eN_W_(std::move(grad_eN_W)) {
+    // If defined the gradient values must map 1-to-1 onto elements.
+    DRAKE_THROW_UNLESS(grad_eM_W_ == nullptr ||
+        static_cast<int>(grad_eM_W_->size()) ==
+            mesh_W_->num_elements());
+    DRAKE_THROW_UNLESS(grad_eN_W_ == nullptr ||
+        static_cast<int>(grad_eN_W_->size()) ==
+            mesh_W_->num_elements());
+    if (id_N_ < id_M_) SwapMAndN();
+  }
+
+
   /** Returns the geometry id of Geometry M. */
   GeometryId id_M() const { return id_M_; }
 
@@ -328,6 +353,8 @@ class ContactSurface {
   GeometryId id_N_;
   // The surface mesh of the contact surface 𝕊ₘₙ between M and N.
   std::unique_ptr<SurfaceMesh<T>> mesh_W_;
+  std::unique_ptr<PolygonalSurfaceMesh<T>> polygonal_mesh_W_;
+
   // TODO(SeanCurtis-TRI): We can only construct from a linear field, so store
   //  it as such for now. This can be promoted once there's a construction that
   //  uses a different derivation.
