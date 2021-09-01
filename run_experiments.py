@@ -5,10 +5,10 @@ import os
   
 # Default arguments
 prog_default = ['./bazel-bin/examples/multibody/spinning_coin/spinning_coin',
-                '--simulation_time=3']
+                '--simulation_time=5']
   
-translational = [2 + i*0.5 for i in range(1)]
-rotational = [2 + i*0.5 for i in range(1)]
+translational = [2 + i*0.5 for i in range(10)]
+rotational = [2 + i*0.5 for i in range(10)]
  
 def ensure_dir(directory):
   if not os.path.exists(directory):
@@ -25,17 +25,15 @@ def run(prog, output_dir):
 def write_gnuplot_file(output_dir):
 
   file_prefix = '''
-set xdata time                           # Indicate that x-axis values are time values
-  
-set xrange [0:3]                         # Set x-axis range of values
-set yrange [0:10]                        # Set y-axis range of values
- 
+set autoscale xfix
+set yrange [0:0.3]
+
 set title 'Spinning Coin Velocity Ratio' font ",18" # Set graph title, set title font size to 18
  
 set terminal jpeg size 1200,630          # Set the output format to jpeg, set dimensions to 1200x630
 set output 'output.jpg'                  # Set output file to output.jpg
 
-plot
+plot \
 '''  
     
   gnuplot_file = open(output_dir + '/plot.txt', 'w')
@@ -43,7 +41,7 @@ plot
 
   for vy in translational:
     for wz in rotational:
-      gnuplot_file.write('     \'run_{}_{}\' using 1:2 with linespoints linetype 6 linewidth 3'.format(vy, wz))
+      gnuplot_file.write('     \'run_{}_{}\' using 1:2 notitle with linespoints linetype 6 linewidth 3, \\\n'.format(vy, wz))
 
   gnuplot_file.close()
 
@@ -69,24 +67,24 @@ def do_main():
   run(prog, output_dir)
   write_gnuplot_file(output_dir)
   
-  # Continuous Hydro
-  output_dir = "paper_experiments/" + "continuous_hydro"
-  prog = prog_default.copy()
-  prog.append('--mbt_dt=0')
-  
-  ensure_dir(output_dir)
-  run(prog, output_dir)
-  write_gnuplot_file(output_dir)
-  
-  # Point Contact
-  output_dir = "paper_experiments/" + "point"
-  prog = prog_default.copy()
-  prog.append('--mbt_dt=0.001')
-  prog.append('--point_contact')
-  
-  ensure_dir(output_dir)
-  run(prog, output_dir)
-  write_gnuplot_file(output_dir)
+#  # Continuous Hydro
+#  output_dir = "paper_experiments/" + "continuous_hydro"
+#  prog = prog_default.copy()
+#  prog.append('--mbt_dt=0')
+#  
+#  ensure_dir(output_dir)
+#  run(prog, output_dir)
+#  write_gnuplot_file(output_dir)
+#  
+#  # Point Contact
+#  output_dir = "paper_experiments/" + "point"
+#  prog = prog_default.copy()
+#  prog.append('--mbt_dt=0.001')
+#  prog.append('--point_contact')
+#  
+#  ensure_dir(output_dir)
+#  run(prog, output_dir)
+#  write_gnuplot_file(output_dir)
 
 if __name__ == '__main__':
   do_main()

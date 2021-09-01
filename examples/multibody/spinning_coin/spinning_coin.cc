@@ -1,5 +1,5 @@
-#include <iostream>
 #include <fstream>
+#include <iostream>
 
 #include <fmt/format.h>
 #include <gflags/gflags.h>
@@ -43,7 +43,8 @@ DEFINE_double(wz, 1, "z rotational velocity");
 DEFINE_string(output_filename, "spinning_coin_output", "Data output filename.");
 
 DEFINE_bool(point_contact, false, "Select point contact mode.");
-DEFINE_bool(low_res_contact_surface, false, "Select low res polygonal contact surfaces");
+DEFINE_bool(low_res_contact_surface, false,
+            "Select low res polygonal contact surfaces");
 
 int do_main() {
   // Build a generic MultibodyPlant and SceneGraph.
@@ -68,7 +69,7 @@ int do_main() {
                    plant.GetBodyByName("floor").body_frame(),
                    math::RigidTransformd(Vector3d(25, 25, -1)));
 
-  if(FLAGS_point_contact) {
+  if (FLAGS_point_contact) {
     plant.set_contact_model(ContactModel::kPoint);
   } else {
     plant.set_contact_model(ContactModel::kHydroelastic);
@@ -93,7 +94,6 @@ int do_main() {
   // Set the initial velocities of the coin.
   math::RigidTransformd X_WC(Vector3d(0.0, 0.0, 0.000875));
   plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("coin"), X_WC);
-
 
   const SpatialVelocity<double> V_WC_initial(Vector3d(0, 0, FLAGS_wz),
                                              Vector3d(0, FLAGS_vy, 0));
@@ -121,7 +121,8 @@ int do_main() {
 
         if (v > 1e-7 || w > 1e-7) {
           const double ratio = v / w;
-          output_file << fmt::format("{} {} {} {}\n", curr_time, ratio, v, w);
+          output_file << fmt::format(
+              "{} {} {} {}\n", static_cast<int>(curr_time * 1000), ratio, v, w);
         }
 
         return systems::EventStatus::Succeeded();
