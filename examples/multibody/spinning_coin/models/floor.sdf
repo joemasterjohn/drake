@@ -20,8 +20,8 @@
         </geometry>
         <!-- Duplicates the proximity properties of //models/food_prep/extra_firm_tofu_block.sdf. -->
         <drake:proximity_properties>
-          <drake:mu_dynamic>0.5</drake:mu_dynamic>
-          <drake:mu_static>0.5</drake:mu_static>
+          <drake:mu_dynamic>0.2</drake:mu_dynamic>
+          <drake:mu_static>0.2</drake:mu_static>
           <drake:mesh_resolution_hint>200</drake:mesh_resolution_hint>
           <drake:elastic_modulus>1.0e9</drake:elastic_modulus>
           <drake:hunt_crossley_dissipation>1.25</drake:hunt_crossley_dissipation>

@@ -1,0 +1,12 @@
+set autoscale x
+set autoscale y
+
+set xlabel "alpha_0"
+set ylabel "alpha_{end}"
+
+set title 'Spinning Coin alpha_0 vs. alpha_{end}' font ",18" # Set graph title, set title font size to 18
+ 
+set terminal jpeg size 1200,630          # Set the output format to jpeg, set dimensions to 1200x630
+set output 'alphas.jpg'                  # Set output file to output.jpg
+
+plot      'alphas' with points 

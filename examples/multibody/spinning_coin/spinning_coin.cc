@@ -8,6 +8,7 @@
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+#include "drake/math/rigid_transform.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -23,6 +24,7 @@ using multibody::ContactModel;
 using multibody::MultibodyPlant;
 using multibody::Parser;
 using multibody::SpatialVelocity;
+using math::RigidTransform;
 using systems::Context;
 using systems::DiagramBuilder;
 using systems::Simulator;
@@ -92,8 +94,8 @@ int do_main() {
       plant.GetMyMutableContextFromRoot(diagram_context.get());
 
   // Set the initial velocities of the coin.
-  math::RigidTransformd X_WC(Vector3d(0.0, 0.0, 0.000875));
-  plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("coin"), X_WC);
+  math::RigidTransformd X_WC_initial(Vector3d(0.0, 0.0, 0.000875));
+  plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("coin"), X_WC_initial);
 
   const SpatialVelocity<double> V_WC_initial(Vector3d(0, 0, FLAGS_wz),
                                              Vector3d(0, FLAGS_vy, 0));
@@ -107,28 +109,44 @@ int do_main() {
   std::ofstream output_file;
   output_file.open(FLAGS_output_filename);
 
+  const double coin_radius = 0.02426;
+  double ratio = 0.0;
+
   // Create a monitor for the ratio of angular to translational velocity
   simulator->set_monitor(
-      [&plant, &output_file](const systems::Context<double>& root_context) {
+      [&plant, &output_file, &ratio, &coin_radius](const systems::Context<double>& root_context) {
         const SpatialVelocity<double> V_WC =
             plant.GetBodyByName("coin").EvalSpatialVelocityInWorld(
+                plant.GetMyContextFromRoot(root_context));
+        const RigidTransform<double> X_WC =
+            plant.GetBodyByName("coin").EvalPoseInWorld(
                 plant.GetMyContextFromRoot(root_context));
 
         const double v = V_WC.translational().norm();
         const double w = V_WC.rotational().norm();
+        const double x = X_WC.translation()[0];
+        const double y = X_WC.translation()[1];
 
         const double curr_time = root_context.get_time();
 
-        if (v > 1e-7 || w > 1e-7) {
-          const double ratio = v / w;
+        if (v > 1e-13 && w > 1e-13) {
+          ratio = w * coin_radius / v;
           output_file << fmt::format(
-              "{} {} {} {}\n", static_cast<int>(curr_time * 1000), ratio, v, w);
+              "{} {} {} {} {} {}\n", static_cast<int>(curr_time * 1000), ratio, v, w, x, y);
         }
 
         return systems::EventStatus::Succeeded();
       });
 
   simulator->AdvanceTo(FLAGS_simulation_time);
+
+  // Write the data points alpha0 and alpha_end to the alpha file
+  // alpha0 =
+  std::ofstream alpha_file;
+  alpha_file.open("alphas", std::ofstream::out | std::ofstream::app);
+  alpha_file <<
+      fmt::format("{} {}\n", FLAGS_wz * coin_radius / FLAGS_vy, ratio);
+  alpha_file.close();
 
   // Print some useful statistics.
   PrintSimulatorStatistics(*simulator);
