@@ -15,6 +15,7 @@
 /.clwb/
 /.vscode
 /.history
+/paper_experiments
 
 # (Possible) CMake build artifacts
 /build/
