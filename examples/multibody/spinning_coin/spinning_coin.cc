@@ -42,6 +42,8 @@ DEFINE_double(mbt_dt, 1e-3,
 DEFINE_double(vy, 1, "y translational velocity");
 DEFINE_double(wz, 1, "z rotational velocity");
 
+DEFINE_double(dalpha_threshold, 20000, "Threshold for cutting off the monitor. Default value of 20000 for continuous mode.");
+
 DEFINE_string(output_filename, "spinning_coin_output", "Data output filename.");
 
 DEFINE_bool(point_contact, false, "Select point contact mode.");
@@ -139,8 +141,7 @@ int do_main() {
 
     const double dalpha = (temp_ratio - prev_ratio) / (curr_time - prev_time);
 
-    //if (prev_ratio > 0 && fabs(dalpha) > 20000) {  // continuous version
-    if (prev_ratio > 0 && fabs(dalpha) > 200) {
+    if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
       output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
                                  temp_ratio, dalpha, v, w, x, y);
       return systems::EventStatus::ReachedTermination(&plant, "diverging");

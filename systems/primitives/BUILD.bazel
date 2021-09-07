@@ -36,6 +36,7 @@ drake_cc_package_library(
         ":signal_log",
         ":signal_logger",
         ":sine",
+        ":square",
         ":symbolic_vector_system",
         ":trajectory_affine_system",
         ":trajectory_linear_system",
@@ -357,6 +358,15 @@ drake_cc_library(
     name = "sine",
     srcs = ["sine.cc"],
     hdrs = ["sine.h"],
+    deps = [
+        "//systems/framework",
+    ],
+)
+
+drake_cc_library(
+    name = "square",
+    srcs = ["square.cc"],
+    hdrs = ["square.h"],
     deps = [
         "//systems/framework",
     ],
