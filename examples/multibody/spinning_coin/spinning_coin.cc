@@ -6,9 +6,9 @@
 
 #include "drake/common/find_resource.h"
 #include "drake/geometry/drake_visualizer.h"
+#include "drake/math/rigid_transform.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
-#include "drake/math/rigid_transform.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
@@ -20,11 +20,11 @@ using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 
+using math::RigidTransform;
 using multibody::ContactModel;
 using multibody::MultibodyPlant;
 using multibody::Parser;
 using multibody::SpatialVelocity;
-using math::RigidTransform;
 using systems::Context;
 using systems::DiagramBuilder;
 using systems::Simulator;
@@ -78,7 +78,7 @@ int do_main() {
   }
 
   plant.set_low_resolution_contact_surface(FLAGS_low_res_contact_surface);
-
+  plant.set_stiction_tolerance(1e-6);
   plant.Finalize();
 
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
@@ -95,7 +95,8 @@ int do_main() {
 
   // Set the initial velocities of the coin.
   math::RigidTransformd X_WC_initial(Vector3d(0.0, 0.0, 0.000875));
-  plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("coin"), X_WC_initial);
+  plant.SetFreeBodyPose(&plant_context, plant.GetBodyByName("coin"),
+                        X_WC_initial);
 
   const SpatialVelocity<double> V_WC_initial(Vector3d(0, 0, FLAGS_wz),
                                              Vector3d(0, FLAGS_vy, 0));
@@ -112,31 +113,49 @@ int do_main() {
   const double coin_radius = 0.02426;
   double ratio = 0.0;
 
+  const double accuracy = simulator->get_integrator().get_target_accuracy();
+
+  double prev_time = 0;
+  double prev_ratio = -1;
+
   // Create a monitor for the ratio of angular to translational velocity
-  simulator->set_monitor(
-      [&plant, &output_file, &ratio, &coin_radius](const systems::Context<double>& root_context) {
-        const SpatialVelocity<double> V_WC =
-            plant.GetBodyByName("coin").EvalSpatialVelocityInWorld(
-                plant.GetMyContextFromRoot(root_context));
-        const RigidTransform<double> X_WC =
-            plant.GetBodyByName("coin").EvalPoseInWorld(
-                plant.GetMyContextFromRoot(root_context));
+  simulator->set_monitor([&plant, &output_file, &ratio, &coin_radius, &accuracy,
+                          &prev_time, &prev_ratio](
+                             const systems::Context<double>& root_context) {
+    const SpatialVelocity<double> V_WC =
+        plant.GetBodyByName("coin").EvalSpatialVelocityInWorld(
+            plant.GetMyContextFromRoot(root_context));
+    const RigidTransform<double> X_WC =
+        plant.GetBodyByName("coin").EvalPoseInWorld(
+            plant.GetMyContextFromRoot(root_context));
 
-        const double v = V_WC.translational().norm();
-        const double w = V_WC.rotational().norm();
-        const double x = X_WC.translation()[0];
-        const double y = X_WC.translation()[1];
+    const double v = V_WC.translational().norm();
+    const double w = V_WC.rotational().norm();
+    const double x = X_WC.translation()[0];
+    const double y = X_WC.translation()[1];
 
-        const double curr_time = root_context.get_time();
+    const double curr_time = root_context.get_time();
+    const double temp_ratio = w * coin_radius / v;
 
-        if (v > 1e-13 && w > 1e-13) {
-          ratio = w * coin_radius / v;
-          output_file << fmt::format(
-              "{} {} {} {} {} {}\n", static_cast<int>(curr_time * 1000), ratio, v, w, x, y);
-        }
+    const double dalpha = (temp_ratio - prev_ratio) / (curr_time - prev_time);
 
-        return systems::EventStatus::Succeeded();
-      });
+    //if (prev_ratio > 0 && fabs(dalpha) > 20000) {  // continuous version
+    if (prev_ratio > 0 && fabs(dalpha) > 200) {
+      output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
+                                 temp_ratio, dalpha, v, w, x, y);
+      return systems::EventStatus::ReachedTermination(&plant, "diverging");
+    }
+
+    ratio = temp_ratio;
+
+    output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time, ratio,
+                               dalpha, v, w, x, y);
+
+    prev_time = curr_time;
+    prev_ratio = ratio;
+
+    return systems::EventStatus::Succeeded();
+  });
 
   simulator->AdvanceTo(FLAGS_simulation_time);
 
@@ -144,8 +163,8 @@ int do_main() {
   // alpha0 =
   std::ofstream alpha_file;
   alpha_file.open("alphas", std::ofstream::out | std::ofstream::app);
-  alpha_file <<
-      fmt::format("{} {}\n", FLAGS_wz * coin_radius / FLAGS_vy, ratio);
+  alpha_file << fmt::format("{} {}\n", FLAGS_wz * coin_radius / FLAGS_vy,
+                            ratio);
   alpha_file.close();
 
   // Print some useful statistics.

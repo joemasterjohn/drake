@@ -9,4 +9,4 @@ set title 'Spinning Coin alpha_0 vs. alpha_{end}' font ",18" # Set graph title, 
 set terminal jpeg size 1200,630          # Set the output format to jpeg, set dimensions to 1200x630
 set output 'alphas.jpg'                  # Set output file to output.jpg
 
-plot      'alphas' with points 
+plot      'alphas' with points, 1.531 title ""

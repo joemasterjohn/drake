@@ -11,7 +11,7 @@ translational = [1 + i*0.5 for i in range(10)]
 
 coin_radius = 0.02426
 
-ratio = [(0.01 + i*0.05) for i in range(30)]
+ratio = [(0.01 + i*0.05) for i in range(10)]
 
 def ensure_dir(directory):
   if not os.path.exists(directory):
@@ -53,34 +53,35 @@ plot \
 
 def do_main():
  
-  # Discrete Hydro / Normal Resolution Surface
-  output_dir = "paper_experiments/" + "discrete_hydro_high_res"
-  prog = prog_default.copy()
-  prog.append('--mbt_dt=0.001')
-  
-  #ensure_dir(output_dir)
-  #run(prog, output_dir)
-  #write_gnuplot_file(output_dir)
-  
-  # Discrete Hydro / Low Resolution Surface
-  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
-  prog = prog_default.copy()
-  prog.append('--mbt_dt=0.0001')
-  prog.append('--low_res_contact_surface')
-  
-  ensure_dir(output_dir)
-  run(prog, output_dir)
-  write_gnuplot_file(output_dir)
-  
-#  # Continuous Hydro
-#  output_dir = "paper_experiments/" + "continuous_hydro"
+#  # Discrete Hydro / Normal Resolution Surface
+#  output_dir = "paper_experiments/" + "discrete_hydro_high_res"
 #  prog = prog_default.copy()
-#  prog.append('--mbt_dt=0')
+#  prog.append('--mbt_dt=0.001')
 #  
 #  ensure_dir(output_dir)
 #  run(prog, output_dir)
 #  write_gnuplot_file(output_dir)
 #  
+#  # Discrete Hydro / Low Resolution Surface
+#  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
+#  prog = prog_default.copy()
+#  prog.append('--mbt_dt=0.0001')
+#  prog.append('--low_res_contact_surface')
+#  
+#  ensure_dir(output_dir)
+#  run(prog, output_dir)
+#  write_gnuplot_file(output_dir)
+  
+  # Continuous Hydro
+  output_dir = "paper_experiments/" + "continuous_hydro"
+  prog = prog_default.copy()
+  prog.append('--mbt_dt=0')
+  prog.append('--simulator_integration_scheme=implicit_euler')
+
+  ensure_dir(output_dir)
+  run(prog, output_dir)
+  write_gnuplot_file(output_dir)
+  
 #  # Point Contact
 #  output_dir = "paper_experiments/" + "point"
 #  prog = prog_default.copy()
