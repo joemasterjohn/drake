@@ -51,6 +51,18 @@ plot \
   gnuplot_file.close()
 
 
+def run_convergence(prog, output_dir):
+  vy = 1.0
+  wz = 2.5
+  #mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
+  mbp_dt = [5e-05]
+  for dt in mbp_dt:
+      other_args = ['--vy={}'.format(vy),
+                    '--wz={}'.format(wz),
+                    '--output_filename={}/run_{}'.format(output_dir, dt),
+                    '--mbt_dt={}'.format(dt)]
+      subprocess.call(prog + other_args)
+
 def do_main():
  
 #  # Discrete Hydro / Normal Resolution Surface
@@ -63,24 +75,24 @@ def do_main():
 #  write_gnuplot_file(output_dir)
 #  
 #  # Discrete Hydro / Low Resolution Surface
-#  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
+  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
+  prog = prog_default.copy()
+  #prog.append('--mbt_dt=0.0001')
+  prog.append('--low_res_contact_surface')
+  
+  ensure_dir(output_dir)
+  run_convergence(prog, output_dir)
+  #write_gnuplot_file(output_dir)
+  
+#  # Continuous Hydro
+#  output_dir = "paper_experiments/" + "continuous_hydro"
 #  prog = prog_default.copy()
-#  prog.append('--mbt_dt=0.0001')
-#  prog.append('--low_res_contact_surface')
-#  
+#  prog.append('--mbt_dt=0')
+#  prog.append('--simulator_integration_scheme=implicit_euler')
+
 #  ensure_dir(output_dir)
 #  run(prog, output_dir)
 #  write_gnuplot_file(output_dir)
-  
-  # Continuous Hydro
-  output_dir = "paper_experiments/" + "continuous_hydro"
-  prog = prog_default.copy()
-  prog.append('--mbt_dt=0')
-  prog.append('--simulator_integration_scheme=implicit_euler')
-
-  ensure_dir(output_dir)
-  run(prog, output_dir)
-  write_gnuplot_file(output_dir)
   
 #  # Point Contact
 #  output_dir = "paper_experiments/" + "point"
