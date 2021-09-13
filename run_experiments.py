@@ -2,16 +2,20 @@
 
 import subprocess
 import os
-  
+import numpy as np
+
 # Default arguments
 prog_default = ['./bazel-bin/examples/multibody/spinning_coin/spinning_coin',
-                '--simulation_time=5']
+                '--simulation_time=50']
   
-translational = [1 + i*0.5 for i in range(10)]
 
 coin_radius = 0.02426
 
-ratio = [(0.01 + i*0.05) for i in range(10)]
+#translational = [1 + i*0.5 for i in range(10)]
+#ratio = [0.1, 0.2, 0.4, 0.75, 1.0, 2.0, 4.0, 5.0, 7.5, 10]
+
+translational = [1]
+ratio = np.logspace(-1, 1, 10)
 
 def ensure_dir(directory):
   if not os.path.exists(directory):
@@ -23,7 +27,8 @@ def run(prog, output_dir):
       wz = alpha * vy / coin_radius
       other_args = ['--vy={}'.format(vy),
                     '--wz={}'.format(wz),
-                    '--output_filename={}/run_{}_{}'.format(output_dir, vy, wz)]
+                    '--output_filename={}/run_{}_{}'.format(output_dir, vy, wz),
+                    '--epsilon_filename={}/epsilon.txt'.format(output_dir)]
       subprocess.call(prog + other_args)
 
 def write_gnuplot_file(output_dir):
@@ -53,15 +58,30 @@ plot \
 
 def run_convergence(prog, output_dir):
   vy = 1.0
-  wz = 2.5
-  #mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
-  mbp_dt = [5e-05]
+  alpha = 1
+  wz = alpha * vy / coin_radius
+  mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
+  #mbp_dt = [5e-05]
   for dt in mbp_dt:
       other_args = ['--vy={}'.format(vy),
                     '--wz={}'.format(wz),
                     '--output_filename={}/run_{}'.format(output_dir, dt),
+                    '--epsilon_filename={}/epsilon.txt'.format(output_dir),
                     '--mbt_dt={}'.format(dt)]
       subprocess.call(prog + other_args)
+
+def run_continuous_test(prog, output_dir):
+  vy = 1.0
+  a = [0.1, 1, 10]
+  for alpha in a:
+      wz = alpha * vy / coin_radius
+      other_args = ['--vy={}'.format(vy),
+                    '--wz={}'.format(wz),
+                    '--output_filename={}/run_{}'.format(output_dir, alpha),
+                    '--epsilon_filename={}/epsilon.txt'.format(output_dir),
+                    '--mbt_dt=0']
+      subprocess.call(prog + other_args)
+
 
 def do_main():
  
@@ -74,16 +94,36 @@ def do_main():
 #  run(prog, output_dir)
 #  write_gnuplot_file(output_dir)
 #  
-#  # Discrete Hydro / Low Resolution Surface
+  # Discrete Hydro / Low Resolution Surface
   output_dir = "paper_experiments/" + "discrete_hydro_low_res"
   prog = prog_default.copy()
-  #prog.append('--mbt_dt=0.0001')
+  prog.append('--mbt_dt=0.001')
   prog.append('--low_res_contact_surface')
+  prog.append('--dalpha_threshold=200')
   
   ensure_dir(output_dir)
-  run_convergence(prog, output_dir)
-  #write_gnuplot_file(output_dir)
-  
+  run(prog, output_dir)
+  write_gnuplot_file(output_dir)
+ 
+#   # Discrete Hydro / Low Resolution Surface Convergence
+#   output_dir = "paper_experiments/" + "discrete_hydro_low_res_convergence"
+#   prog = prog_default.copy()
+#   prog.append('--low_res_contact_surface')
+#   prog.append('--dalpha_threshold=1000')
+#   
+#   ensure_dir(output_dir)
+#   run_convergence(prog, output_dir)
+#   write_gnuplot_file(output_dir)
+
+#  # Discrete Hydro / Low Resolution Surface Convergence
+#  output_dir = "paper_experiments/" + "continous_convergence_test"
+#  prog = prog_default.copy()
+#  prog.append('--dalpha_threshold=20000')
+#  
+#  ensure_dir(output_dir)
+#  run_continuous_test(prog, output_dir)
+#  write_gnuplot_file(output_dir)
+
 #  # Continuous Hydro
 #  output_dir = "paper_experiments/" + "continuous_hydro"
 #  prog = prog_default.copy()

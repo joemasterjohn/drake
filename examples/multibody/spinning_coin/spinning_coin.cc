@@ -34,7 +34,7 @@ namespace multibody {
 namespace spinning_coin {
 namespace {
 
-DEFINE_double(simulation_time, 5.0, "Duration of the simulation in seconds.");
+DEFINE_double(simulation_time, 500.0, "Duration of the simulation in seconds.");
 
 DEFINE_double(mbt_dt, 1e-3,
               "Discrete time step. Defaults to 1e-3 for a discrete system.");
@@ -42,13 +42,18 @@ DEFINE_double(mbt_dt, 1e-3,
 DEFINE_double(vy, 1, "y translational velocity");
 DEFINE_double(wz, 1, "z rotational velocity");
 
-DEFINE_double(dalpha_threshold, 20000, "Threshold for cutting off the monitor. Default value of 20000 for continuous mode.");
+DEFINE_double(dalpha_threshold, 40,
+              "Threshold for cutting off the monitor. Default value of 20000 "
+              "for continuous mode.");
 
 DEFINE_string(output_filename, "spinning_coin_output", "Data output filename.");
+DEFINE_string(epsilon_filename, "epsilons",
+              "File storing epsilon0 vs epsilon_end");
 
 DEFINE_bool(point_contact, false, "Select point contact mode.");
 DEFINE_bool(low_res_contact_surface, false,
             "Select low res polygonal contact surfaces");
+DEFINE_bool(with_visualization, false, "Turn off/on the visualizer.");
 
 int do_main() {
   // Build a generic MultibodyPlant and SceneGraph.
@@ -83,9 +88,10 @@ int do_main() {
   plant.set_stiction_tolerance(1e-6);
   plant.Finalize();
 
-  geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
-  ConnectContactResultsToDrakeVisualizer(&builder, plant);
-
+  if (FLAGS_with_visualization) {
+    geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
+    ConnectContactResultsToDrakeVisualizer(&builder, plant);
+  }
   auto diagram = builder.Build();
 
   // Create a context for the diagram and extract the context for the
@@ -121,52 +127,54 @@ int do_main() {
   double prev_ratio = -1;
 
   // Create a monitor for the ratio of angular to translational velocity
-  simulator->set_monitor([&plant, &output_file, &ratio, &coin_radius, &accuracy,
-                          &prev_time, &prev_ratio](
-                             const systems::Context<double>& root_context) {
-    const SpatialVelocity<double> V_WC =
-        plant.GetBodyByName("coin").EvalSpatialVelocityInWorld(
-            plant.GetMyContextFromRoot(root_context));
-    const RigidTransform<double> X_WC =
-        plant.GetBodyByName("coin").EvalPoseInWorld(
-            plant.GetMyContextFromRoot(root_context));
+  simulator->set_monitor(
+      [&plant, &output_file, &ratio, &coin_radius, &accuracy, &prev_time,
+       &prev_ratio](const systems::Context<double>& root_context) {
+        const SpatialVelocity<double> V_WC =
+            plant.GetBodyByName("coin").EvalSpatialVelocityInWorld(
+                plant.GetMyContextFromRoot(root_context));
+        const RigidTransform<double> X_WC =
+            plant.GetBodyByName("coin").EvalPoseInWorld(
+                plant.GetMyContextFromRoot(root_context));
 
-    const double v = V_WC.translational().norm();
-    const double w = V_WC.rotational().norm();
-    const double x = X_WC.translation()[0];
-    const double y = X_WC.translation()[1];
+        const double v = V_WC.translational().norm();
+        const double w = V_WC.rotational().norm();
+        const double x = X_WC.translation()[0];
+        const double y = X_WC.translation()[1];
 
-    const double curr_time = root_context.get_time();
-    const double temp_ratio = w * coin_radius / v;
+        const double curr_time = root_context.get_time();
+        const double temp_ratio = v / (w * coin_radius);
 
-    const double dalpha = (temp_ratio - prev_ratio) / (curr_time - prev_time);
+        const double dalpha =
+            ((1.0 / temp_ratio) - (1.0 / prev_ratio)) / (curr_time - prev_time);
 
-    if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
-      output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
-                                 temp_ratio, dalpha, v, w, x, y);
-      return systems::EventStatus::ReachedTermination(&plant, "diverging");
-    }
+        if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
+          output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
+                                     temp_ratio, dalpha, v, w, x, y);
+          return systems::EventStatus::ReachedTermination(&plant, "diverging");
+        }
 
-    ratio = temp_ratio;
+        ratio = temp_ratio;
 
-    output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time, ratio,
-                               dalpha, v, w, x, y);
+        output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time, ratio,
+                                   dalpha, v, w, x, y);
 
-    prev_time = curr_time;
-    prev_ratio = ratio;
+        prev_time = curr_time;
+        prev_ratio = ratio;
 
-    return systems::EventStatus::Succeeded();
-  });
+        return systems::EventStatus::Succeeded();
+      });
 
   simulator->AdvanceTo(FLAGS_simulation_time);
 
   // Write the data points alpha0 and alpha_end to the alpha file
   // alpha0 =
-  std::ofstream alpha_file;
-  alpha_file.open("alphas", std::ofstream::out | std::ofstream::app);
-  alpha_file << fmt::format("{} {}\n", FLAGS_wz * coin_radius / FLAGS_vy,
-                            ratio);
-  alpha_file.close();
+  std::ofstream epsilon_file;
+  epsilon_file.open(FLAGS_epsilon_filename,
+                    std::ofstream::out | std::ofstream::app);
+  epsilon_file << fmt::format("{} {}\n", FLAGS_vy / (FLAGS_wz * coin_radius),
+                              ratio);
+  epsilon_file.close();
 
   // Print some useful statistics.
   PrintSimulatorStatistics(*simulator);
