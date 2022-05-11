@@ -60,14 +60,18 @@ def run_convergence(prog, output_dir):
   vy = 1.0
   alpha = 1
   wz = alpha * vy / coin_radius
-  mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
+  #mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
   #mbp_dt = [5e-05]
+  mbp_dt = []
+  for i in range(0, 7):
+      mbp_dt.append(0.5*pow(0.2, i))
   for dt in mbp_dt:
       other_args = ['--vy={}'.format(vy),
                     '--wz={}'.format(wz),
                     '--output_filename={}/run_{}'.format(output_dir, dt),
                     '--epsilon_filename={}/epsilon.txt'.format(output_dir),
                     '--mbt_dt={}'.format(dt)]
+      print("\nrunning: {}\n".format(" ".join(prog + other_args)))
       subprocess.call(prog + other_args)
 
 def run_continuous_test(prog, output_dir):
@@ -94,26 +98,26 @@ def do_main():
 #  run(prog, output_dir)
 #  write_gnuplot_file(output_dir)
 #  
-  # Discrete Hydro / Low Resolution Surface
-  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
+#  # Discrete Hydro / Low Resolution Surface
+#  output_dir = "paper_experiments/" + "discrete_hydro_low_res"
+#  prog = prog_default.copy()
+#  prog.append('--mbt_dt=0.001')
+#  prog.append('--low_res_contact_surface')
+#  prog.append('--dalpha_threshold=200')
+#  
+#  ensure_dir(output_dir)
+#  run(prog, output_dir)
+#  write_gnuplot_file(output_dir)
+ 
+  # Discrete Hydro / Low Resolution Surface Convergence
+  output_dir = "paper_experiments/" + "discrete_hydro_low_res_convergence"
   prog = prog_default.copy()
-  prog.append('--mbt_dt=0.001')
   prog.append('--low_res_contact_surface')
-  prog.append('--dalpha_threshold=200')
+  prog.append('--dalpha_threshold=1000')
   
   ensure_dir(output_dir)
-  run(prog, output_dir)
+  run_convergence(prog, output_dir)
   write_gnuplot_file(output_dir)
- 
-#   # Discrete Hydro / Low Resolution Surface Convergence
-#   output_dir = "paper_experiments/" + "discrete_hydro_low_res_convergence"
-#   prog = prog_default.copy()
-#   prog.append('--low_res_contact_surface')
-#   prog.append('--dalpha_threshold=1000')
-#   
-#   ensure_dir(output_dir)
-#   run_convergence(prog, output_dir)
-#   write_gnuplot_file(output_dir)
 
 #  # Discrete Hydro / Low Resolution Surface Convergence
 #  output_dir = "paper_experiments/" + "continous_convergence_test"
