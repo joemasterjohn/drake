@@ -34,6 +34,8 @@ namespace multibody {
 namespace spinning_coin {
 namespace {
 
+DEFINE_string(coin_file, "coin.sdf", "Name of coin sdf file to use.");
+
 DEFINE_double(simulation_time, 500.0, "Duration of the simulation in seconds.");
 
 DEFINE_double(mbt_dt, 1e-3,
@@ -64,7 +66,7 @@ int do_main() {
 
   // Make and add the coin model from an SDF model.
   const std::string coin_relative_name =
-      "drake/examples/multibody/spinning_coin/models/coin.sdf";
+      "drake/examples/multibody/spinning_coin/models/" + FLAGS_coin_file;
   const std::string floor_relative_name =
       "drake/examples/multibody/spinning_coin/models/floor.sdf";
   const std::string coin_full_name = FindResourceOrThrow(coin_relative_name);
@@ -111,12 +113,15 @@ int do_main() {
   plant.SetFreeBodySpatialVelocity(&plant_context, plant.GetBodyByName("coin"),
                                    V_WC_initial);
 
+
   // Create a simulator and run the simulation.
   std::unique_ptr<Simulator<double>> simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
 
   std::ofstream output_file;
   output_file.open(FLAGS_output_filename);
+
+  output_file << fmt::format("{} {} {} {} {} {} {}\n", 0, 0, 0, FLAGS_vy, FLAGS_wz, 0, 0);
 
   const double coin_radius = 0.02426;
   double ratio = 0.0;
