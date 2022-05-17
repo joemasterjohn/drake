@@ -34,6 +34,8 @@ namespace multibody {
 namespace spinning_coin {
 namespace {
 
+DEFINE_double(velocity_threshold, 1e-7, "Once the magnitude of the translational velocity and the magnitude of the angular velocity of the coin is below this threshold, the simulation with terminate.");
+
 DEFINE_string(coin_file, "coin.sdf", "Name of coin sdf file to use.");
 
 DEFINE_double(simulation_time, 500.0, "Duration of the simulation in seconds.");
@@ -153,7 +155,8 @@ int do_main() {
         const double dalpha =
             ((1.0 / temp_ratio) - (1.0 / prev_ratio)) / (curr_time - prev_time);
 
-        if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
+        //if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
+        if (v < FLAGS_velocity_threshold && w < FLAGS_velocity_threshold) {
           output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
                                      temp_ratio, dalpha, v, w, x, y);
           return systems::EventStatus::ReachedTermination(&plant, "diverging");

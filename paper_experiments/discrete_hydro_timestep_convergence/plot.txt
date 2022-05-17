@@ -1,0 +1,19 @@
+
+set autoscale xfix
+set yrange [0:0.3]
+
+set title 'Spinning Coin Velocity Ratio' font ",18" # Set graph title, set title font size to 18
+ 
+set terminal jpeg size 1200,630          # Set the output format to jpeg, set dimensions to 1200x630
+set output 'output.jpg'                  # Set output file to output.jpg
+
+plot      'run_1_4.122011541632316' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_6.875929666941709' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_11.469741971175285' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_19.132682743663555' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_31.91523836278347' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_53.237826257827045' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_88.80604658004465' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_148.1374140067859' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_247.1080998841471' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
+     'run_1_412.20115416323165' using 1:2 notitle with linespoints linetype 6 linewidth 3, \
