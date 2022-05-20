@@ -6,7 +6,7 @@ import numpy as np
 
 # Default arguments
 prog_default = ['./bazel-bin/examples/multibody/spinning_coin/spinning_coin',
-                '--simulation_time=5']
+                '--simulation_time=3.56']
   
 
 coin_radius = 0.02426
@@ -57,16 +57,16 @@ plot \
 
 
 def run_timestep_convergence(prog, output_dir):
-  vy = 1
+  vy = 5
   alpha = 1
   wz = alpha * vy / coin_radius
   #mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
   #mbp_dt = [5e-05]
-  for i in range(1, 7):
-      dt = pow(0.2, i)
+  for i in range(0, 5):
+      dt = pow(0.5, 1 + 2*i)
       other_args = ['--vy={}'.format(vy),
                     '--wz={}'.format(wz),
-                    '--output_filename={}/run_{}'.format(output_dir, i),
+                    '--output_filename={}/run_{}'.format(output_dir, i+1),
                     '--epsilon_filename={}/epsilon.txt'.format(output_dir),
                     '--mbt_dt={}'.format(dt)]
       print("\nrunning: {}\n".format(" ".join(prog + other_args)))
@@ -122,25 +122,25 @@ def do_main():
 #  run(prog, output_dir)
 #  write_gnuplot_file(output_dir)
  
-#  # Discrete Hydro / Low Resolution Surface Convergence
-#  output_dir = "paper_experiments/" + "discrete_hydro_timestep_convergence"
-#  prog = prog_default.copy()
-#  prog.append('--low_res_contact_surface')
-#  prog.append('--dalpha_threshold=1000000')
-#  
-#  ensure_dir(output_dir)
-#  run_timestep_convergence(prog, output_dir)
-#  write_gnuplot_file(output_dir)
- 
   # Discrete Hydro / Low Resolution Surface Convergence
-  output_dir = "paper_experiments/" + "discrete_hydro_mesh_convergence"
+  output_dir = "paper_experiments/" + "discrete_hydro_timestep_convergence"
   prog = prog_default.copy()
   prog.append('--low_res_contact_surface')
   prog.append('--dalpha_threshold=1000000')
   
   ensure_dir(output_dir)
-  run_mesh_convergence(prog, output_dir)
+  run_timestep_convergence(prog, output_dir)
   write_gnuplot_file(output_dir)
+ 
+#  # Discrete Hydro / Low Resolution Surface Convergence
+#  output_dir = "paper_experiments/" + "discrete_hydro_mesh_convergence"
+#  prog = prog_default.copy()
+#  prog.append('--low_res_contact_surface')
+#  prog.append('--dalpha_threshold=1000000')
+#  
+#  ensure_dir(output_dir)
+#  run_mesh_convergence(prog, output_dir)
+#  write_gnuplot_file(output_dir)
 
 
 #  # Discrete Hydro / Low Resolution Surface Convergence

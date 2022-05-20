@@ -156,11 +156,11 @@ int do_main() {
             ((1.0 / temp_ratio) - (1.0 / prev_ratio)) / (curr_time - prev_time);
 
         //if (prev_ratio > 0 && fabs(dalpha) > FLAGS_dalpha_threshold) {
-        if (v < FLAGS_velocity_threshold && w < FLAGS_velocity_threshold) {
-          output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
-                                     temp_ratio, dalpha, v, w, x, y);
-          return systems::EventStatus::ReachedTermination(&plant, "diverging");
-        }
+        //if (v < FLAGS_velocity_threshold && w < FLAGS_velocity_threshold) {
+        //  output_file << fmt::format("{} {} {} {} {} {} {}\n", curr_time,
+        //                             temp_ratio, dalpha, v, w, x, y);
+        //  return systems::EventStatus::ReachedTermination(&plant, "diverging");
+        //}
 
         ratio = temp_ratio;
 
