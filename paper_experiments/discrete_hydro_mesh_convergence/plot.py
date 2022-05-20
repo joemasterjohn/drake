@@ -57,15 +57,19 @@ for i in range(1, num_runs):
 radius = 0.02426
 circumference = 2 * np.pi * radius
 triangles = np.power(2, range(2, 7))
-delta_x = (circumference / triangles)
+arc_length = (circumference / triangles)
+#chord length
+delta_x = 2 * radius * np.sin(arc_length / (2 * radius))
 delta_x_list = delta_x.tolist()
+
+print([i for i in reversed(delta_x_list)])
 
 # plot l2 norm
 fig, ax = plt.subplots()
 ax.plot(delta_x_list, l2, 'ko', markersize=10, fillstyle='none', markeredgewidth=2)
 
-dx = np.linspace(1e-3, 1e-1)
-ax.plot(dx.tolist(), (5*(dx ** 2)).tolist(),  linestyle='dashed')
+dx = np.linspace(1e-5, 1e-1)
+ax.plot(dx.tolist(), (8*(dx ** 2)).tolist(), linestyle='--', dashes=(20, 8), color='black')
 plt.xlabel(r'$\delta x$', fontsize=20)
 plt.ylabel(r'$\frac{ || x_{\delta x}(t) - x(t) ||_2 }{ ||x(t)||_2}$', fontsize=20)
 plt.xticks(fontsize=12)
@@ -77,13 +81,14 @@ for axis in ['top', 'bottom', 'left', 'right']:
  ax.spines[axis].set_linewidth(2)  # change width
 
 ax.set_xlim(left=1e-3, right=1e-1)
+ax.set_ylim(bottom=1e-5, top=1e-1)
 
 plt.xscale('log', basex=10)
 plt.yscale('log', basey=10)
 
 plt.margins(0.1)
 fig.set_tight_layout(True)
-fig.savefig("l2_error.png")
+fig.savefig("grid_l2_error.png")
 
 
 # plot linf norm

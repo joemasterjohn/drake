@@ -19,7 +19,7 @@ def read(filename, m):
     m["t"] = np.array(t)
     m["traj"] = np.array(traj).transpose()
 
-num_runs = 5
+num_runs = 6
 
 runs = [dict()]
 runs_interp = [dict()]
@@ -54,8 +54,10 @@ for i in range(1, num_runs):
     l2.append(np.linalg.norm(x_dt - x, ord=2) / np.linalg.norm(x, ord=2))
     linf.append(np.linalg.norm(x_dt - x, ord=np.inf))
 
-dt = np.power(0.5, [1, 3, 5, 7])
+dt = np.power(0.5, [1, 3, 5, 7, 9])
 dt_list = dt.tolist()
+
+print([i for i in reversed(dt_list)])
 
 # plot l2 norm
 fig, ax = plt.subplots()
@@ -63,7 +65,7 @@ ax.plot(dt_list, l2, 'ko', markersize=10, fillstyle='none', markeredgewidth=2)
 
 dt_line = np.linspace(1e-4, 1e-0)
 
-ax.plot(dt_line.tolist(), (dt_line).tolist(), linestyle='--', dashes=(20, 8), color='black')
+ax.plot(dt_line.tolist(), (0.1*dt_line).tolist(), linestyle='--', dashes=(20, 8), color='black')
 plt.xlabel(r'$\delta t$', fontsize=20)
 plt.ylabel(r'$\frac{|| x_{\delta t}(t) - x(t) ||_2 }{ || x(t) ||_2 }$', fontsize=20)
 plt.xticks(fontsize=12)
@@ -76,14 +78,14 @@ for axis in ['top', 'bottom', 'left', 'right']:
  ax.spines[axis].set_linewidth(2)  # change width
 
 ax.set_xlim(left=1e-3, right=1e-0)
-ax.set_ylim(bottom=1e-3, top=1e-0)
+ax.set_ylim(bottom=1e-4, top=2e-1)
 
 plt.xscale('log', basex=10)
 plt.yscale('log', basey=10)
 
 plt.margins(0.1)
 fig.set_tight_layout(True)
-fig.savefig("l2_error.png")
+fig.savefig("timestep_l2_error.png")
 
 
 ## plot linf norm

@@ -62,7 +62,7 @@ def run_timestep_convergence(prog, output_dir):
   wz = alpha * vy / coin_radius
   #mbp_dt = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005]
   #mbp_dt = [5e-05]
-  for i in range(0, 5):
+  for i in range(0, 6):
       dt = pow(0.5, 1 + 2*i)
       other_args = ['--vy={}'.format(vy),
                     '--wz={}'.format(wz),
