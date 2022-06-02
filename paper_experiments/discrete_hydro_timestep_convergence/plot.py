@@ -66,14 +66,15 @@ ax.plot(dt_list, l2, 'ko', markersize=10, fillstyle='none', markeredgewidth=2)
 dt_line = np.linspace(1e-4, 1e-0)
 
 ax.plot(dt_line.tolist(), (0.1*dt_line).tolist(), linestyle='--', dashes=(20, 8), color='black')
-plt.xlabel(r'$\delta t$', fontsize=20)
-plt.ylabel(r'$\frac{|| x_{\delta t}(t) - x(t) ||_2 }{ || x(t) ||_2 }$', fontsize=20)
-plt.xticks(fontsize=12)
-plt.yticks(fontsize=12)
+plt.xlabel(r'$\delta t$', fontsize=35)
+#plt.ylabel(r'$|| x_{\delta t}(t) - x(t) ||_2  \;/\;  || x(t) ||_2 $', fontsize=23)
+plt.ylabel(r'$\varepsilon_{\delta t} $', fontsize=35)
+plt.xticks(fontsize=25)
+plt.yticks(fontsize=25)
 
 plt.locator_params(axis='y', nbins=5)
 
-ax.tick_params(width=2, length=2, direction="in")
+ax.tick_params(width=3, length=15, direction="in")
 for axis in ['top', 'bottom', 'left', 'right']:
  ax.spines[axis].set_linewidth(2)  # change width
 
