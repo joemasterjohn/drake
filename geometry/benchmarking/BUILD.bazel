@@ -21,6 +21,19 @@ drake_cc_googlebench_binary(
     ],
 )
 
+drake_cc_googlebench_binary(
+    name = "compliant_mesh_intersection_benchmark",
+    srcs = ["compliant_mesh_intersection_benchmark.cc"],
+    test_timeout = "moderate",
+    deps = [
+        "//common:essential",
+        "//geometry/proximity:make_sphere_field",
+        "//geometry/proximity:make_sphere_mesh",
+        "//geometry/proximity:field_intersection",
+        "//math",
+    ],
+)
+
 # TODO(jwnimmer-tri) Change this to a drake_cc_googlebench_binary (i.e., add
 # a unit test here) once we figure out how to mate googlebench with gflags.
 drake_cc_binary(
