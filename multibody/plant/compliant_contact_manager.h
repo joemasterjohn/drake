@@ -139,6 +139,10 @@ class CompliantContactManager final
   void DoCalcAccelerationKinematicsCache(
       const systems::Context<T>&,
       multibody::internal::AccelerationKinematicsCache<T>*) const final;
+  void DoCalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>& context,
+      HydroelasticContactInfoAndBodySpatialForces<T>*
+          contact_info_and_body_forces) const final;
 
   // This method computes sparse kinematics information for each contact pair at
   // the given configuration stored in `context`.

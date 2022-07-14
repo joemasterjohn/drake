@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<sdf version="1.7">
+  <model name="pancake_embedded">
+    <link name="pancake_embedded">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>-1.29e-05 -0.00286 -6.55e-05 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx> 0.0000299</ixx>
+          <ixy> 0.0000001</ixy>
+          <ixz> 0.0000000</ixz>
+          <iyy> 0.0000223</iyy>
+          <iyz>-0.0000002</iyz>
+          <izz> 0.0000310</izz>
+        </inertia>
+
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>pepper.obj</uri>
+            <scale>0.005 0.005 0.005</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <!-- The obj file also refers to its material mtl file. -->
+          <diffuse>0.5 1.0 0.0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>pepper.obj</uri>
+            <scale>0.005 0.005 0.005</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:embedded_depth>0.01</drake:embedded_depth>
+          <drake:embedded_margin>0.01</drake:embedded_margin>
+          <drake:embedded_subdivisions>19</drake:embedded_subdivisions>
+          <drake:point_contact_stiffness>980</drake:point_contact_stiffness>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus>5.0e4</drake:hydroelastic_modulus>
+          <!-- Resolution hint is no-op for mesh.-->
+          <drake:mesh_resolution_hint>0.005</drake:mesh_resolution_hint>
+          <!-- Little dissipation means the pepper can bounce off. -->
+          <drake:hunt_crossley_dissipation>
+            0.1
+          </drake:hunt_crossley_dissipation>
+          <!-- Both mu_dynamic and mu_static are used in Continuous system.
+            Only mu_dynamic is used in Discrete system.
+          -->
+          	  <drake:relaxation_time>0.0</drake:relaxation_time>
+
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_static>1.0</drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+  </model>
+</sdf>

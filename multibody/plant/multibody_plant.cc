@@ -1972,6 +1972,107 @@ void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(
 }
 
 template <typename T>
+void MultibodyPlant<T>::CalcHydroelasticContactForcesDiscrete(
+    const Context<T>& context,
+    internal::HydroelasticContactInfoAndBodySpatialForces<T>*
+        contact_info_and_body_forces) const {
+  this->ValidateContext(context);
+  DRAKE_DEMAND(contact_info_and_body_forces != nullptr);
+
+  if (discrete_update_manager_ != nullptr) {
+    discrete_update_manager_->CalcHydroelasticContactForcesDiscrete(
+        context, contact_info_and_body_forces);
+    return;
+  }
+
+  std::vector<SpatialForce<T>>& F_BBo_W_array =
+      contact_info_and_body_forces->F_BBo_W_array;
+  DRAKE_DEMAND(static_cast<int>(F_BBo_W_array.size()) == num_bodies());
+  std::vector<HydroelasticContactInfo<T>>& contact_info =
+      contact_info_and_body_forces->contact_info;
+  if (num_collision_geometries() == 0) return;
+
+  const std::vector<ContactSurface<T>>& all_surfaces =
+      EvalContactSurfaces(context);
+
+  // This method expect that the continuous version of this methid,
+  // CalcHydroelasticContactForces(), has already been called. Therefore info
+  // and forces have previously been allocated.
+  DRAKE_DEMAND(static_cast<int>(F_BBo_W_array.size()) == num_bodies());
+  DRAKE_DEMAND(contact_info.size() == all_surfaces.size());
+
+  // const auto& query_object = EvalGeometryQueryInput(context);
+  // const geometry::SceneGraphInspector<T>& inspector =
+  // query_object.inspector();
+
+  const std::vector<internal::DiscreteContactPair<T>>& discrete_pairs =
+      EvalDiscreteContactPairs(context);
+  const std::vector<RotationMatrix<T>>& R_WC_set =
+      EvalContactJacobians(context).R_WC_list;
+  const contact_solvers::internal::ContactSolverResults<T>& solver_results =
+      EvalContactSolverResults(context);
+
+  const VectorX<T>& fn = solver_results.fn;
+  const VectorX<T>& ft = solver_results.ft;
+  const VectorX<T>& vt = solver_results.vt;
+  const VectorX<T>& vn = solver_results.vn;
+
+  // Discrete pairs contain both point and hydro contact force results.
+  const int num_contacts = discrete_pairs.size();
+  DRAKE_DEMAND(fn.size() == num_contacts);
+  DRAKE_DEMAND(ft.size() == 2 * num_contacts);
+  DRAKE_DEMAND(vn.size() == num_contacts);
+  DRAKE_DEMAND(vt.size() == 2 * num_contacts);
+
+  const int num_point_contacts =
+      this->contact_model_ == ContactModel::kHydroelastic
+          ? 0
+          : EvalPointPairPenetrations(context).size();
+  const int num_surfaces = all_surfaces.size();
+
+  std::vector<SpatialForce<T>> contact_surface_forces(num_surfaces,
+                                                      SpatialForce<T>::Zero());
+
+  // We only scan discrete pairs corresponding to hydroelastic quadrature
+  // points. These are appended at the end of the point contact forces.
+  for (int icontact = num_point_contacts; icontact < num_contacts; ++icontact) {
+    const auto& pair = discrete_pairs[icontact];
+    //const GeometryId geometryA_id = pair.id_A;
+    //const GeometryId geometryB_id = pair.id_B;
+    //const BodyIndex bodyA_index = geometry_id_to_body_index_.at(geometryA_id);
+    //const BodyIndex bodyB_index = geometry_id_to_body_index_.at(geometryB_id);
+
+    // Quadrature point Q.
+    const Vector3<T>& p_WQ = pair.p_WC;
+    const RotationMatrix<T>& R_WC = R_WC_set[icontact];
+
+    // Contact forces applied on B at quadrature point Q.
+    const Vector3<T> f_Bq_C(ft(2 * icontact), ft(2 * icontact + 1),
+                            -fn(icontact));
+    const Vector3<T> f_Bq_W = R_WC * f_Bq_C;
+
+    const auto& s = all_surfaces[pair.surface_index];
+    // Surface's centroid point O.
+    const Vector3<T>& p_WO = s.is_triangle() ? s.tri_mesh_W().centroid()
+                                             : s.poly_mesh_W().centroid();
+
+    // Torque about the centroid.
+    const Vector3<T> p_OQ_W = p_WQ - p_WO;
+    const Vector3<T> t_Bo_W = p_OQ_W.cross(f_Bq_W);
+
+    // Accumulate force for the corresponding contact surface.
+    contact_surface_forces[pair.surface_index] +=
+        SpatialForce<T>(t_Bo_W, f_Bq_W);
+  }
+
+  // Update contact info to include the correct contact forces.
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+    auto& info = contact_info[surface_index];
+    info.mutable_F_Ac_W() = contact_surface_forces[surface_index];
+  }
+}
+
+template <typename T>
 void MultibodyPlant<T>::CalcHydroelasticContactForces(
     const Context<T>& context,
     internal::HydroelasticContactInfoAndBodySpatialForces<T>*
@@ -2074,6 +2175,13 @@ void MultibodyPlant<T>::CalcHydroelasticContactForces(
 
     // Add the information for contact reporting.
     contact_info.emplace_back(&surface, F_Ac_W, std::move(traction_output));
+  }
+
+  // Patch to update contact total forces per contact surfaces consistently with
+  // the discrete solver results.
+  if (is_discrete()) {
+    CalcHydroelasticContactForcesDiscrete(context,
+                                          contact_info_and_body_forces);
   }
 }
 
@@ -2461,8 +2569,9 @@ void MultibodyPlant<T>::CalcDiscreteContactPairs(
         // TODO(amcastro-tri): Consider using stiffness weighted location of
         // point C between Ca and Cb.
         const Vector3<T> p_WC = 0.5 * (pair.p_WCa + pair.p_WCb);
-        contact_pairs.push_back(
-            {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0, fn0, k, d});
+        contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W,
+                                 phi0, fn0, k, d,
+                                 -1 /* invalid surface index */});
       }
     }
 
@@ -2470,7 +2579,10 @@ void MultibodyPlant<T>::CalcDiscreteContactPairs(
     if (num_quadrature_pairs > 0) {
       const std::vector<geometry::ContactSurface<T>>& surfaces =
           EvalContactSurfaces(context);
-      for (const auto& s : surfaces) {
+      const int num_surfaces = surfaces.size();
+      for (int surface_index = 0; surface_index < num_surfaces;
+           ++surface_index) {
+        const auto& s = surfaces[surface_index];
         const bool M_is_compliant = s.HasGradE_M();
         const bool N_is_compliant = s.HasGradE_N();
         DRAKE_DEMAND(M_is_compliant || N_is_compliant);
@@ -2574,7 +2686,7 @@ void MultibodyPlant<T>::CalcDiscreteContactPairs(
             // used by TAMSI.
             const T nan_phi0 = std::numeric_limits<double>::quiet_NaN();
             contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W, nan_phi0,
-                                     fn0, k, dissipation});
+                                     fn0, k, dissipation, surface_index});
           }
         }
       }

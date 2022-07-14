@@ -86,6 +86,24 @@ geometry::ProximityProperties ParseProximityProperties(
     }
   }
 
+  // Embedded mesh properties.
+  std::optional<double> embedded_depth = read_double("drake:embedded_depth");
+  if (embedded_depth) {
+    properties.AddProperty(kHydroGroup, "embedded_depth", *embedded_depth);
+  }
+
+  std::optional<double> embedded_margin = read_double("drake:embedded_margin");
+  if (embedded_margin) {
+    properties.AddProperty(kHydroGroup, "embedded_margin", *embedded_margin);
+  }
+
+  std::optional<double> embedded_subdivisions =
+      read_double("drake:embedded_subdivisions");
+  if (embedded_subdivisions) {
+    properties.AddProperty(kHydroGroup, "embedded_subdivisions",
+                           *embedded_subdivisions);
+  }
+
   std::optional<double> dissipation =
       read_double("drake:hunt_crossley_dissipation");
 

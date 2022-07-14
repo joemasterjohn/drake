@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
+#include <iostream>
 
 #include <fmt/format.h>
 
@@ -20,9 +21,13 @@
 #include "drake/geometry/proximity/make_mesh_from_vtk.h"
 #include "drake/geometry/proximity/make_sphere_field.h"
 #include "drake/geometry/proximity/make_sphere_mesh.h"
+#include "drake/geometry/proximity/make_embedded_field.h"
+#include "drake/geometry/proximity/make_embedded_mesh.h"
 #include "drake/geometry/proximity/obj_to_surface_mesh.h"
 #include "drake/geometry/proximity/tessellation_strategy.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
+
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 namespace drake {
 namespace geometry {
@@ -385,7 +390,6 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 
   const double hydroelastic_modulus =
       validator.Extract(props, kHydroGroup, kElastic);
-
   return SoftGeometry(SoftHalfSpace{hydroelastic_modulus / thickness});
 }
 
@@ -408,19 +412,57 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 std::optional<SoftGeometry> MakeSoftRepresentation(
     const Mesh& mesh_specification, const ProximityProperties& props) {
   PositiveDouble validator("Mesh", "soft");
-
-  auto mesh = make_unique<VolumeMesh<double>>(
-      MakeVolumeMeshFromVtk<double>(mesh_specification));
-
   const double hydroelastic_modulus =
       validator.Extract(props, kHydroGroup, kElastic);
 
-  auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus));
+  // std::cout << mesh_specification.filename() << "\n";
 
-  return SoftGeometry(SoftMesh(move(mesh), move(pressure)));
+  // Body fitted mesh
+  if (mesh_specification.filename().find(".vtk") != std::string::npos) {
+
+    // std::cout << "BODY FITTED\n";
+
+    auto mesh = make_unique<VolumeMesh<double>>(
+        MakeVolumeMeshFromVtk<double>(mesh_specification));
+
+    int n = mesh_specification.filename().length();
+    std::string surface_mesh_file =
+        mesh_specification.filename().substr(0, n - 3) + "obj";
+
+    auto surface_mesh = ReadObjToTriangleSurfaceMesh(
+        surface_mesh_file, mesh_specification.scale());
+
+    auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+        MakeVolumeMeshSurfaceMeshPressureField(mesh.get(), &surface_mesh,
+                                               hydroelastic_modulus));
+
+    return SoftGeometry(SoftMesh(move(mesh), move(pressure)));
+
+  } else {  // Embedded Mesh
+
+    // std::cout << "EMBEDDED\n";
+
+    const double kDepth =
+        validator.Extract(props, kHydroGroup, "embedded_depth");
+    const double kMargin =
+        validator.Extract(props, kHydroGroup, "embedded_margin");
+    const double kSubdivisions =
+        validator.Extract(props, kHydroGroup, "embedded_subdivisions");
+
+    // std::cout << fmt::format("\tdepth: {}\n\tmargin: {}\n\tsubdivisions: {}\n",
+    //                          kDepth, kMargin, static_cast<int>(kSubdivisions));
+    // const double kDepth = 0.01;
+    // const double kMargin = 0.01;
+    // const int kSubdivisions = 5;
+
+    auto mesh = make_unique<VolumeMesh<double>>(MakeEmbeddedVolumeMesh<double>(
+        mesh_specification, static_cast<int>(kSubdivisions), kMargin));
+    auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+        MakeEmbeddedPressureField(mesh_specification, mesh.get(),
+                                  hydroelastic_modulus, kDepth));
+    return SoftGeometry(SoftMesh(move(mesh), move(pressure)));
+  }
 }
-
 
 }  // namespace hydroelastic
 }  // namespace internal

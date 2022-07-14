@@ -131,6 +131,31 @@ double CalcDistanceToSurfaceMesh(const Vector3<double>& p_WQ,
   return std::sqrt(distance_squared);
 }
 
+double CalcSignedDistanceToSurfaceMesh(
+    const Vector3<double>& p_WQ, const TriangleSurfaceMesh<double> mesh_W) {
+  double distance_squared = std::numeric_limits<double>::infinity();
+  const std::vector<Vector3<double>>& vertices = mesh_W.vertices();
+  int i_min = -1;
+  // for (const SurfaceTriangle& t : mesh_W.triangles()) {
+  for (int i = 0; i < mesh_W.num_triangles(); ++i) {
+    const SurfaceTriangle& t = mesh_W.element(i);
+    const double d = CalcSquaredDistanceToTriangle(
+        p_WQ,
+        {vertices[t.vertex(0)], vertices[t.vertex(1)], vertices[t.vertex(2)]});
+    if (d < distance_squared) {
+      distance_squared = d;
+      i_min = i;
+    }
+  }
+  const SurfaceTriangle& t = mesh_W.element(i_min);
+  auto a = vertices[t.vertex(0)];
+  auto b = vertices[t.vertex(1)];
+  auto c = vertices[t.vertex(2)];
+
+  double sign = (b - a).cross(c - a).dot(p_WQ - a);
+  return (sign < 0 ? -1 : 1) * std::sqrt(distance_squared);
+}
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

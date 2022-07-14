@@ -1,6 +1,7 @@
 #include "drake/multibody/plant/compliant_contact_manager.h"
 
 #include <algorithm>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -362,8 +363,9 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
     const T phi0 = -pair.depth;
     const T fn0 = NAN;  // not used.
     const T d = NAN;    // not used.
-    contact_pairs.push_back(
-        {pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0, fn0, k, d, tau, mu});
+    contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0,
+                             fn0, k, d, -1 /* invalide surface index */, tau,
+                             mu});
   }
 }
 
@@ -395,10 +397,51 @@ void CompliantContactManager<T>::
   const geometry::SceneGraphInspector<T>& inspector = query_object.inspector();
   const std::vector<geometry::ContactSurface<T>>& surfaces =
       this->EvalContactSurfaces(context);
-  for (const auto& s : surfaces) {
+
+  auto split_positive_area = [](const std::vector<Vector3<T>>& v,
+                                const std::vector<T>& p,
+                                std::vector<Vector3<T>>& new_v) {
+    for (int i = 0; i < static_cast<int>(v.size()); ++i) {
+      int j = (i + 1) % v.size();
+      if (p[i] >= 0) {
+        new_v.push_back(v[i]);
+      }
+      if ((p[i] > 0 && p[j] < 0) || (p[i] < 0 && p[j] > 0)) {
+        const T t = p[i] / (p[i] - p[j]);
+        new_v.push_back((1 - t) * v[i] + (t)*v[j]);
+      }
+    }
+  };
+
+  auto centroid_and_area = [](const std::vector<Vector3<T>>& v,
+                              Vector3<T>& centroid, T& total_area) {
+    for (int i = 1; i < static_cast<int>(v.size()) - 1; ++i) {
+      const T area = (v[i] - v[0]).cross(v[i + 1] - v[0]).norm();
+      total_area += area;
+      centroid += area * (v[0] + v[i] + v[i+1]);
+    }
+    total_area /= 2;
+    centroid /= 6;
+    if (total_area > 0) centroid /= total_area;
+  };
+
+  const int num_surfaces = surfaces.size();
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+
+    // std::cout << "\n\n\n\n\nsurface: " << surface_index << "\n";
+
+    const auto& s = surfaces[surface_index];
     const bool M_is_compliant = s.HasGradE_M();
     const bool N_is_compliant = s.HasGradE_N();
     DRAKE_DEMAND(M_is_compliant || N_is_compliant);
+
+    BodyIndex bodyA_index = this->geometry_id_to_body_index().at(s.id_M());
+    const Body<T>& bodyA = plant().get_body(bodyA_index);
+    BodyIndex bodyB_index = this->geometry_id_to_body_index().at(s.id_N());
+    const Body<T>& bodyB = plant().get_body(bodyB_index);
+
+    const SpatialVelocity<T>& V_WA = bodyA.EvalSpatialVelocityInWorld(context);
+    const SpatialVelocity<T>& V_WB = bodyB.EvalSpatialVelocityInWorld(context);
 
     // Combine dissipation.
     const T tau_M = GetDissipationTimeConstant(s.id_M(), inspector);
@@ -410,8 +453,81 @@ void CompliantContactManager<T>::
     const double muB = GetCoulombFriction(s.id_N(), inspector);
     const T mu = T(safe_divide(2.0 * muA * muB, muA + muB));
 
+    int reject = 0;
+
+    auto extract_verts_and_pressure = [&s](int face, std::vector<Vector3<T>>& v,
+                                           std::vector<T>& p) {
+      int num_v = s.is_triangle()
+                      ? s.tri_mesh_W().element(face).num_vertices()
+                      : s.poly_mesh_W().element(face).num_vertices();
+      for (int i = 0; i < num_v; ++i) {
+        v.push_back(
+            s.is_triangle()
+                ? s.tri_mesh_W().vertex(s.tri_mesh_W().element(face).vertex(i))
+                : s.poly_mesh_W().vertex(
+                      s.poly_mesh_W().element(face).vertex(i)));
+        p.push_back(s.is_triangle()
+                        ? s.tri_e_MN().EvaluateAtVertex(
+                              s.tri_mesh_W().element(face).vertex(i))
+                        : s.poly_e_MN().EvaluateAtVertex(
+                              s.poly_mesh_W().element(face).vertex(i)));
+      }
+    };
+
     for (int face = 0; face < s.num_faces(); ++face) {
-      const T& Ae = s.area(face);  // Face element area.
+      Vector3<T> p_WQ(0, 0, 0);
+      T Ae(0);
+
+      // Partially negative face rectification
+      std::vector<Vector3<T>> v;
+      std::vector<T> p;
+      extract_verts_and_pressure(face, v, p);
+
+      // Count the positive and negative pressure verts
+      int num_pos = 0;
+      int num_neg = 0;
+      for (const T& val : p) {
+        if (val > 0) ++num_pos;
+        if (val < 0) ++num_neg;
+      }
+
+      // If this is a mixed face, rectify. Otherwise compute the area and
+      // centroid as normal.
+      if (num_pos > 0 && num_neg > 0) {
+        std::vector<Vector3<T>> new_v;
+        split_positive_area(v, p, new_v);
+        centroid_and_area(new_v, p_WQ, Ae);
+      } else {
+        Ae = s.area(face);  // Face element area.
+        p_WQ = s.centroid(face);
+      }
+
+      // if (surface_index == 1 && Ae != s.area(face)) {
+      //   std::cout << fmt::format("v size: {} new v size: {}\n", v.size(),
+      //                            new_v.size());
+      //   std::cout << "p: [";
+      //   for(auto x : p) std::cout << x << ", ";
+      //   std::cout <<"]\n";
+
+      //   if (v.size() == new_v.size()) {
+      //     for (int i = 0; i < static_cast<int>(v.size()); ++i) {
+      //       std::cout << "    v: " << v[i].x() << "\t" << v[i].y() << "\t"
+      //                 << v[i].z() << "\n";
+      //       std::cout << "new_v: " << new_v[i].x() << "\t" << new_v[i].y()
+      //                 << "\t" << new_v[i].z() << "\n\n";
+      //     }
+      //   }
+
+      //   std::cout << "    p_WQ: " << p_WQ.x() << "\t" << p_WQ.y() << "\t"
+      //             << p_WQ.z() << "\n";
+      //   std::cout << "centroid: " << s.centroid(face).x() << "\t"
+      //             << s.centroid(face).y() << "\t" << s.centroid(face).z()
+      //             << "\n\n";
+      // }
+
+      // std::cout << fmt::format("Ae: {} Area: {}\n", Ae, s.area(face));
+
+      // const T& Ae = s.area(face);  // Face element area.
 
       // We found out that the hydroelastic query might report
       // infinitesimally small triangles (consider for instance an initial
@@ -458,7 +574,9 @@ void CompliantContactManager<T>::
 
         // Position of quadrature point Q in the world frame (since mesh_W
         // is measured and expressed in W).
-        const Vector3<T>& p_WQ = s.centroid(face);
+
+        // const Vector3<T>& p_WQ = s.centroid(face);
+
         // For a triangle, its centroid has the fixed barycentric
         // coordinates independent of the shape of the triangle. Using
         // barycentric coordinates to evaluate field value could be
@@ -466,11 +584,25 @@ void CompliantContactManager<T>::
         // TriangleSurfaceMeshFieldLinear<> does not store gradients and
         // has to solve linear equations to convert Cartesian to
         // barycentric coordinates.
-        const Vector3<T> tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
+
+        // const Vector3<T> tri_centroid_barycentric(1 / 3., 1 / 3., 1 / 3.);
+
         // Pressure at the quadrature point.
+
+        // const T p0 = s.is_triangle()
+        //                  ? s.tri_e_MN().Evaluate(face,
+        //                  tri_centroid_barycentric) :
+        //                  s.poly_e_MN().EvaluateCartesian(face, p_WQ);
         const T p0 = s.is_triangle()
-                         ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
+                         ? s.tri_e_MN().EvaluateCartesian(face, p_WQ)
                          : s.poly_e_MN().EvaluateCartesian(face, p_WQ);
+
+        // std::cout << fmt::format(
+        //     "p0: {} pressure: {}\n", p0,
+        //     s.is_triangle()
+        //         ? s.tri_e_MN().Evaluate(face, tri_centroid_barycentric)
+        //         : s.poly_e_MN().EvaluateCartesian(face, s.centroid(face)));
+        // std::cout << "-------------------------------------\n";
 
         // Effective compliance in the normal direction for the given
         // discrete patch, refer to [Masterjohn 2022] for details.
@@ -482,14 +614,28 @@ void CompliantContactManager<T>::
         // phi < 0 when in penetration.
         const T phi0 = -p0 / g;
 
+        const SpatialVelocity<T>& V_WAq = V_WA.Shift(p_WQ);
+        const SpatialVelocity<T>& V_WBq = V_WB.Shift(p_WQ);
+        const Vector3<T>& v_AqBq_W =
+            V_WBq.translational() - V_WAq.translational();
+        const T& v_n = -v_AqBq_W.dot(nhat_W);
+
+        if (p0 < 0 && (p0 / (v_n * g)) > plant().time_step()) {
+          ++reject;
+          continue;
+        }
+
         if (k > 0) {
           const T fn0 = NAN;  // not used.
           const T d = NAN;    // not used.
-          contact_pairs.push_back(
-              {s.id_M(), s.id_N(), p_WQ, nhat_W, phi0, fn0, k, d, tau, mu});
+          contact_pairs.push_back({s.id_M(), s.id_N(), p_WQ, nhat_W, phi0, fn0,
+                                   k, d, surface_index, tau, mu});
         }
       }
     }
+
+    // std::cout << fmt::format("total: {} reject: {}\n", s.num_faces(),
+    // reject);
   }
 }
 
@@ -716,6 +862,101 @@ void CompliantContactManager<T>::DoCalcAccelerationKinematicsCache(
       context0, plant().EvalPositionKinematics(context0),
       plant().EvalVelocityKinematics(context0), ac->get_vdot(),
       &ac->get_mutable_A_WB_pool());
+}
+
+template <typename T>
+void CompliantContactManager<T>::DoCalcHydroelasticContactForcesDiscrete(
+    const systems::Context<T>& context,
+    internal::HydroelasticContactInfoAndBodySpatialForces<T>*
+        contact_info_and_body_forces) const {
+  DRAKE_DEMAND(contact_info_and_body_forces != nullptr);
+
+  std::vector<SpatialForce<T>>& F_BBo_W_array =
+      contact_info_and_body_forces->F_BBo_W_array;
+  DRAKE_DEMAND(static_cast<int>(F_BBo_W_array.size()) == plant().num_bodies());
+  std::vector<HydroelasticContactInfo<T>>& contact_info =
+      contact_info_and_body_forces->contact_info;
+  if (plant().num_collision_geometries() == 0) return;
+
+  const std::vector<drake::geometry::ContactSurface<T>>& all_surfaces =
+      this->EvalContactSurfaces(context);
+
+  // This method expect that the continuous version of this methid,
+  // CalcHydroelasticContactForces(), has already been called. Therefore info
+  // and forces have previously been allocated.
+  DRAKE_DEMAND(static_cast<int>(F_BBo_W_array.size()) == plant().num_bodies());
+  DRAKE_DEMAND(contact_info.size() == all_surfaces.size());
+
+  // const auto& query_object = EvalGeometryQueryInput(context);
+  // const geometry::SceneGraphInspector<T>& inspector =
+  // query_object.inspector();
+
+  const std::vector<internal::DiscreteContactPair<T>>& discrete_pairs =
+      this->EvalDiscreteContactPairs(context);
+  const std::vector<math::RotationMatrix<T>>& R_WC_set =
+      this->sap_driver_->EvalContactProblemCache(context).R_WC;
+  const contact_solvers::internal::ContactSolverResults<T>& solver_results =
+      this->EvalContactSolverResults(context);
+
+  const VectorX<T>& fn = solver_results.fn;
+  const VectorX<T>& ft = solver_results.ft;
+  const VectorX<T>& vt = solver_results.vt;
+  const VectorX<T>& vn = solver_results.vn;
+
+  // Discrete pairs contain both point and hydro contact force results.
+  const int num_contacts = discrete_pairs.size();
+  DRAKE_DEMAND(fn.size() == num_contacts);
+  DRAKE_DEMAND(ft.size() == 2 * num_contacts);
+  DRAKE_DEMAND(vn.size() == num_contacts);
+  DRAKE_DEMAND(vt.size() == 2 * num_contacts);
+
+  int num_point_contacts = 0;
+  for (auto pair : discrete_pairs) {
+    if (pair.surface_index == -1) ++num_point_contacts;
+  }
+  const int num_surfaces = all_surfaces.size();
+
+  std::vector<SpatialForce<T>> contact_surface_forces(num_surfaces,
+                                                      SpatialForce<T>::Zero());
+
+  // We only scan discrete pairs corresponding to hydroelastic quadrature
+  // points. These are appended at the end of the point contact forces.
+  for (int icontact = num_point_contacts; icontact < num_contacts; ++icontact) {
+    const auto& pair = discrete_pairs[icontact];
+    // const GeometryId geometryA_id = pair.id_A;
+    // const GeometryId geometryB_id = pair.id_B;
+    // const BodyIndex bodyA_index =
+    // geometry_id_to_body_index_.at(geometryA_id); const BodyIndex bodyB_index
+    // = geometry_id_to_body_index_.at(geometryB_id);
+
+    // Quadrature point Q.
+    const Vector3<T>& p_WQ = pair.p_WC;
+    const math::RotationMatrix<T>& R_WC = R_WC_set[icontact];
+
+    // Contact forces applied on B at quadrature point Q.
+    const Vector3<T> f_Bq_C(ft(2 * icontact), ft(2 * icontact + 1),
+                            -fn(icontact));
+    const Vector3<T> f_Bq_W = R_WC * f_Bq_C;
+
+    const auto& s = all_surfaces[pair.surface_index];
+    // Surface's centroid point O.
+    const Vector3<T>& p_WO = s.is_triangle() ? s.tri_mesh_W().centroid()
+                                             : s.poly_mesh_W().centroid();
+
+    // Torque about the centroid.
+    const Vector3<T> p_OQ_W = p_WQ - p_WO;
+    const Vector3<T> t_Bo_W = p_OQ_W.cross(f_Bq_W);
+
+    // Accumulate force for the corresponding contact surface.
+    contact_surface_forces[pair.surface_index] +=
+        SpatialForce<T>(t_Bo_W, f_Bq_W);
+  }
+
+  // Update contact info to include the correct contact forces.
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+    auto& info = contact_info[surface_index];
+    info.mutable_F_Ac_W() = contact_surface_forces[surface_index];
+  }
 }
 
 }  // namespace internal

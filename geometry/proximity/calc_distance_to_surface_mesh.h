@@ -14,6 +14,10 @@ namespace internal {
 double CalcDistanceToSurfaceMesh(const Vector3<double>& p_WQ,
                                  const TriangleSurfaceMesh<double> mesh_W);
 
+// Signed version of the above function.
+double CalcSignedDistanceToSurfaceMesh(
+    const Vector3<double>& p_WQ, const TriangleSurfaceMesh<double> mesh_W);
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

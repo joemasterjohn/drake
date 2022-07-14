@@ -80,6 +80,7 @@ class SapDriver {
  private:
   // Provide private access for unit testing only.
   friend class SapDriverTest;
+  friend class CompliantContactManager<T>;
 
   const CompliantContactManager<T>& manager() const { return *manager_; }
 

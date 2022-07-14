@@ -30,6 +30,9 @@ namespace internal {
 template <typename T>
 class AccelerationKinematicsCache;
 
+template <typename T>
+struct HydroelasticContactInfoAndBodySpatialForces;
+
 /* This class is used to perform all calculations needed to advance state for a
  MultibodyPlant with discrete state.
 
@@ -145,6 +148,15 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
                                          std::set<systems::DependencyTicket>);
   /* @} */
 
+  void CalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>& context,
+      internal::HydroelasticContactInfoAndBodySpatialForces<T>*
+          contact_info_and_body_forces) const {
+    DRAKE_DEMAND(contact_info_and_body_forces != nullptr);
+    DoCalcHydroelasticContactForcesDiscrete(context,
+                                            contact_info_and_body_forces);
+  }
+
  protected:
   /* Derived classes that support making a clone that uses double as a scalar
    type must implement this so that it creates a copy of the object with double
@@ -238,6 +250,11 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
   virtual void DoCalcDiscreteValues(
       const systems::Context<T>& context,
       systems::DiscreteValues<T>* updates) const = 0;
+
+  virtual void DoCalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>& context,
+      HydroelasticContactInfoAndBodySpatialForces<T>*
+          contact_info_and_body_forces) const = 0;
 
  private:
   const MultibodyPlant<T>* plant_{nullptr};

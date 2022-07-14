@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<sdf version="1.7"
+  xmlns:drake='drake.mit.edu'>
+  <model name="sphere">
+    <pose>0 0 0 0 0 0</pose>
+    <link name="sphere">
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>1.0</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>1.0</iyy>
+          <iyz>0.0</iyz>
+          <izz>1.0</izz>
+        </inertia>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+
+      
+      <visual name="sphere_visual">
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+	          <uri>package://drake/examples/hydroelastic/two_spheres/sphere.obj</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="sphere_collision">
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+	          <uri>package://drake/examples/hydroelastic/two_spheres/sphere.obj</uri>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>0.005</drake:mesh_resolution_hint>
+          <drake:rigid_hydroelastic/>
+          <drake:hunt_crossley_dissipation>1.5</drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+  </model>
+</sdf>

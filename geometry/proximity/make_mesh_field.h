@@ -2,6 +2,7 @@
 
 #include "drake/geometry/proximity/volume_mesh.h"
 #include "drake/geometry/proximity/volume_mesh_field.h"
+#include "drake/geometry/proximity/triangle_surface_mesh.h"
 
 namespace drake {
 namespace geometry {
@@ -52,6 +53,14 @@ template <typename T>
 VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
     const VolumeMesh<T>* mesh_M, const T& hydroelastic_modulus);
 
+/* Compute pressure field from signed distance to the mesh proviced as the
+ * surface of the mesh represented by mesh_M */
+template <typename T>
+VolumeMeshFieldLinear<T, T> MakeVolumeMeshSurfaceMeshPressureField(
+    const VolumeMesh<T>* mesh_M,
+    const TriangleSurfaceMesh<double>* surface_d,
+    const T& hydroelastic_modulus);
+    
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

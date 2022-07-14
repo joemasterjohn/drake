@@ -1,0 +1,4 @@
+Case 1:
+  // only positive area triangles (rectified)
+  bazel run //examples/hydroelastic/two_spheres:two_spheres_run_dynamics -- --z0=0.1 --simulator_target_realtime_rate=0.2 --mbp_dt=0.02 --pitch=1.55
+

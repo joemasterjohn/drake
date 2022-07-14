@@ -488,7 +488,10 @@ ProximityProperties MakeProximityPropertiesForCollision(
       "drake:relaxation_time",
       "drake:point_contact_stiffness",
       "drake:mu_dynamic",
-      "drake:mu_static"};
+      "drake:mu_static",
+      "drake:embedded_depth",
+      "drake:embedded_margin",
+      "drake:embedded_subdivisions"};
     CheckSupportedElements(diagnostic, drake_element,
                            supported_proximity_elements);
 

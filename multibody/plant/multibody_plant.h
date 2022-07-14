@@ -4848,6 +4848,15 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       internal::HydroelasticContactInfoAndBodySpatialForces<T>* F_BBo_W_array)
       const;
 
+  // This method takes an already populated info_and_forces and updates the
+  // contact forces according to the discrete solver results.
+  // N.B. The contact info will not be accurate for engineering purposes, and
+  // should only be used for visualization purposes.
+  void CalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>& context,
+      internal::HydroelasticContactInfoAndBodySpatialForces<T>* info_and_forces)
+      const;
+
   // Eval version of CalcHydroelasticContactForces().
   const internal::HydroelasticContactInfoAndBodySpatialForces<T>&
   EvalHydroelasticContactForces(const systems::Context<T>& context) const {
@@ -5359,6 +5368,12 @@ void MultibodyPlant<symbolic::Expression>::CalcHydroelasticContactForces(
     const systems::Context<symbolic::Expression>&,
     internal::HydroelasticContactInfoAndBodySpatialForces<
         symbolic::Expression>*) const;
+template <>
+void MultibodyPlant<symbolic::Expression>::
+    CalcHydroelasticContactForcesDiscrete(
+        const systems::Context<symbolic::Expression>&,
+        internal::HydroelasticContactInfoAndBodySpatialForces<
+            symbolic::Expression>*) const;
 template <>
 void MultibodyPlant<symbolic::Expression>::
     AppendContactResultsContinuousHydroelastic(
