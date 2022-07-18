@@ -12,139 +12,190 @@ namespace {
 using Eigen::Vector3d;
 using std::vector;
 
-GTEST_TEST(CalcDistanceToSurfaceMeshTest, SingleTriangle) {
-  const Vector3d p_TV0(0, 0, 0);
-  const Vector3d p_TV1(1, 0, 0);
-  const Vector3d p_TV2(2, 2, 0);
-  const math::RollPitchYaw<double> rpy(1, 2, 3);
-  const Vector3d position(4, 5, 6);
-  const math::RigidTransform<double> X_WT(rpy, position);
+double CalcDistanceToLineAB(const Vector3d& p_TQ) {
+  return std::sqrt(p_TQ(1) * p_TQ(1) + p_TQ(2) * p_TQ(2));
+}
 
-  vector<Vector3d> vertices = {X_WT * p_TV0, X_WT * p_TV1, X_WT * p_TV2};
+double CalcDistanceToLineAC(const Vector3d& p_TQ) {
+  return std::sqrt(p_TQ(0) * p_TQ(0) + p_TQ(2) * p_TQ(2));
+}
+
+double CalcDistanceToLineBC(const Vector3d& p_TQ) {
+  // p_TP is the projection of p_TQ on the line BC.
+  const Vector3d p_TP((1.0 + p_TQ(0) - p_TQ(1)) / 2.0,
+                      (1.0 - p_TQ(0) + p_TQ(1)) / 2.0, 0.0);
+  return (p_TQ - p_TP).norm();
+}
+
+double CalcDistanceToA(const Vector3d& p_TQ) { return p_TQ.norm(); }
+
+double CalcDistanceToB(const Vector3d& p_TQ) {
+  return (p_TQ - Vector3d(1, 0, 0)).norm();
+}
+
+double CalcDistanceToC(const Vector3d& p_TQ) {
+  return (p_TQ - Vector3d(0, 1, 0)).norm();
+}
+
+double CalcDistanceToPlaneABC(const Vector3d& p_TQ) {
+  return std::abs(p_TQ(2));
+}
+
+/* We test the distance calculation from various points to a triangle ABC that
+ has its three vertices at (0, 0, 0), (1, 0, 0), and (0, 1, 0) when posed in its
+ reference configuration.
+
+                  \  4  |
+                    \   |
+                      \ | y-axis
+                      C •
+                        | \
+                        |   \
+                        |     \
+                        |       \
+                        |         \
+                3       |    0      \     5
+                        |             \
+                        |               \
+        --------------- • --------------- • ------- x-axis
+                      A |                 B \
+                2       |    1                \  6
+                        |                       \
+ We sample points from regions 0 through 6 (with negative, positive, and zero z
+ values) and verify that the calculated distances match analytic results. */
+GTEST_TEST(CalcDistanceToSurfaceMeshTest, SingleTriangle) {
+  const Vector3d p_TA(0, 0, 0);
+  const Vector3d p_TB(1, 0, 0);
+  const Vector3d p_TC(0, 1, 0);
+  const math::RollPitchYaw<double> rpy_WT(1, 2, 3);
+  const Vector3d p_WTo(4, 5, 6);
+  const math::RigidTransform<double> X_WT(rpy_WT, p_WTo);
+
+  vector<Vector3d> vertices = {X_WT * p_TA, X_WT * p_TB, X_WT * p_TC};
   vector<SurfaceTriangle> triangles = {{0, 1, 2}};
   TriangleSurfaceMesh<double> mesh_W(std::move(triangles), std::move(vertices));
 
   constexpr double kEps = 1e-14;
+  constexpr double kZScale = 0.5;
+  // Region 0.
   {
-    // The point is on the interior of the triangle.
-    const Vector3d p_TQ(0.5, 0.25, 0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(0.25, 0.25, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToPlaneABC(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 1.
   {
-    // The point is on the edge of the triangle.
-    const Vector3d p_TQ(0.5, 0.5, 0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(0.25, -0.25, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToLineAB(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 2.
   {
-    // The point is on a vertex of the triangle.
-    const Vector3d p_TQ(2.0, 2.0, 0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(-0.25, -0.25, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToA(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 3.
   {
-    // The point is in the plane of the triangle, and the shortest distance is
-    // achieved on an edge.
-    const Vector3d p_TQ(0.5, -1.0, 0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(-0.25, 0.0, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToLineAC(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 4.
   {
-    // The point is in the plane of the triangle, and the shortest distance is
-    // achieved on a vertex.
-    const Vector3d p_TQ(-3.0, -4.0, 0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(5.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(-0.25, 1.5, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToC(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 5.
   {
-    // The projection of the point is on the interior of the triangle.
-    const Vector3d p_TQ(0.5, 0.25, 1.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(1.0, 2.0, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToLineBC(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
+  // Region 6.
   {
-    // The projection of the point is on the edge of the triangle.
-    const Vector3d p_TQ(0.5, 0.5, 1.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The projection of the point is on a vertex of the triangle.
-    const Vector3d p_TQ(2.0, 2.0, 1.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The projection of the point is not in the triangle, and the shortest
-    // distance is achieved on an edge.
-    const Vector3d p_TQ(0.5, -1.0, 1.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(std::sqrt(2.0), CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The projection of the point is not in the triangle, and the shortest
-    // distance is achieved on a vertex.
-    const Vector3d p_TQ(-3.0, -4.0, 1.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(std::sqrt(26), CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    for (int sign_z = -1; sign_z <= 1; ++sign_z) {
+      const Vector3d p_TQ(1.2, -0.3, sign_z * kZScale);
+      const Vector3d p_WQ = X_WT * p_TQ;
+      EXPECT_NEAR(CalcDistanceToB(p_TQ),
+                  CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
+    }
   }
 }
 
-GTEST_TEST(CalcDistanceToSurfaceMeshTest, FullMesh) {
-  const Vector3d p_TV0(1, 0, 0);
-  const Vector3d p_TV1(0, 1, 0);
-  const Vector3d p_TV2(0, 0, 1);
-  const Vector3d p_TV3(-1, 0, 0);
-  const Vector3d p_TV4(0, -1, 0);
-  const Vector3d p_TV5(0, 0, -1);
+/* Tests that given a mesh with two triangles, the distance to the mesh is
+  indeed taking the minimum of the distance to each triangles.
 
-  const math::RollPitchYaw<double> rpy(1, 2, 3);
-  const Vector3d position(4, 5, 6);
-  const math::RigidTransform<double> X_WT(rpy, position);
+                        |  y-axis
+                        |
+                        |
+                      C •
+                      / | \
+                    /   |   \
+                  /     |     \
+                /       |       \
+              /         |         \
+            /           |           \
+          /             |             \
+        /               |               \
+  ---- • -------------- • --------------- • ------- x-axis
+     D                A |                 B
+                        |
+                        |
+*/
+GTEST_TEST(CalcDistanceToSurfaceMeshTest, MultipleTriangles) {
+  const Vector3d p_TA(0, 0, 0);
+  const Vector3d p_TB(1, 0, 0);
+  const Vector3d p_TC(0, 1, 0);
+  const Vector3d p_TD(-1, 0, 0);
 
-  vector<Vector3d> vertices = {X_WT * p_TV0, X_WT * p_TV1, X_WT * p_TV2,
-                               X_WT * p_TV3, X_WT * p_TV4, X_WT * p_TV5};
-  vector<SurfaceTriangle> triangles = {
-      {0, 1, 2}, {1, 3, 2}, {2, 3, 4}, {0, 2, 4},
-      {0, 5, 1}, {1, 5, 3}, {3, 5, 4}, {0, 4, 5},
-  };
-  // The surface mesh of an octahedron.
+  const math::RollPitchYaw<double> rpy_WT(1, 2, 3);
+  const Vector3d p_WTo(4, 5, 6);
+  const math::RigidTransform<double> X_WT(rpy_WT, p_WTo);
+
+  vector<Vector3d> vertices = {X_WT * p_TA, X_WT * p_TB, X_WT * p_TC,
+                               X_WT * p_TD};
+  vector<SurfaceTriangle> triangles = {{0, 1, 2}, {0, 2, 3}};
   TriangleSurfaceMesh<double> mesh_W(std::move(triangles), std::move(vertices));
 
   constexpr double kEps = 1e-14;
-  {
-    // The point is on a triangle.
-    const Vector3d p_TQ(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The point is on a edge.
-    const Vector3d p_TQ(0.5, 0.5, 0.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The point is at a vertex.
-    const Vector3d p_TQ(1.0, 0.0, 0.0);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(0.0, CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
-  }
-  {
-    // The point is "inside" the mesh
-    const Vector3d p_TQ(1.0 / 6, 1.0 / 6, 1.0 / 6);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0 / sqrt(12.0), CalcDistanceToSurfaceMesh(p_WQ, mesh_W),
-                kEps);
-  }
-  {
-    // The point is "outside" the mesh
-    const Vector3d p_TQ(0.5, 0.5, 0.5);
-    const Vector3d p_WQ = X_WT * p_TQ;
-    EXPECT_NEAR(1.0 / sqrt(12.0), CalcDistanceToSurfaceMesh(p_WQ, mesh_W),
-                kEps);
-  }
+  // Q0 is on the equidistance surface of the two triangles.
+  const Vector3d p_TQ0(0, 0.5, 1.0);
+  const Vector3d p_WQ0 = X_WT * p_TQ0;
+  const double d_Q0 = CalcDistanceToSurfaceMesh(p_WQ0, mesh_W);
+  EXPECT_NEAR(CalcDistanceToPlaneABC(p_TQ0), d_Q0, kEps);
+  // Q1 is slightly to the left of Q0.
+  const Vector3d p_TQ1(-1e-3, 0.5, 1.0);
+  const Vector3d p_WQ1 = X_WT * p_TQ1;
+  const double d_Q1 = CalcDistanceToSurfaceMesh(p_WQ1, mesh_W);
+  EXPECT_NEAR(CalcDistanceToPlaneABC(p_TQ1), d_Q1, kEps);
+  EXPECT_LE(d_Q1, CalcDistanceToLineAC(p_TQ1));
+
+  // Q2 is slightly to the right of Q0.
+  const Vector3d p_TQ2(1e-3, 0.5, 1.0);
+  const Vector3d p_WQ2 = X_WT * p_TQ2;
+  const double d_Q2 = CalcDistanceToSurfaceMesh(p_WQ2, mesh_W);
+  EXPECT_NEAR(CalcDistanceToPlaneABC(p_TQ2), d_Q2, kEps);
+  EXPECT_LE(d_Q2, CalcDistanceToLineAC(p_TQ1));
 }
 
 }  // namespace
