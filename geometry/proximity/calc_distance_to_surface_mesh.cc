@@ -53,7 +53,7 @@ double CalcSquaredDistanceToLineSegment(const Vector3<double>& Q,
 
   /* Compute the squared distance from Q to its projection P on AB.
 
-           Q           R    AB x AQ = area of parallelogram ABRQ
+           Q           R    |AB x AQ| = area of parallelogram ABRQ
           /-----------/     |AB| = base of parallelogram
          / |.        /      |QP| = height of parallelogram
         /  |  .     /            = distance from Q to AB.
