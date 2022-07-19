@@ -45,22 +45,22 @@ double CalcDistanceToPlaneABC(const Vector3d& p_TQ) {
  has its three vertices at (0, 0, 0), (1, 0, 0), and (0, 1, 0) when posed in its
  reference configuration.
 
-                  \  4  |
-                    \   |
-                      \ | y-axis
-                      C •
+                     4        /
+                            /
+                      C   /
+              ----------•
                         | \
-                        |   \
+                y-axis  |   \
                         |     \
                         |       \
-                        |         \
-                3       |    0      \     5
-                        |             \
-                        |               \
-        --------------- • --------------- • ------- x-axis
-                      A |                 B \
-                2       |    1                \  6
-                        |                       \
+                        |         \               /
+                3       |    0      \     5     /
+                        |             \       /
+                        |               \   /
+        --------------- • --------------- •    x-axis
+                      A |                 | B
+                2       |    1            |      6
+                        |                 |
  We sample points from regions 0 through 6 (with negative, positive, and zero z
  values) and verify that the calculated distances match analytic results. */
 GTEST_TEST(CalcDistanceToSurfaceMeshTest, SingleTriangle) {
@@ -125,7 +125,7 @@ GTEST_TEST(CalcDistanceToSurfaceMeshTest, SingleTriangle) {
   // Region 5.
   {
     for (int sign_z = -1; sign_z <= 1; ++sign_z) {
-      const Vector3d p_TQ(1.0, 2.0, sign_z * kZScale);
+      const Vector3d p_TQ(1.0, 1.5, sign_z * kZScale);
       const Vector3d p_WQ = X_WT * p_TQ;
       EXPECT_NEAR(CalcDistanceToLineBC(p_TQ),
                   CalcDistanceToSurfaceMesh(p_WQ, mesh_W), kEps);
