@@ -36,6 +36,8 @@ drake_cc_package_library(
         ":make_cylinder_mesh",
         ":make_ellipsoid_field",
         ":make_ellipsoid_mesh",
+        ":make_embedded_field",
+        ":make_embedded_mesh",
         ":make_sphere_field",
         ":make_sphere_mesh",
         ":mesh_deformer",
@@ -493,6 +495,32 @@ drake_cc_library(
         ":volume_mesh",
         ":volume_to_surface_mesh",
         "//geometry:shape_specification",
+    ],
+)
+
+drake_cc_library(
+    name = "make_embedded_field",
+    hdrs = ["make_embedded_field.h"],
+    deps = [
+        ":mesh_field",
+        ":calc_distance_to_surface_mesh",
+        ":obj_to_surface_mesh",
+    ],
+)
+
+drake_cc_library(
+    name = "make_embedded_mesh",
+    srcs = ["make_embedded_mesh.cc"],
+    hdrs = ["make_embedded_mesh.h"],
+    interface_deps = [
+        ":volume_mesh",
+        "//geometry:shape_specification",
+    ],
+    deps = [
+        ":obj_to_surface_mesh",
+        ":triangle_surface_mesh",
+        "//common:default_scalars",
+        "//common:essential",
     ],
 )
 
@@ -1168,12 +1196,18 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "mesh_to_vtk_test",
+    data = [
+        "//geometry:test_obj_files",
+    ],
     deps = [
         ":make_box_field",
         ":make_box_mesh",
+        ":make_embedded_field",
+        ":make_embedded_mesh",
         ":mesh_intersection",
         ":mesh_to_vtk",
         "//common:temp_directory",
+        "//common:find_resource",
         "//geometry:shape_specification",
         "//math:geometric_transform",
     ],

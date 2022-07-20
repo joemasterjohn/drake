@@ -6,8 +6,11 @@
 
 #include "drake/common/eigen_types.h"
 #include "drake/common/temp_directory.h"
+#include "drake/common/find_resource.h"
 #include "drake/geometry/proximity/make_box_field.h"
 #include "drake/geometry/proximity/make_box_mesh.h"
+#include "drake/geometry/proximity/make_embedded_mesh.h"
+#include "drake/geometry/proximity/make_embedded_field.h"
 #include "drake/geometry/proximity/mesh_intersection.h"
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
@@ -93,6 +96,18 @@ GTEST_TEST(MeshToVtkTest, BoxContactSurfacePressure) {
       temp_directory() + "/" + "box_rigid_soft_contact_pressure.vtk",
       "Pressure[Pa]", *contact_pressure,
       "Pressure Distribution on Contact Surface");
+}
+
+GTEST_TEST(MeshToVtkTest, EmbeddedMesh) {
+  const std::string filename =
+      FindResourceOrThrow("drake/geometry/test/convex.obj");
+  Mesh mesh(filename, 1.0);
+  auto volume_mesh = MakeEmbeddedVolumeMesh<double>(mesh, 10, 0.03);
+  auto volume_field =
+      MakeEmbeddedPressureField<double>(mesh, &volume_mesh, 1, 1);
+  WriteVolumeMeshToVtk("/home/joe/embedded_mesh.vtk", volume_mesh, "joe");
+  WriteVolumeMeshFieldLinearToVtk("/home/joe/embedded_field.vtk", "distance",
+                                  volume_field, "joe");
 }
 
 }  // namespace internal
