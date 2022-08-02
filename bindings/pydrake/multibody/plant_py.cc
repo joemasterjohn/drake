@@ -289,6 +289,26 @@ void DoScalarDependentDefinitions(py::module m, T) {
 #pragma GCC diagnostic pop
     }
 
+    cls.def("AddDistanceConstraint", &Class::AddDistanceConstraint,
+        py::arg("body_A"), py::arg("p_AP"), py::arg("body_B"), py::arg("p_BQ"),
+        py::arg("distance"),
+        py::arg("stiffness") = std::numeric_limits<double>::infinity(),
+        py::arg("damping") = 0.0, py_rvp::reference_internal,
+        cls_doc.AddDistanceConstraint.doc);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    constexpr char kWeldFramesDeprecated[] =
+        "Deprecated:\n    Frame notation for `WeldFrames` has changed. Use the "
+        "version that uses `frame_on_parent_F`, `frame_on_child_M`, and "
+        "`X_FM`. The deprecated code will be removed from Drake on or after "
+        "2022-12-01.";
+    cls.def("WeldFrames",
+        WrapDeprecated(kWeldFramesDeprecated, &Class::WeldFrames),
+        py::arg("frame_on_parent_P"), py::arg("frame_on_child_C"),
+        py::arg("X_PC") = RigidTransform<double>::Identity(),
+        py_rvp::reference_internal, kWeldFramesDeprecated);
+#pragma GCC diagnostic pop
     // Mathy bits
     cls  // BR
         .def(
@@ -884,6 +904,12 @@ void DoScalarDependentDefinitions(py::module m, T) {
                 &Class::get_actuation_input_port),
             py::arg("model_instance"), py_rvp::reference_internal,
             cls_doc.get_actuation_input_port.doc_1args)
+        .def("get_desired_state_input_port",
+            overload_cast_explicit<const systems::InputPort<T>&,
+                multibody::ModelInstanceIndex>(
+                &Class::get_desired_state_input_port),
+            py::arg("model_instance"), py_rvp::reference_internal,
+            cls_doc.get_desired_state_input_port.doc)
         .def("get_applied_generalized_force_input_port",
             overload_cast_explicit<const systems::InputPort<T>&>(
                 &Class::get_applied_generalized_force_input_port),
