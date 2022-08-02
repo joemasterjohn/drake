@@ -43,6 +43,7 @@ SapHolonomicConstraint<T>::SapHolonomicConstraint(int clique, VectorX<T> g,
   // Jacobian.
   DRAKE_DEMAND(this->constraint_function().size() ==
                parameters_.num_constraint_equations());
+  bias_.setZero(parameters_.num_constraint_equations());               
 }
 
 template <typename T>
@@ -57,6 +58,7 @@ SapHolonomicConstraint<T>::SapHolonomicConstraint(
   // Jacobian.
   DRAKE_DEMAND(this->constraint_function().size() ==
                parameters_.num_constraint_equations());
+  bias_.setZero(parameters_.num_constraint_equations());               
 }
 
 template <typename T>
@@ -88,7 +90,9 @@ VectorX<T> SapHolonomicConstraint<T>::CalcBiasTerm(const T& time_step,
     }
   }
 
-  return -this->constraint_function().array() / (time_step + tau.array());
+  return -VectorX<T>(this->constraint_function().array() /
+                     (time_step + tau.array())) -
+         bias_;
 }
 
 template <typename T>
