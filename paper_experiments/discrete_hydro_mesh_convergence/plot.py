@@ -54,7 +54,7 @@ for i in range(1, num_runs):
     l2.append(np.linalg.norm(x_dx - x, ord=2) / np.linalg.norm(x, ord=2))
     linf.append(np.linalg.norm(x_dx - x, ord=np.inf))
 
-radius = 0.02426
+radius = 0.01213
 circumference = 2 * np.pi * radius
 triangles = np.power(2, range(2, 7))
 arc_length = (circumference / triangles)
