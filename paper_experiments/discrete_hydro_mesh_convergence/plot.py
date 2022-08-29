@@ -54,7 +54,7 @@ for i in range(1, num_runs):
     l2.append(np.linalg.norm(x_dx - x, ord=2) / np.linalg.norm(x, ord=2))
     linf.append(np.linalg.norm(x_dx - x, ord=np.inf))
 
-radius = 0.02426
+radius = 0.01213
 circumference = 2 * np.pi * radius
 triangles = np.power(2, range(2, 7))
 arc_length = (circumference / triangles)
@@ -70,7 +70,7 @@ ax.plot(delta_x_list, l2, 'ko', markersize=10, fillstyle='none', markeredgewidth
 
 dx = np.linspace(1e-5, 1e-1)
 ax.plot(dx.tolist(), (8*(dx ** 2)).tolist(), linestyle='--', dashes=(20, 8), color='black')
-plt.xlabel(r'$\delta x$', fontsize=35)
+plt.xlabel(r'$\delta x\;[m]$', fontsize=30)
 plt.ylabel(r'$\varepsilon_{\delta x}$', fontsize=35)
 plt.xticks(fontsize=25)
 plt.yticks(fontsize=25)
@@ -80,7 +80,7 @@ ax.tick_params(width=3, length=15, direction="in")
 for axis in ['top', 'bottom', 'left', 'right']:
  ax.spines[axis].set_linewidth(2)  # change width
 
-ax.set_xlim(left=1e-3, right=1e-1)
+ax.set_xlim(left=6e-4, right=3e-2)
 ax.set_ylim(bottom=1e-5, top=1e-1)
 
 plt.xscale('log', basex=10)
