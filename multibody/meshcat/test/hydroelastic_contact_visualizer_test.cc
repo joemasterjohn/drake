@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include "drake/common/test_utilities/expect_no_throw.h"
+
 namespace drake {
 namespace multibody {
 namespace meshcat {
@@ -23,8 +25,7 @@ GTEST_TEST(HydroelasticContactVisualizer, MessageTest) {
                      Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(),
                      Eigen::Matrix3Xd::Zero(3, 0), Eigen::Matrix3Xi::Zero(3, 0),
                      Eigen::VectorXd::Zero(0)});
-
-    visualizer.Update(items);
+    DRAKE_EXPECT_NO_THROW(visualizer.Update(items));
   }
 
   // Non-zero force / zero moment
@@ -35,7 +36,7 @@ GTEST_TEST(HydroelasticContactVisualizer, MessageTest) {
                      Eigen::Matrix3Xd::Zero(3, 0), Eigen::Matrix3Xi::Zero(3, 0),
                      Eigen::VectorXd::Zero(0)});
 
-    visualizer.Update(items);
+    DRAKE_EXPECT_NO_THROW(visualizer.Update(items));
   }
 
   // zero force / non-zero moment
@@ -46,7 +47,7 @@ GTEST_TEST(HydroelasticContactVisualizer, MessageTest) {
                      Eigen::Matrix3Xd::Zero(3, 0), Eigen::Matrix3Xi::Zero(3, 0),
                      Eigen::VectorXd::Zero(0)});
 
-    visualizer.Update(items);
+    DRAKE_EXPECT_NO_THROW(visualizer.Update(items));
   }
 }
 
