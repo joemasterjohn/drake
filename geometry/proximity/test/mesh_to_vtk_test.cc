@@ -11,7 +11,6 @@
 #include "drake/geometry/proximity/mesh_intersection.h"
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
-
 namespace drake {
 namespace geometry {
 namespace internal {

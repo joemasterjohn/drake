@@ -48,16 +48,24 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
   TriangleSurfaceMesh<double> surface_d =
       ConvertVolumeToSurfaceMeshDouble(*mesh_M);
 
+  return MakeVolumeMeshSurfaceMeshPressureField(mesh_M, &surface_d, hydroelastic_modulus);
+
+}
+
+template <typename T>
+VolumeMeshFieldLinear<T, T> MakeVolumeMeshSurfaceMeshPressureField(
+    const VolumeMesh<T>* mesh_M, const TriangleSurfaceMesh<double>* surface_d,
+    const T& hydroelastic_modulus) {
   // TODO(DamrongGuoy): Check whether there could be numerical roundings that
   //  cause a vertex on the boundary to have a non-zero value. Consider
   //  initializing pressure_values to zeros and skip the computation for
   //  boundary vertices.
   std::vector<T> pressure_values;
   T max_value(std::numeric_limits<double>::lowest());
-  // First round, it's actually unsigned distance, not pressure values yet.
+  // First round, it's actually signed distance, not pressure values yet.
   for (const Vector3<T>& p_MV : mesh_M->vertices()) {
     Vector3<double> p_MV_d = ExtractDoubleOrThrow(p_MV);
-    T pressure(internal::CalcDistanceToSurfaceMesh(p_MV_d, surface_d));
+    T pressure(-internal::CalcSignedDistanceToSurfaceMesh(p_MV_d, *surface_d));
     pressure_values.emplace_back(pressure);
     if (max_value < pressure) {
       max_value = pressure;
@@ -79,7 +87,8 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS((
-    &MakeVolumeMeshPressureField<T>
+    &MakeVolumeMeshPressureField<T>,
+    &MakeVolumeMeshSurfaceMeshPressureField<T>
 ))
 
 }  // namespace internal

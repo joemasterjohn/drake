@@ -24,6 +24,8 @@
 #include "drake/geometry/proximity/tessellation_strategy.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 
+#include "drake/geometry/proximity/mesh_to_vtk.h"
+
 namespace drake {
 namespace geometry {
 namespace internal {
@@ -415,8 +417,16 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   const double hydroelastic_modulus =
       validator.Extract(props, kHydroGroup, kElastic);
 
+  const std::string surface_mesh_file = mesh_specification.filename() + ".obj";
+  auto surface_mesh = ReadObjToTriangleSurfaceMesh(surface_mesh_file,
+                                                   mesh_specification.scale());
+
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus));
+      MakeVolumeMeshSurfaceMeshPressureField(mesh.get(), &surface_mesh,
+                                  hydroelastic_modulus));
+
+  // WriteVolumeMeshFieldLinearToVtk("pepper_field.vtk", "pepper field", *pressure,
+  //                                 "pressure");
 
   return SoftGeometry(SoftMesh(move(mesh), move(pressure)));
 }
