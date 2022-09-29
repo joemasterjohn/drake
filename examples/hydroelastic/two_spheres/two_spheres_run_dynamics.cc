@@ -62,6 +62,8 @@ DEFINE_double(gz, 9.8,
 
 DEFINE_bool(visualize, true, "Connects to visualizer when true.");
 
+DEFINE_string(pepper_file, "pepper.sdf", "pepper modelfile");
+
 namespace drake {
 namespace examples {
 namespace two_spheres {
@@ -91,7 +93,7 @@ int do_main() {
 
   multibody::Parser parser(&plant);
   std::string sphere_filename = FindResourceOrThrow(
-      "drake/examples/hydroelastic/two_spheres/pepper.sdf");
+      "drake/examples/hydroelastic/two_spheres/" + FLAGS_pepper_file);
 
 //   std::string sphere_internal_filename = FindResourceOrThrow(
 //       "drake/examples/hydroelastic/two_spheres/pancake_convex.sdf");
@@ -213,21 +215,39 @@ int do_main() {
 //     return systems::EventStatus::Succeeded();
 //   });
 
-  simulator->set_monitor(
-      [&plant, &sphere_embedded_mi](const systems::Context<double>& root_context) {
-        const systems::Context<double>& context =
-            plant.GetMyContextFromRoot(root_context);
-        const Body<double>& Se =
-            plant.GetBodyByName("pancake_embedded", sphere_embedded_mi);
-        auto X_WSe = Se.EvalPoseInWorld(context);
-        auto p = X_WSe.translation();
-        auto r = X_WSe.rotation().ToQuaternion();
+  int max_contacts = 0;
+  int num_timesteps = 0;
+  int total_contacts = 0;
 
-        std::cout << fmt::format("{}\t{}\t{}\t{}\t{}\t{}\t{}\n", p.x(), p.y(),
-                                 p.z(), r.x(), r.y(), r.z(), r.w());
+  simulator->set_monitor([&](const systems::Context<double>& root_context) {
+    const systems::Context<double>& context =
+        plant.GetMyContextFromRoot(root_context);
 
-        return systems::EventStatus::Succeeded();
-      });
+    const ContactResults<double>& contact_results =
+        plant.get_contact_results_output_port().Eval<ContactResults<double>>(
+            context);
+    int num_contacts = 0;
+    for (int i = 0; i < contact_results.num_hydroelastic_contacts(); ++i) {
+      const auto contact_info = contact_results.hydroelastic_contact_info(i);
+      const auto contact_surface = contact_info.contact_surface();
+      num_contacts += contact_surface.num_faces();
+    }
+
+    max_contacts = std::max(max_contacts, num_contacts);
+    total_contacts += num_contacts;
+    ++num_timesteps;
+
+    const Body<double>& Se =
+        plant.GetBodyByName("pancake_embedded", sphere_embedded_mi);
+    auto X_WSe = Se.EvalPoseInWorld(context);
+    auto p = X_WSe.translation();
+    auto r = X_WSe.rotation().ToQuaternion();
+
+    std::cout << fmt::format("{}\t{}\t{}\t{}\t{}\t{}\t{}\n", p.x(), p.y(),
+                             p.z(), r.x(), r.y(), r.z(), r.w());
+
+    return systems::EventStatus::Succeeded();
+  });
 
   auto start_time = std::chrono::system_clock::now();
   simulator->AdvanceTo(FLAGS_simulation_time);
@@ -240,6 +260,9 @@ int do_main() {
       1000.0;
 
   std::cout << "elapsed time: " << elapsed_time << "\n";
+  std::cout << "max contacts: " << max_contacts << "\n";
+  std::cout << "avg contacts: " << ((1.0 * total_contacts) / num_timesteps)
+            << "\n";
 
   //   auto sphere_embedded_pose = plant.GetFreeBodyPose(
   //       plant_context, plant.GetBodyByName("pancake_embedded",
