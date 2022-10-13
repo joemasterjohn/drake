@@ -49,7 +49,8 @@ DEFINE_double(wy, 0.0,
 DEFINE_double(wz, 0.0,
               "Sphere's initial angular velocity in the z-axis in degrees/s.");
 
-DEFINE_double(roll, 0.9, "roll");
+ DEFINE_double(roll, 0.9, "roll");
+//DEFINE_double(roll, 0.5, "roll");
 DEFINE_double(pitch, 0.4, "pitch");
 DEFINE_double(yaw, 0.0, "yaw");
 
@@ -88,6 +89,7 @@ int do_main() {
   config.contact_model = FLAGS_contact_model;
   config.contact_surface_representation = FLAGS_contact_surface_representation;
   config.discrete_contact_solver = "sap";
+  //config.discrete_contact_solver = "tamsi";
   auto [plant, scene_graph] = AddMultibodyPlant(config, &builder);
 
   multibody::Parser parser(&plant);
@@ -112,8 +114,10 @@ int do_main() {
                    RigidTransformd{Vector3d{30, 30, -5}});
 
   // plant.AddJoint<PrismaticJoint>(
-  //     "world_embedded", plant.world_body(), RigidTransformd{Vector3d{0, 0, FLAGS_z0}},
-  //     plant.GetBodyByName("pancake_embedded", sphere_embedded_mi), {},
+  //     "world_embedded", plant.world_body(),
+  //     {},
+  //     plant.GetBodyByName("pancake_embedded", sphere_embedded_mi), RigidTransformd{RollPitchYawd{FLAGS_roll, FLAGS_pitch, FLAGS_yaw},
+  //                     Vector3d{0, 0, -FLAGS_z0}},
   //     Vector3d{0, 0, 1});
   // plant.AddJoint<PrismaticJoint>(
   //     "world_convex", plant.world_body(), RigidTransformd{Vector3d{-0.5, 0, FLAGS_z0}},

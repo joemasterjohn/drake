@@ -622,7 +622,7 @@ void CompliantContactManager<T>::
 
         if (p0 < 0 && (p0 / (v_n * g)) > plant().time_step()) {
           ++reject;
-          continue;
+          //continue;
         }
 
         if (k > 0) {

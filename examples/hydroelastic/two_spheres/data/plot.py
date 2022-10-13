@@ -61,23 +61,26 @@ for i in body_fitted_extended_files:
 
 # Convergence to finest geometry within own method
 embedded_convergence_error = []
-for i in range(len(embedded_traj)-2):
-  embedded_convergence_error.append(np.linalg.norm(embedded_traj[i] - embedded_traj[-2]) / np.linalg.norm(embedded_traj[-2]))
+for i in range(len(embedded_traj)-1):
+  embedded_convergence_error.append(np.linalg.norm(embedded_traj[i] - embedded_traj[-1]) / np.linalg.norm(embedded_traj[-1]))
 
 body_fitted_convergence_error = []
-for i in range(len(body_fitted_traj)-2):
-  body_fitted_convergence_error.append(np.linalg.norm(body_fitted_traj[i] - body_fitted_traj[-2]) / np.linalg.norm(body_fitted_traj[-2]))
+for i in range(len(body_fitted_traj)-1):
+  body_fitted_convergence_error.append(np.linalg.norm(body_fitted_traj[i] - body_fitted_traj[-1]) / np.linalg.norm(body_fitted_traj[-1]))
 
 body_fitted_extended_convergence_error = []
-for i in range(len(body_fitted_extended_traj)-2):
-  body_fitted_extended_convergence_error.append(np.linalg.norm(body_fitted_extended_traj[i] - body_fitted_extended_traj[-2]) / np.linalg.norm(body_fitted_extended_traj[-2]))
+for i in range(len(body_fitted_extended_traj)-1):
+  body_fitted_extended_convergence_error.append(np.linalg.norm(body_fitted_extended_traj[i] - body_fitted_extended_traj[-1]) / np.linalg.norm(body_fitted_extended_traj[-1]))
 
 fig, ax = plt.subplots()
-ax.plot(embedded_avg_contacts[0:-2], embedded_convergence_error, color='r',  marker='o', markersize=10, fillstyle='none', markeredgewidth=2, label="embedded error")
-ax.plot(body_fitted_avg_contacts[0:-2], body_fitted_convergence_error, color='g', marker='x', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted error")
-ax.plot(body_fitted_extended_avg_contacts[0:-2], body_fitted_extended_convergence_error, color='b', marker='+', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted (extended) error")
+ax.plot(embedded_avg_contacts[0:-1], embedded_convergence_error, color='r',  marker='o', markersize=10, fillstyle='none', markeredgewidth=2, label="embedded error")
+ax.plot(body_fitted_avg_contacts[0:-1], body_fitted_convergence_error, color='g', marker='x', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted error")
+ax.plot(body_fitted_extended_avg_contacts[0:-1], body_fitted_extended_convergence_error, color='b', marker='+', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted (extended) error")
+#ax.plot(embedded_max_contacts[0:-1], embedded_convergence_error, color='r',  marker='o', markersize=10, fillstyle='none', markeredgewidth=2, label="embedded error")
+#ax.plot(body_fitted_max_contacts[0:-1], body_fitted_convergence_error, color='g', marker='x', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted error")
+#ax.plot(body_fitted_extended_max_contacts[0:-1], body_fitted_extended_convergence_error, color='b', marker='+', markersize=10, fillstyle='none', markeredgewidth=2, label="body fitted (extended) error")
 ax.legend()
-plt.xlabel('Average Number of Contacts', fontsize=20)
+plt.xlabel('Max Number of Contacts', fontsize=20)
 plt.ylabel('Trajectory Relative Error', fontsize=20)
 plt.xticks(fontsize=16)
 plt.yticks(fontsize=16)
