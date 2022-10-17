@@ -186,9 +186,12 @@ INSTANTIATE_TEST_SUITE_P(IndexPermutations, JointLockingTest,
 // `upper_arm` and `lower_arm` is replaced with a fixed weld corresponding to
 // the configuration (0, kElbowPosition) in the model with two joints.
 std::unique_ptr<MultibodyPlant<double>> MakeDoublePendulumPlant(
-    bool weld_elbow) {
+    bool weld_elbow,
+    DiscreteContactSolver solver = DiscreteContactSolver::kTamsi) {
   std::unique_ptr<MultibodyPlant<double>> plant;
   plant = std::make_unique<MultibodyPlant<double>>(kTimestep);
+
+  plant->set_discrete_contact_solver(solver);
 
   const RigidBody<double>& body1 =
       plant->AddRigidBody("upper_arm", SpatialInertia<double>::MakeUnitary());
@@ -307,6 +310,10 @@ GTEST_TEST(JointLockingTest, TrajectoryTest) {
                                               elbow_index_locked],
               0);
   }
+
+  // Joint locking is not currently supported with the SAP solver. This test
+  // verifies that 
+  GEST_TEST()
 }
 }  // namespace
 }  // namespace multibody

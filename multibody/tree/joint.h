@@ -335,6 +335,12 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
     // Joint locking is only supported for discrete mode.
     // TODO(sherm1): extend the design to support continuous-mode systems.
     DRAKE_THROW_UNLESS(this->get_parent_tree().is_state_discrete());
+    if (GetParentPlant().get_discrete_contact_solver() !=
+        DiscreteContactSolver::kTamsi) {
+      drake::log()->warn(
+          "Joint locking is currently only supported by the TAMSI solver. "
+          "Calling Joint::Lock() when not using TAMSI will have no effect.");
+    }
     context->get_mutable_abstract_parameter(is_locked_parameter_index_)
         .set_value(true);
     this->get_parent_tree().GetMutableVelocities(context).segment(
@@ -349,6 +355,12 @@ class Joint : public MultibodyElement<Joint, T, JointIndex> {
     // Joint locking is only supported for discrete mode.
     // TODO(sherm1): extend the design to support continuous-mode systems.
     DRAKE_THROW_UNLESS(this->get_parent_tree().is_state_discrete());
+    if (GetParentPlant().get_discrete_contact_solver() !=
+        DiscreteContactSolver::kTamsi) {
+      drake::log()->warn(
+          "Joint locking is currently only supported by the TAMSI solver. "
+          "Calling Joint::Unock() when not using TAMSI will have no effect.");
+    }
     context->get_mutable_abstract_parameter(is_locked_parameter_index_)
         .set_value(false);
   }
