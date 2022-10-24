@@ -8,6 +8,7 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/plant/jacobian_matrix.h"
 
 namespace drake {
 namespace multibody {
@@ -16,6 +17,8 @@ namespace internal {
 
 template <typename T>
 class BlockSparseMatrixBuilder;
+
+using drake::multibody::internal::JacobianBlock;
 
 // This class provides a representation for sparse matrices with a structure
 // consisting of dense blocks of non-zeros. While other storage formats such as
@@ -44,7 +47,7 @@ class BlockSparseMatrix {
   // A non-zero block entry is specified with the triplet {i, j, Bij}, where
   // (i,j) are the i-th and j-th block row and column respectively and Bij is
   // the dense block entry.
-  typedef std::tuple<int, int, MatrixX<T>> BlockTriplet;
+  typedef std::tuple<int, int, JacobianBlock<T>> BlockTriplet;
 
   // Constructs a zero sized matrix.
   // While non-empty matrices must be built with BlockSparseMatrixBuilder to
@@ -69,7 +72,7 @@ class BlockSparseMatrix {
   // Access to the b-th block. b must be in the range 0 to num_blocks()-1.
   // Blocks are indexed in the order they were added using a builder via
   // BlockSparseMatrixBuilder::PushBlock().
-  const MatrixX<T>& get_block(int b) const {
+  const JacobianBlock<T>& get_block(int b) const {
     DRAKE_DEMAND(b < num_blocks());
     return std::get<2>(blocks_[b]);
   }
@@ -197,7 +200,11 @@ class BlockSparseMatrixBuilder {
   // added block to column j or an exception is thrown.
   // @note Blocks of size zero are ignored.
   // @throws if block (i,j) was already added.
-  void PushBlock(int i, int j, const MatrixX<T>& Bij);
+  void PushBlock(int i, int j, JacobianBlock<T> Bij);
+
+  void PushBlock(int i, int j, MatrixX<T> Bij) {
+    PushBlock(i, j, JacobianBlock(std::move(Bij)));
+  }
 
   // Makes a new BlockSparseMatrix.
   // If successful, the new BlockSparseMatrix is guaranteed to be properly

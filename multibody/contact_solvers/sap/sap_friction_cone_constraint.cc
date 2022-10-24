@@ -13,7 +13,7 @@ namespace internal {
 
 template <typename T>
 SapFrictionConeConstraint<T>::SapFrictionConeConstraint(int clique,
-                                                        MatrixX<T> J,
+                                                        JacobianBlock<T> J,
                                                         const T& phi0,
                                                         const Parameters& p)
     : SapConstraint<T>(clique, Vector3<T>(0.0, 0.0, phi0), std::move(J)),
@@ -30,8 +30,8 @@ SapFrictionConeConstraint<T>::SapFrictionConeConstraint(int clique,
 
 template <typename T>
 SapFrictionConeConstraint<T>::SapFrictionConeConstraint(
-    int clique0, int clique1, MatrixX<T> J0, MatrixX<T> J1, const T& phi0,
-    const Parameters& p)
+    int clique0, int clique1, JacobianBlock<T> J0, JacobianBlock<T> J1,
+    const T& phi0, const Parameters& p)
     : SapConstraint<T>(clique0, clique1, Vector3<T>(0.0, 0.0, phi0),
                        std::move(J0), std::move(J1)),
       parameters_(p),

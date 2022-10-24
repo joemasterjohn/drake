@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 
 #include "drake/common/drake_copyable.h"
+#include "drake/multibody/plant/jacobian_matrix.h"
 
 #ifndef DRAKE_DOXYGEN_CXX
 // Forward declaration to avoid the inclusion of conex's headers within a Drake
@@ -22,7 +23,8 @@ namespace multibody {
 namespace contact_solvers {
 namespace internal {
 
-using BlockMatrixTriplet = std::tuple<int, int, Eigen::MatrixXd>;
+using multibody::internal::JacobianBlock;
+using BlockMatrixTriplet = std::tuple<int, int, JacobianBlock<double>>;
 
 // A supernodal Cholesky solver for solving the symmetric positive definite
 // system

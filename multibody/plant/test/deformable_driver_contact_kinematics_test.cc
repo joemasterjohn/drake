@@ -167,9 +167,11 @@ class DeformableDriverContactKinematicsTest : public ::testing::Test {
       EXPECT_TRUE(contact_kinematic.R_WC.IsNearlyEqualTo(expected_R_WC, 1e-12));
       if (dynamic_rigid_body) {
         ASSERT_EQ(contact_kinematic.jacobian.size(), 2);
-        const Matrix3X<double> J0 = contact_kinematic.jacobian[0].J;
+        const Matrix3X<double> J0 =
+            contact_kinematic.jacobian[0].J.MakeDenseMatrix();
         ASSERT_EQ(v0.size(), J0.cols());
-        const Matrix3X<double> J1 = contact_kinematic.jacobian[1].J;
+        const Matrix3X<double> J1 =
+            contact_kinematic.jacobian[1].J.MakeDenseMatrix();
         const Vector3d v_WR_F(0, 0, 0.5);
         const Vector3d v_WR = X_WF_.rotation() * v_WR_F;
         const Vector3d w_WR(0, 0, 0);
@@ -180,7 +182,8 @@ class DeformableDriverContactKinematicsTest : public ::testing::Test {
             CompareMatrices(J0 * v0 + J1 * v1, expected_v_DpRp_C, 1e-14));
       } else {
         ASSERT_EQ(contact_kinematic.jacobian.size(), 1);
-        const Matrix3X<double> J0 = contact_kinematic.jacobian[0].J;
+        const Matrix3X<double> J0 =
+            contact_kinematic.jacobian[0].J.MakeDenseMatrix();
         ASSERT_EQ(v0.size(), J0.cols());
         EXPECT_TRUE(CompareMatrices(J0 * v0, expected_v_DpRp_C, 1e-14));
       }

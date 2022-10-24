@@ -1,5 +1,6 @@
 #include "drake/multibody/contact_solvers/sap/sap_model.h"
 
+#include <iostream>
 #include <memory>
 #include <utility>
 
@@ -14,6 +15,27 @@ namespace contact_solvers {
 namespace internal {
 
 using systems::Context;
+
+template <typename T>
+double EstimateLargestEigenvalue(const MatrixX<T>& A, double tol) {
+  DRAKE_DEMAND(A.rows() == A.cols());
+  VectorX<T> x = VectorX<T>::Ones(A.size());
+  VectorX<T> x_next = A * x;
+  double lambda_next = ExtractDoubleOrThrow(x.dot(x_next) / x.dot(x));
+  double lambda;
+  int it = 0;
+  do {
+    ++it;
+    lambda = lambda_next;
+    x = x_next;
+    x_next = A * x;
+    lambda_next = ExtractDoubleOrThrow(x.dot(x_next) / x.dot(x));
+  } while (std::abs(lambda - lambda_next) / std::abs(lambda) > tol);
+  std::cout << "estimated lambda " << lambda_next << std::endl;
+  Eigen::EigenSolver<MatrixX<T>> solver(A);
+  std::cout << solver.eigenvalues().transpose() << std::endl;
+  return lambda_next;
+}
 
 template <typename T>
 SapModel<T>::SapModel(const SapContactProblem<T>* problem_ptr)
@@ -385,15 +407,15 @@ void SapModel<T>::CalcDelassusDiagonalApproximation(
   // We compute a factorization of A once so we can re-use it multiple times
   // below.
   const int num_cliques = A.size();  // N.B. Participating cliques.
-  std::vector<math::LinearSolver<Eigen::LDLT, MatrixX<T>>> A_ldlt(num_cliques);
+  std::vector<VectorX<T>> A_diag_inv(num_cliques);
   for (int c = 0; c < num_cliques; ++c) {
-    A_ldlt[c] = math::LinearSolver<Eigen::LDLT, MatrixX<T>>(A[c]);
-    DRAKE_DEMAND(A_ldlt[c].eigen_linear_solver().isPositive());
+    A_diag_inv[c] = A[c].diagonal().cwiseInverse();
   }
 
   // Scan constraints in the order specified by the graph.
   const int num_constraints = problem().num_constraints();
   std::vector<MatrixX<T>> W(num_constraints);
+  std::vector<T> W_norm_estimate(num_constraints, -1.0);
 
   const ContactProblemGraph& graph = problem().graph();
   const PartialPermutation& cliques_permutation = graph.participating_cliques();
@@ -413,16 +435,18 @@ void SapModel<T>::CalcDelassusDiagonalApproximation(
       {
         const int c =
             cliques_permutation.permuted_index(constraint.first_clique());
-        const MatrixX<T>& Jic = constraint.first_clique_jacobian();
-        W[i] += Jic * A_ldlt[c].Solve(Jic.transpose());
+        const JacobianBlock<T>& Jic = constraint.first_clique_jacobian();
+        // W[i] += Jic * A_diag_inv[c].asDiagonal() * Jic.transpose();
+        W[i] += Jic.MultiplyByScaledTranspose(A_diag_inv[c]);
       }
 
       // Adds clique 1 contribution, if present.
       if (constraint.num_cliques() == 2) {
         const int c =
             cliques_permutation.permuted_index(constraint.second_clique());
-        const MatrixX<T>& Jic = constraint.second_clique_jacobian();
-        W[i] += Jic * A_ldlt[c].Solve(Jic.transpose());
+        const JacobianBlock<T>& Jic = constraint.second_clique_jacobian();
+        // W[i] += Jic * A_diag_inv[c].asDiagonal() * Jic.transpose();
+        W[i] += Jic.MultiplyByScaledTranspose(A_diag_inv[c]);
       }
     }
   }

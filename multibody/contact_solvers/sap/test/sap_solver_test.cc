@@ -6,7 +6,6 @@
 
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
-#include "drake/multibody/contact_solvers/block_sparse_linear_operator.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"

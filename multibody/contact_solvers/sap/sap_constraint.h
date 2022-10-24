@@ -1,14 +1,18 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/plant/jacobian_matrix.h"
 
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
 namespace internal {
+
+using multibody::internal::JacobianBlock;
 
 /* This class serves to represent constraints supported by the SapSolver as
 described in [Castro et al., 2021].
@@ -76,7 +80,10 @@ class SapConstraint {
      SapContactProblem::num_velocities(). This condition is enforced when the
      constraint is added to the contact problem instead of during construction
      here, see SapContactProblem::AddConstraint(). */
-  SapConstraint(int clique, VectorX<T> g, MatrixX<T> J);
+  SapConstraint(int clique, VectorX<T> g, JacobianBlock<T> J);
+
+  SapConstraint(int clique, VectorX<T> g, MatrixX<T> J)
+      : SapConstraint(clique, g, JacobianBlock<T>(std::move(J))) {}
 
   /* Constructor for a constraint among DOFs between two cliques.
    @param[in] first_clique
@@ -107,7 +114,14 @@ class SapConstraint {
      condition is not enforced at construction but when the constraint is added
      to the contact problem, see SapContactProblem::AddConstraint(). */
   SapConstraint(int first_clique, int second_clique, VectorX<T> g,
-                MatrixX<T> J_first_clique, MatrixX<T> J_second_clique);
+                JacobianBlock<T> J_first_clique,
+                JacobianBlock<T> J_second_clique);
+
+  SapConstraint(int first_clique, int second_clique, VectorX<T> g,
+                MatrixX<T> J_first_clique, MatrixX<T> J_second_clique)
+      : SapConstraint(first_clique, second_clique, g,
+                      JacobianBlock<T>(std::move(J_first_clique)),
+                      JacobianBlock<T>(std::move(J_second_clique))) {}
 
   virtual ~SapConstraint() = default;
 
@@ -136,13 +150,13 @@ class SapConstraint {
   const VectorX<T>& constraint_function() const { return g_; }
 
   /* Returns the Jacobian with respect to the DOFs of the first clique. */
-  const MatrixX<T>& first_clique_jacobian() const {
+  const JacobianBlock<T>& first_clique_jacobian() const {
     return first_clique_jacobian_;
   }
 
   /* Returns the Jacobian with respect to the DOFs of the second clique.
    It throws an exception if num_cliques() == 1. */
-  const MatrixX<T>& second_clique_jacobian() const {
+  const JacobianBlock<T>& second_clique_jacobian() const {
     if (num_cliques() == 1)
       throw std::logic_error(
           "This constraint only involves a single clique.");
@@ -203,8 +217,8 @@ class SapConstraint {
   int first_clique_{-1};
   int second_clique_{-1};
   VectorX<T> g_;
-  MatrixX<T> first_clique_jacobian_;
-  MatrixX<T> second_clique_jacobian_;
+  JacobianBlock<T> first_clique_jacobian_;
+  JacobianBlock<T> second_clique_jacobian_;
 };
 
 }  // namespace internal

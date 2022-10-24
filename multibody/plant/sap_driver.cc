@@ -407,17 +407,21 @@ void SapDriver<T>::PackContactSolverResults(
   for (int i = 0; i < num_contacts; ++i) {
     const SapConstraint<T>& c = problem.get_constraint(i);
     {
-      const MatrixX<T>& Jic = c.first_clique_jacobian();
+      const JacobianBlock<T>& Jic = c.first_clique_jacobian();
       const auto impulse = contact_impulses.template segment<3>(3 * i);
-      AddCliqueContribution(context, c.first_clique(),
-                            Jic.transpose() * impulse, &tau_contact);
+      VectorX<T> generalized_impulse = VectorX<T>::Zero(Jic.cols());
+      Jic.TransposeMultiplyAndAddTo(impulse, &generalized_impulse);
+      AddCliqueContribution(context, c.first_clique(), generalized_impulse,
+                            &tau_contact);
     }
 
     if (c.num_cliques() == 2) {
-      const MatrixX<T>& Jic = c.second_clique_jacobian();
+      const JacobianBlock<T>& Jic = c.second_clique_jacobian();
       const auto impulse = contact_impulses.template segment<3>(3 * i);
-      AddCliqueContribution(context, c.second_clique(),
-                            Jic.transpose() * impulse, &tau_contact);
+      VectorX<T> generalized_impulse = VectorX<T>::Zero(Jic.cols());
+      Jic.TransposeMultiplyAndAddTo(impulse, &generalized_impulse);
+      AddCliqueContribution(context, c.second_clique(), generalized_impulse,
+                            &tau_contact);
     }
   }
   tau_contact /= time_step;

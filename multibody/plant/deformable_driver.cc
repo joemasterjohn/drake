@@ -309,8 +309,6 @@ void DeformableDriver<T>::AppendContactKinematics(
     const TreeIndex clique_index_A(tree_topology.num_trees() + index_A);
     const ContactParticipation& participation =
         deformable_contact.contact_participation(id_A);
-    Matrix3X<T> Jv_v_WAc_W =
-        Matrix3X<T>::Zero(3, participation.num_vertices_in_contact() * 3);
     const PartialPermutation& vertex_permutation =
         EvalVertexPermutation(context, id_A);
     /* For now, body B is guaranteed to be rigid. */
@@ -329,7 +327,8 @@ void DeformableDriver<T>::AppendContactKinematics(
           math::RotationMatrix<T>::MakeFromOneUnitVector(nhat_W, kZAxis);
       const math::RotationMatrix<T> R_CW = R_WC.transpose();
       /* Calculate the jacobian block for the body A. */
-      Jv_v_WAc_W.setZero();
+      Matrix3BlockMatrix<T> negative_Jv_v_WAc_C(
+          1, participation.num_vertices_in_contact());
       Vector4<int> participating_vertices =
           surface.contact_vertex_indexes_A()[i];
       const Vector4<T>& b = surface.barycentric_coordinates_A()[i];
@@ -340,11 +339,13 @@ void DeformableDriver<T>::AppendContactKinematics(
         /* v_WAc = (b₀ * v₀ + b₁ * v₁ + b₂ * v₂ + b₃ * v₃) where v₀, v₁, v₂,
          v₃ are the velocities of the vertices forming the tetrahedron
          containing the contact point and the b's are their corresponding
-         barycentric weights. */
-        Jv_v_WAc_W.template middleCols<3>(3 * participating_vertices(v)) =
-            b(v) * Matrix3<T>::Identity();
+         barycentric weights. So Jv_v_WAc_W is b(v) * Matrix3<T>::Identity().
+         Consequently Jv_v_WAc_C is b(v) * R_CW. */
+        negative_Jv_v_WAc_C.AddTriplet(0, participating_vertices(v),
+                                       -b(v) * R_CW.matrix());
       }
-      jacobian_blocks.emplace_back(clique_index_A, -R_CW.matrix() * Jv_v_WAc_W);
+      jacobian_blocks.emplace_back(
+          clique_index_A, JacobianBlock<T>(std::move(negative_Jv_v_WAc_C)));
 
       /* Calculate the jacobian block for the rigid body B if it's not static.
        */
@@ -361,7 +362,8 @@ void DeformableDriver<T>::AppendContactKinematics(
             R_CW.matrix() * Jv_v_WBc_W.middleCols(
                                 tree_topology.tree_velocities_start(tree_index),
                                 tree_topology.num_tree_velocities(tree_index));
-        jacobian_blocks.emplace_back(tree_index, std::move(J));
+        jacobian_blocks.emplace_back(tree_index,
+                                     JacobianBlock<T>(std::move(J)));
       }
       result->emplace_back(surface.signed_distances()[i],
                            std::move(jacobian_blocks), std::move(R_WC));

@@ -1,5 +1,7 @@
 #include "drake/multibody/contact_solvers/sap/sap_constraint_bundle.h"
 
+#include <utility>
+
 #include "drake/common/default_scalars.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
 
@@ -80,17 +82,12 @@ void SapConstraintBundle<T>::MakeConstraintBundleJacobian(
     const int c1 = cluster.cliques().second();
 
     // Allocate Jacobian blocks for this cluster of constraints.
-    MatrixX<T> J0, J1;
     const int num_rows = cluster.num_total_constraint_equations();
     const int nv0 = problem.num_velocities(c0);
-    J0.resize(num_rows, nv0);
-    if (c1 != c0) {  // If not a "loop" in the graph.
-      const int nv1 = problem.num_velocities(c1);
-      J1.resize(num_rows, nv1);
-    }
+    const int nv1 = problem.num_velocities(c1);
+    std::vector<JacobianBlock<T>> J0_blocks, J1_blocks;
 
     // Constraints are added in the order set by the graph.
-    int row_start = 0;
     for (int i : cluster.constraint_index()) {
       const SapConstraint<T>& c = problem.get_constraint(i);
       const int ni = c.num_constraint_equations();
@@ -100,22 +97,30 @@ void SapConstraintBundle<T>::MakeConstraintBundleJacobian(
       // Therefore below we must check to what clique in the original constraint
       // the group's cliques correspond to.
 
-      J0.middleRows(row_start, ni) = c0 == c.first_clique()
-                                         ? c.first_clique_jacobian()
-                                         : c.second_clique_jacobian();
+      J0_blocks.emplace_back(c0 == c.first_clique()
+                                 ? c.first_clique_jacobian()
+                                 : c.second_clique_jacobian());
+      DRAKE_DEMAND(ni == J0_blocks.back().rows());
+      DRAKE_DEMAND(ni == J0_blocks.back().rows());
       if (c1 != c0) {
-        J1.middleRows(row_start, ni) = c1 == c.first_clique()
-                                           ? c.first_clique_jacobian()
-                                           : c.second_clique_jacobian();
+        J1_blocks.emplace_back(c1 == c.first_clique()
+                                   ? c.first_clique_jacobian()
+                                   : c.second_clique_jacobian());
+        DRAKE_DEMAND(ni == J1_blocks.back().rows());
       }
-      row_start += ni;
     }
 
+    JacobianBlock<T> J0 = StackJacobianBlocks(J0_blocks);
+    DRAKE_DEMAND(J0.cols() == nv0);
+    DRAKE_DEMAND(J0.rows() == num_rows);
     const int participating_c0 = cliques_permutation.permuted_index(c0);
-    builder.PushBlock(block_row, participating_c0, J0);
+    builder.PushBlock(block_row, participating_c0, std::move(J0));
     if (c1 != c0) {
+      JacobianBlock<T> J1 = StackJacobianBlocks(J1_blocks);
+      DRAKE_DEMAND(J1.cols() == nv1);
+      DRAKE_DEMAND(J1.rows() == num_rows);
       const int participating_c1 = cliques_permutation.permuted_index(c1);
-      builder.PushBlock(block_row, participating_c1, J1);
+      builder.PushBlock(block_row, participating_c1, std::move(J1));
     }
   }
 
