@@ -84,7 +84,7 @@ class FemModelImpl : public FemModel<typename Element::T> {
     for (int e = 0; e < num_elements(); ++e) {
       /* residual = Ma-fₑ(x)-fᵥ(x, v)-fₑₓₜ. */
       /* The Ma-fₑ(x)-fᵥ(x, v) term. */
-      elements_[e].CalcInverseDynamics(element_data[e], &element_residual);
+      element_residual = element_data[e].inverse_dynamics_force;
       /* The -fₑₓₜ term. Currently the only type of external force is gravity.
        */
       elements_[e].AddScaledGravityForce(

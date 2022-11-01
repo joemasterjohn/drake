@@ -69,6 +69,12 @@ struct VolumetricElementData {
   /* The derivative of first Piola stress with respect to the deformation
    gradient evaluated at quadrature points. */
   std::array<Eigen::Matrix<T, 9, 9>, num_quadrature_points> dPdF;
+
+  T elastic_energy;
+  Eigen::Matrix<T, num_dofs, num_dofs> mass_matrix;
+  Eigen::Matrix<T, num_dofs, num_dofs> stiffness_matrix;
+  Eigen::Matrix<T, num_dofs, num_dofs> damping_matrix;
+  Vector<T, num_dofs> inverse_dynamics_force;
 };
 
 /* Forward declaration needed for defining the traits below. */
@@ -176,6 +182,13 @@ class VolumetricElement
   static constexpr int num_quadrature_points = Traits::num_quadrature_points;
   static constexpr int num_dofs = Traits::num_dofs;
   static constexpr int num_nodes = Traits::num_nodes;
+  using StressMatricesType =
+      std::array<Eigen::Matrix<T, kSpatialDimension, natural_dimension>,
+                 num_quadrature_points>;
+  using StressDerivativesType =
+      std::array<Eigen::Matrix<T, kSpatialDimension * natural_dimension,
+                               kSpatialDimension * natural_dimension>,
+                 num_quadrature_points>;
 
   /* Constructs a new VolumetricElement. In that process, precomputes the mass
    matrix and the gravity force acting on the element.
@@ -236,10 +249,10 @@ class VolumetricElement
 
   /* Calculates the elastic potential energy (in joules) stored in this element
    using the given `data`. */
-  T CalcElasticEnergy(const Data& data) const {
+  T CalcElasticEnergy(const std::array<T, num_quadrature_points>& Psi) const {
     T elastic_energy = 0;
     for (int q = 0; q < num_quadrature_points; ++q) {
-      elastic_energy += reference_volume_[q] * data.Psi[q];
+      elastic_energy += reference_volume_[q] * Psi[q];
     }
     return elastic_energy;
   }
@@ -259,6 +272,10 @@ class VolumetricElement
     }
   }
 
+  const Eigen::Matrix<T, num_dofs, num_dofs>& mass_matrix() const {
+    return mass_matrix_;
+  }
+
  private:
   /* Friend the base class so that FemElement::DoFoo() can reach its
    implementation. */
@@ -273,7 +290,7 @@ class VolumetricElement
                               negative elastic force.
    @param[in, out] neg_force  The negative force vector to be added to.
    @pre neg_force != nullptr. */
-  void AddNegativeElasticForce(const Data& data,
+  void AddNegativeElasticForce(const StressMatricesType& P,
                                EigenPtr<Vector<T, num_dofs>> neg_force) const {
     DRAKE_ASSERT(neg_force != nullptr);
     auto neg_force_matrix = Eigen::Map<Eigen::Matrix<T, 3, num_nodes>>(
@@ -284,7 +301,7 @@ class VolumetricElement
        Notice that Fᵢⱼ = xᵃᵢdSᵃ/dXⱼ, so dFᵢⱼ/dxᵇₖ = δᵃᵇδᵢₖdSᵃ/dXⱼ,
        and dΨ/dFᵢⱼ = Pᵢⱼ, so the integrand becomes
        PᵢⱼδᵃᵇδᵢₖdSᵃ/dXⱼ = PₖⱼdSᵇ/dXⱼ = P * dSdX.transpose() */
-      neg_force_matrix += reference_volume_[q] * data.P[q] * dSdX_transpose_[q];
+      neg_force_matrix += reference_volume_[q] * P[q] * dSdX_transpose_[q];
     }
   }
 
@@ -295,18 +312,15 @@ class VolumetricElement
                               negative damping force.
    @param[in, out] neg_force  The negative force vector to be added to.
    @pre neg_force != nullptr. */
-  void AddNegativeDampingForce(const Data& data,
-                               EigenPtr<Vector<T, num_dofs>> neg_force) const {
+  void AddNegativeDampingForce(
+      const Eigen::Matrix<T, num_dofs, num_dofs>& damping_matrix,
+      const Vector<T, num_dofs>& element_v,
+      EigenPtr<Vector<T, num_dofs>> neg_force) const {
     DRAKE_ASSERT(neg_force != nullptr);
-    Eigen::Matrix<T, num_dofs, num_dofs> damping_matrix =
-        Eigen::Matrix<T, num_dofs, num_dofs>::Zero();
-    // TODO(xuchenhan-tri): We should cache the dampign matrix to avoid
-    // repeatedly calculate the mass and the stiffness matrix.
-    this->AddScaledDampingMatrix(data, 1, &damping_matrix);
     /* Note that the damping force fᵥ = -D * v, where D is the damping matrix.
      As we are accumulating the negative damping force here, the `+=` sign
      should be used. */
-    *neg_force += damping_matrix * data.element_v;
+    *neg_force += damping_matrix * element_v;
   }
 
   /* The matrix calculated here is the same as the stiffness matrix
@@ -343,7 +357,7 @@ class VolumetricElement
    @param[in, out] K  The scaled force derivative matrix to be added to.
    @pre K != nullptr. */
   void AddScaledElasticForceDerivative(
-      const Data& data, const T& scale,
+      const StressDerivativesType& dPdF, const T& scale,
       EigenPtr<Eigen::Matrix<T, num_dofs, num_dofs>> K) const {
     DRAKE_ASSERT(K != nullptr);
     // clang-format off
@@ -370,7 +384,7 @@ class VolumetricElement
            gives the second derivative of energy, which is the opposite of the
            force derivative. */
           PerformDoubleTensorContraction<T>(
-              data.dPdF[q], dSdX_transpose_[q].col(a),
+              dPdF[q], dSdX_transpose_[q].col(a),
               dSdX_transpose_[q].col(b) * reference_volume_[q] * -scale, &K_ab);
           AccumulateMatrixBlock(K_ab, a, b, K);
         }
@@ -379,32 +393,37 @@ class VolumetricElement
   }
 
   /* Implements FemElement::CalcInverseDynamics(). */
-  void DoCalcInverseDynamics(const Data& data,
-                             EigenPtr<Vector<T, num_dofs>> residual) const {
+  void CalcInverseDynamics(
+      const Vector<T, num_dofs>& element_v,
+      const Vector<T, num_dofs>& element_a, const StressMatricesType& P,
+      const Eigen::Matrix<T, num_dofs, num_dofs>& damping_matrix,
+      EigenPtr<Vector<T, num_dofs>> residual) const {
     /* residual = Ma-fₑ(x)-fᵥ(x, v), where M is the mass matrix, fₑ(x) is
      the elastic force, and fᵥ(x, v) is the damping force. */
-    *residual += mass_matrix_ * data.element_a;
-    this->AddNegativeElasticForce(data, residual);
-    AddNegativeDampingForce(data, residual);
+    *residual = mass_matrix_ * element_a;
+    this->AddNegativeElasticForce(P, residual);
+    AddNegativeDampingForce(damping_matrix, element_v, residual);
   }
 
   /* Implements FemElement::DoAddScaledStiffnessMatrix().
    @warning This method calculates a first-order approximation of the stiffness
    matrix. In other words, the contribution of the term ∂fᵥ(x, v)/∂x is ignored
    as it involves complex second derivatives of the elastic force. */
-  void DoAddScaledStiffnessMatrix(
-      const Data& data, const T& scale,
+  void AddScaledStiffnessMatrix(
+      const StressDerivativesType& dPdF, const T& scale,
       EigenPtr<Eigen::Matrix<T, num_dofs, num_dofs>> K) const {
     /* Negate `scale` since stiffness matrix is the negative force derivative.
      */
-    this->AddScaledElasticForceDerivative(data, -scale, K);
+    this->AddScaledElasticForceDerivative(dPdF, -scale, K);
   }
 
-  /* Implements FemElement::DoAddScaledMassMatrix(). */
-  void DoAddScaledMassMatrix(
-      const Data&, const T& scale,
-      EigenPtr<Eigen::Matrix<T, num_dofs, num_dofs>> M) const {
-    *M += scale * mass_matrix_;
+  void CalcDampingMatrix(
+      const Eigen::Matrix<T, num_dofs, num_dofs>& mass_matrix,
+      const Eigen::Matrix<T, num_dofs, num_dofs>& stiffness_matrix,
+      Eigen::Matrix<T, num_dofs, num_dofs>* damping_matrix) const {
+    *damping_matrix =
+        this->damping_model().mass_coeff_alpha() * mass_matrix +
+        this->damping_model().stiffness_coeff_beta() * stiffness_matrix;
   }
 
   /* Implements FemElement::ComputeData(). */
@@ -421,6 +440,14 @@ class VolumetricElement
         data.deformation_gradient_data, &data.P);
     this->constitutive_model().CalcFirstPiolaStressDerivative(
         data.deformation_gradient_data, &data.dPdF);
+    data.elastic_energy = CalcElasticEnergy(data.Psi);
+    data.mass_matrix = mass_matrix_;
+    data.stiffness_matrix.setZero();
+    AddScaledStiffnessMatrix(data.dPdF, 1.0, &data.stiffness_matrix);
+    CalcDampingMatrix(data.mass_matrix, data.stiffness_matrix,
+                      &data.damping_matrix);
+    CalcInverseDynamics(data.element_v, data.element_a, data.P,
+                        data.damping_matrix, &data.inverse_dynamics_force);
     return data;
   }
 

@@ -23,6 +23,9 @@ struct DummyData {
   Vector<T, num_dofs> element_q;
   Vector<T, num_dofs> element_v;
   Vector<T, num_dofs> element_a;
+  Vector<T, num_dofs> inverse_dynamics_force;
+  Eigen::Matrix<T, num_dofs, num_dofs> mass_matrix;
+  Eigen::Matrix<T, num_dofs, num_dofs> stiffness_matrix;
 };
 
 /* The traits for the DummyElement. In this case, all of the traits are unique
@@ -57,32 +60,25 @@ class DummyElement final : public FemElement<DummyElement> {
       : Base(node_indices, std::move(constitutive_model),
              std::move(damping_model)) {}
 
-  /* Provides a fixed return value for CalcInverseDynamics(). */
   static Vector<T, kNumDofs> inverse_dynamics_force() {
     return Vector<T, kNumDofs>::Constant(1.23456);
   }
 
-  /* Creates an arbitrary SPD matrix. */
-  static Eigen::Matrix<T, kNumDofs, kNumDofs> MakeSpdMatrix() {
+  static Eigen::Matrix<T, kNumDofs, kNumDofs> stiffness_matrix() {
     Eigen::Matrix<T, kNumDofs, kNumDofs> A;
     for (int i = 0; i < kNumDofs; ++i) {
       for (int j = 0; j < kNumDofs; ++j) {
         A(i, j) = 2.7 * i + 3.1 * j;
       }
     }
-    // A + A^T is guaranteed PSD. Adding the identity matrix to it makes it SPD.
+    /* A + A^T is guaranteed PSD. Adding the identity matrix to it makes it SPD.
+     */
     return (A + A.transpose()) +
            Eigen::Matrix<T, kNumDofs, kNumDofs>::Identity();
   }
 
-  /* Provides a fixed return value for CalcStiffnessMatrix(). */
-  static Eigen::Matrix<T, kNumDofs, kNumDofs> stiffness_matrix() {
-    return 1.23 * MakeSpdMatrix();
-  }
-
-  /* Provides a fixed return value for CalcMassMatrix(). */
   static Eigen::Matrix<T, kNumDofs, kNumDofs> mass_matrix() {
-    return 7.89 * MakeSpdMatrix();
+    return 0.5 * stiffness_matrix();
   }
 
   /* Dummy element provides zero gravity force so that we have complete control
@@ -109,33 +105,10 @@ class DummyElement final : public FemElement<DummyElement> {
     data.element_q = this->ExtractElementDofs(q);
     data.element_v = this->ExtractElementDofs(v);
     data.element_a = this->ExtractElementDofs(a);
+    data.inverse_dynamics_force = inverse_dynamics_force();
+    data.mass_matrix = mass_matrix();
+    data.stiffness_matrix = stiffness_matrix();
     return data;
-  }
-
-  /* Implements FemElement::CalcInverseDynamics().
-   The inverse dynamics force is equal to a dummy nonzero value if the element
-   has zero velocity and zero acceleration. Otherwise the force is zero.*/
-  void DoCalcInverseDynamics(
-      const Data& data, EigenPtr<Vector<T, kNumDofs>> external_force) const {
-    if (data.element_v.norm() == 0.0 && data.element_a.norm() == 0.0) {
-      *external_force = this->inverse_dynamics_force();
-    } else {
-      external_force->setZero();
-    }
-  }
-
-  /* Implements FemElement::AddScaledStiffnessMatrix(). */
-  void DoAddScaledStiffnessMatrix(
-      const Data&, const T& scale,
-      EigenPtr<Eigen::Matrix<T, kNumDofs, kNumDofs>> K) const {
-    *K += scale * stiffness_matrix();
-  }
-
-  /* Implements FemElement::AddScaledMassMatrix(). */
-  void DoAddScaledMassMatrix(
-      const Data&, const T& scale,
-      EigenPtr<Eigen::Matrix<T, kNumDofs, kNumDofs>> M) const {
-    *M += scale * mass_matrix();
   }
 };
 
