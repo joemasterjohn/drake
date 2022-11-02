@@ -60,7 +60,6 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshSurfaceMeshPressureField(
     const VolumeMesh<T>* mesh_M,
     const TriangleSurfaceMesh<double>* surface_d,
     const T& hydroelastic_modulus);
-    
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

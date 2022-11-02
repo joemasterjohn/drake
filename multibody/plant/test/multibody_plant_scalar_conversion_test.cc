@@ -186,6 +186,10 @@ class DoubleOnlyDiscreteUpdateManager final
 
   void DoCalcDiscreteValues(const systems::Context<T>&,
                             systems::DiscreteValues<T>*) const final {}
+
+  void DoCalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>&,
+      internal::HydroelasticContactInfoAndBodySpatialForces<T>*) const final {}
 };
 
 // This test verifies that adding external components that do not support some

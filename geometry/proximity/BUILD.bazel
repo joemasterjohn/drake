@@ -512,11 +512,16 @@ drake_cc_library(
 
 drake_cc_library(
     name = "make_embedded_field",
+    srcs = ["make_embedded_field.cc"],
     hdrs = ["make_embedded_field.h"],
-    deps = [
+    interface_deps = [
         ":mesh_field",
+        "//geometry:shape_specification",
+    ],
+    deps = [
         ":calc_distance_to_surface_mesh",
         ":obj_to_surface_mesh",
+        "//common:default_scalars",
     ],
 )
 

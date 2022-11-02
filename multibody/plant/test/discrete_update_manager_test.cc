@@ -152,6 +152,11 @@ class DummyDiscreteUpdateManager final : public DiscreteUpdateManager<T> {
     }
   }
 
+  void DoCalcHydroelasticContactForcesDiscrete(
+      const systems::Context<T>& context,
+      HydroelasticContactInfoAndBodySpatialForces<T>*
+          contact_info_and_body_forces) const final {}
+
  private:
   systems::DiscreteStateIndex additional_state_index_;
   systems::CacheIndex cache_index_;
