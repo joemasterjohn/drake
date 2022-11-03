@@ -14,6 +14,7 @@ enum class MaterialModel {
   /** Corotational model. Recommended for modeling large deformations. More
    computationally expensive than the linear elasticity model. */
   kCorotated,
+  kLinearCorotated,
   /** Linear elasticity model. Recommended for modeling small deformations.
    Less computationally expensive than non-linear models but is inaccurate
    for large deformations. */
