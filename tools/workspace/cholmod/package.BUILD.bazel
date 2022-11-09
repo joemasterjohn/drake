@@ -1,0 +1,66 @@
+# -*- python -*-
+
+load(
+    "@drake//tools/install:install.bzl",
+    "install",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+# Headers in the private include directory (not for use by downstream code).
+_HDRS = glob([
+    "CHOLMOD/Include/*.h",
+    "SuiteSparse_config/*.h",
+    "AMD/Include/*.h",
+    "CAMD/Include/*.h",
+    "COLAMD/Include/*.h",
+    "CCOLAMD/Include/*.h",
+    "CHOLMOD/**/t_*.c",
+    "CHOLMOD/Core/t_*.c",
+    "metis-5.1.0/**/*.h",
+], allow_empty = False)
+
+_SRCS = glob([
+    "CHOLMOD/**/cholmod_*.c",
+    "AMD/Source/*.c",
+    "CAMD/Source/*.c",
+    "COLAMD/Source/*.c",
+    "CCOLAMD/Source/*.c",
+    "SuiteSparse_config/*.c",
+    "metis-5.1.0/**/*.c",
+], exclude = [
+    "CHOLMOD/Demo/*.c",
+    "CHOLMOD/MATLAB/*.c",
+    "CHOLMOD/Lib/*.c",
+    "CHOLMOD/Valgrind/*.c",
+    "CHOLMOD/Tcov/*.c",
+    "metis-5.1.0/programs/*.c",
+    "metis-5.1.0/**/test/*.c",
+    "metis-5.1.0/GKlib/conf/check_thread_storage.c",
+], allow_empty = False)
+
+cc_library(
+    name = "cholmod",
+    hdrs = _HDRS,
+    srcs = _SRCS,
+    copts = [
+        "-Wno-all",
+    ],
+    deps = [
+        "@blas",
+        "@lapack",
+        "@drake//tools/workspace/cholmod:stub",
+    ],
+    includes = [
+        "CHOLMOD/Include", 
+        "COLAMD/Include", 
+        "CCOLAMD/Include", 
+        "CAMD/Include", 
+        "AMD/Include", 
+        "SuiteSparse_config",
+        "metis-5.1.0/include",
+        "metis-5.1.0/libmetis",
+        "metis-5.1.0/GKlib",
+    ],
+    visibility = ["//visibility:public"],
+)

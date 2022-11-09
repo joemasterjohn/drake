@@ -70,6 +70,7 @@ load("@drake//tools/workspace/optitrack_driver:repository.bzl", "optitrack_drive
 load("@drake//tools/workspace/org_apache_xmlgraphics_commons:repository.bzl", "org_apache_xmlgraphics_commons_repository")  # noqa
 load("@drake//tools/workspace/osqp:repository.bzl", "osqp_repository")
 load("@drake//tools/workspace/petsc:repository.bzl", "petsc_repository")
+load("@drake//tools/workspace/cholmod:repository.bzl", "cholmod_repository")
 load("@drake//tools/workspace/picosat:repository.bzl", "picosat_repository")
 load("@drake//tools/workspace/picosha2:repository.bzl", "picosha2_repository")
 load("@drake//tools/workspace/platforms:repository.bzl", "platforms_repository")  # noqa
@@ -260,6 +261,8 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         osqp_repository(name = "osqp", mirrors = mirrors)
     if "petsc" not in excludes:
         petsc_repository(name = "petsc", mirrors = mirrors)
+    if "cholmod" not in excludes:
+        cholmod_repository(name = "cholmod", mirrors = mirrors)
     if "picosat" not in excludes:
         # N.B. This repository is deprecated for removal on 2023-02-01.
         # For details see https://github.com/RobotLocomotion/drake/pull/18156.

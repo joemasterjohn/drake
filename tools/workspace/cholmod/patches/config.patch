@@ -1,0 +1,10 @@
+--- CHOLMOD/Include/cholmod.h
++++ CHOLMOD/Include/cholmod.h
+@@ -84,6 +84,7 @@ extern "C" {
+ 
+ #include "cholmod_config.h"
+ 
++#include "cholmodconf.h"
+ 
+ /* CHOLMOD always includes the Core module. */
+ #include "cholmod_core.h"

@@ -1,0 +1,18 @@
+# -*- python -*-
+
+load("//tools/lint:lint.bzl", "add_lint_tests")
+
+cc_library(
+    name = "stub",
+    hdrs = [
+        "stub/cholmodconf.h",
+    ],
+    strip_include_prefix = "stub",
+    tags = [
+        # Only build this library when cholmod needs it, not as part of "...".
+        "manual",
+    ],
+    visibility = ["@cholmod//:__pkg__"],
+)
+
+add_lint_tests()
