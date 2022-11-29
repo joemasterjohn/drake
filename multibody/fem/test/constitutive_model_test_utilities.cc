@@ -118,8 +118,9 @@ void TestPIsDerivativeOfPsi() {
   typename Model::Traits::Data data;
   const std::array<Matrix3<AutoDiffXd>, num_locations> deformation_gradients =
       MakeDeformationGradients<num_locations>();
-      const auto F0 = F;
-  data.UpdateData(deformation_gradients, F0);
+  const auto F = deformation_gradients;
+  const auto F0 = F;
+  data.UpdateData(F, F0);
   std::array<AutoDiffXd, num_locations> energy;
   model.CalcElasticEnergyDensity(data, &energy);
   std::array<Matrix3<AutoDiffXd>, num_locations> P;
@@ -145,8 +146,9 @@ void TestdPdFIsDerivativeOfP() {
   typename Model::Traits::Data data;
   const std::array<Matrix3<AutoDiffXd>, num_locations> deformation_gradients =
       MakeDeformationGradients<num_locations>();
-      const auto F0 = F;
-  data.UpdateData(deformation_gradients, F0);
+  const auto F = deformation_gradients;
+  const auto F0 = deformation_gradients;
+  data.UpdateData(F, F0);
   std::array<Matrix3<AutoDiffXd>, num_locations> P;
   model.CalcFirstPiolaStress(data, &P);
   std::array<Eigen::Matrix<AutoDiffXd, 9, 9>, num_locations> dPdF;

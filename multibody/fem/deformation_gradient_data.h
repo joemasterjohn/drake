@@ -65,7 +65,9 @@ class DeformationGradientData<
   const std::array<Matrix3<T>, num_locations>& deformation_gradient() const {
     return deformation_gradient_;
   }
-  const std::array<Matrix3<T>, num_locations>& time_step_deformation_gradient() const {
+
+  const std::array<Matrix3<T>, num_locations>& time_step_deformation_gradient()
+      const {
     return time_step_deformation_gradient_;
   }
 

@@ -1,5 +1,6 @@
-#include "drake/common/autodiff.h"
 #include "drake/multibody/fem/linear_corotated_model_data.h"
+
+#include "drake/common/autodiff.h"
 #include "drake/multibody/fem/matrix_utilities.h"
 
 namespace drake {

@@ -477,12 +477,14 @@ TEST_F(DeformableDriverContactTest, CalcNextFemStateWithContact) {
      ‖A⋅(v−v*)−Jᵀγ‖ = ‖∇ℓ‖ < εₐ + εᵣ max(‖A⋅v‖,‖jc‖),
    where ‖x‖ = ‖D⋅x‖₂, where D = diag(A)^(-1/2). Usually, the relative tolerance
    condition is triggered, that is,
-     ‖A⋅(v−v*)−Jᵀγ‖ < εᵣ‖D⋅A⋅v‖₂. */
+     ‖A⋅(v−v*)−Jᵀγ‖ < εᵣ max(‖D⋅A⋅v‖₂,  ‖D⋅Jᵀγ‖₂). */
   const VectorXd D = A.diagonal().cwiseInverse().cwiseSqrt();
-  const double scale = (D.asDiagonal() * (A * v_next)).norm();
+  const double scale = std::max((D.asDiagonal() * (A * v_next)).norm(),
+                                (D.asDiagonal() * tau * kDt).norm());
   const double relative_tolerance = 1e-6;  // The default SAP tolerance.
+  /* We slightly enlarge the tolerance to allow for numerical errors. */
   EXPECT_TRUE(CompareMatrices(A * (v_next - v_star), tau * kDt,
-                              scale * relative_tolerance));
+                              2.0 * scale * relative_tolerance));
 }
 
 }  // namespace

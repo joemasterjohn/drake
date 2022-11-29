@@ -38,6 +38,7 @@ drake_cc_package_library(
         ":linear_constitutive_model",
         ":linear_constitutive_model_data",
         ":linear_corotated_model",
+        ":linear_corotated_model_data",
         ":linear_simplex_element",
         ":matrix_utilities",
         ":petsc_symmetric_block_sparse_matrix",
@@ -362,7 +363,6 @@ drake_cc_library(
         "//common:essential",
     ],
 )
-
 
 drake_cc_library(
     name = "linear_simplex_element",

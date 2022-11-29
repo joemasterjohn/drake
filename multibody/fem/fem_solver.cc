@@ -1,6 +1,7 @@
 #include "drake/multibody/fem/fem_solver.h"
 
 #include <algorithm>
+#include <iostream>
 
 #include "drake/common/text_logging.h"
 

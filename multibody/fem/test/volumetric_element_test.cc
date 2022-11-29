@@ -174,7 +174,7 @@ class VolumetricElementTest : public ::testing::Test {
   /* Calculates the DeformationGradientData for the only element evaluated with
    the given node positions. */
   DeformationGradientDataType CalcDeformationGradientData(
-      const VectorX<AD>& q, const VectorX<AD>* q0) const {
+      const VectorX<AD>& q, const VectorX<AD>& q0) const {
     const std::array<Matrix3<AD>, kNumQuads> F =
         element().CalcDeformationGradient(q);
     const std::array<Matrix3<AD>, kNumQuads> F0 =

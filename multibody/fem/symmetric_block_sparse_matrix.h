@@ -1,5 +1,7 @@
 #pragma once
 
+#include <set>
+#include <utility>
 #include <vector>
 
 #include <Eigen/Sparse>
@@ -122,6 +124,11 @@ class SymmetricBlockSparseMatrix {
   }
 
   int num_blocks() const { return num_blocks_; }
+
+  /* Calculates the adjacency graph corresponding to the sparsity pattern of
+   this matrix. Note that each vertex in the graph corresponds to a 3x3 diagonal
+   block instead of a single entry. */
+  std::vector<std::set<int>> CalcAdjacencyGraph() const;
 
  private:
   friend class BlockSparseCholeskySolver;

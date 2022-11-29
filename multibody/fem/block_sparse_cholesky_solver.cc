@@ -376,9 +376,23 @@ void BlockSparseCholeskySolver::FactorImpl(int block_cols_to_factorize) {
 void BlockSparseCholeskySolver::RightLookingSymmetricRank1Update(int j) {
   const std::vector<int>& blocks_in_col_j = L_.get_col_blocks(j);
   const int N = blocks_in_col_j.size();
-  /* We start from f1 = 1 here to skip the j,j entry. */
+  /* The following omp parallel for loop is equivalent to this easier to read
+   non-openmp compliant for loop. */
+  /*
+   // We start from f1 = 1 here to skip the j,j entry.
+   for (int f1 = 1; f1 < N; ++f1) {
+     const int col = blocks_in_col_j[f1];
+     const Matrix3<double>& B = L_.get_block_flat(f1, j);
+     for (int f2 = f1; f2 < N; ++f2) {
+       const int row = blocks_in_col_j[f2];
+       const Matrix3<double>& A = L_.get_block_flat(f2, j);
+       L_.SubtractProductFromBlock(row, col, A, B);
+     }
+   }
+  */
 #if defined(_OPENMP)
 #pragma omp parallel for num_threads(12)
+#endif
   for (int a = 0; a < N - 1; ++a) {
     const int f1 = a + 1;
     const int col = blocks_in_col_j[f1];
@@ -389,36 +403,27 @@ void BlockSparseCholeskySolver::RightLookingSymmetricRank1Update(int j) {
       L_.SubtractProductFromBlock(row, col, A, B);
     }
   }
-
-  //   std::vector<std::array<int, 2>> index_map;
-  //   index_map.reserve(N * N / 2);
-  //   for (int f1 = 1; f1 < N; ++f1) {
-  //     for (int f2 = f1; f2 < N; ++f2) {
-  //       index_map.push_back({f1, f2});
-  //     }
-  //   }
-  // #pragma omp parallel for num_threads(12)
-  //   for (int i = 0; i < static_cast<int>(index_map.size()); ++i) {
-  //     const int f1 = index_map[i][0];
-  //     const int f2 = index_map[i][1];
-  //     const int col = blocks_in_col_j[f1];
-  //     const int row = blocks_in_col_j[f2];
-  //     const Matrix3<double>& B = L_.get_block_flat(f1, j);
-  //     const Matrix3<double>& A = L_.get_block_flat(f2, j);
-  //     L_.SubtractProductFromBlock(row, col, A, B);
-  //   }
-
-#else
-  for (int f1 = 1; f1 < N; ++f1) {
-    const int col = blocks_in_col_j[f1];
-    const Matrix3<double>& B = L_.get_block_flat(f1, j);
-    for (int f2 = f1; f2 < N; ++f2) {
+  /*
+    std::vector<std::array<int, 2>> index_map;
+    index_map.reserve(N * N / 2);
+    for (int f1 = 1; f1 < N; ++f1) {
+      for (int f2 = f1; f2 < N; ++f2) {
+        index_map.push_back({f1, f2});
+      }
+    }
+  #if defined(_OPENMP)
+  #pragma omp parallel for num_threads(12)
+  #endif
+    for (int i = 0; i < static_cast<int>(index_map.size()); ++i) {
+      const int f1 = index_map[i][0];
+      const int f2 = index_map[i][1];
+      const int col = blocks_in_col_j[f1];
       const int row = blocks_in_col_j[f2];
+      const Matrix3<double>& B = L_.get_block_flat(f1, j);
       const Matrix3<double>& A = L_.get_block_flat(f2, j);
       L_.SubtractProductFromBlock(row, col, A, B);
     }
-  }
-#endif
+  */
 }
 
 }  // namespace internal

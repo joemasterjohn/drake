@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <utility>
 
 namespace drake {
 namespace multibody {
@@ -154,6 +153,17 @@ Eigen::SparseMatrix<T> SymmetricBlockSparseMatrix<T>::MakeEigenSparseMatrix()
   A.setFromTriplets(triplets.begin(), triplets.end());
   A.makeCompressed();
   return A;
+}
+
+template <typename T>
+std::vector<std::set<int>> SymmetricBlockSparseMatrix<T>::CalcAdjacencyGraph()
+    const {
+  std::vector<std::set<int>> result;
+  result.reserve(num_column_blocks_);
+  for (const std::vector<int>& neighbors : sparsity_pattern_) {
+    result.emplace_back(std::set<int>(neighbors.begin(), neighbors.end()));
+  }
+  return result;
 }
 
 template class SymmetricBlockSparseMatrix<double>;

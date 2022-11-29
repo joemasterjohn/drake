@@ -105,7 +105,11 @@ class DummyElement final : public FemElement<DummyElement> {
     data.element_q = this->ExtractElementDofs(q);
     data.element_v = this->ExtractElementDofs(v);
     data.element_a = this->ExtractElementDofs(a);
-    data.inverse_dynamics_force = inverse_dynamics_force();
+    if (data.element_v.norm() == 0.0 && data.element_a.norm() == 0.0) {
+      data.inverse_dynamics_force = inverse_dynamics_force();
+    } else {
+        data.inverse_dynamics_force.setZero();
+    }
     data.mass_matrix = mass_matrix();
     data.stiffness_matrix = stiffness_matrix();
     return data;

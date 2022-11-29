@@ -55,7 +55,8 @@ void FemState<T>::SetPositions(const Eigen::Ref<const VectorX<T>>& q) {
 
 template <typename T>
 void FemState<T>::SetTimeStepPositions(const Eigen::Ref<const VectorX<T>>& q0) {
-  get_mutable_context().SetDiscreteState(system_->fem_time_step_position_index(), q0);
+  get_mutable_context().SetDiscreteState(
+      system_->fem_time_step_position_index(), q0);
 }
 
 template <typename T>
