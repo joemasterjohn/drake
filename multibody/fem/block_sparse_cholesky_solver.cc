@@ -291,12 +291,23 @@ BlockSparseCholeskySolver::BlockSparseCholeskySolver(
 
 MatrixX<double> BlockSparseCholeskySolver::CalcSchurComplement(
     int num_eliminated_blocks) {
-  /* If the matrix has been factored the original matrix is already gone. */
+  DRAKE_DEMAND(!is_factored_);
   DRAKE_DEMAND(0 <= num_eliminated_blocks &&
                num_eliminated_blocks <= block_cols_);
-  // DRAKE_DEMAND(!is_factored_);
-  FactorImpl(num_eliminated_blocks);
+  FactorImpl(0, num_eliminated_blocks);
   return L_.MakeDenseBottomRightCorner(block_cols_ - num_eliminated_blocks);
+}
+
+MatrixX<double> BlockSparseCholeskySolver::CalcSchurComplementAndFactor(
+    int num_eliminated_blocks) {
+  DRAKE_DEMAND(!is_factored_);
+  DRAKE_DEMAND(0 <= num_eliminated_blocks &&
+               num_eliminated_blocks <= block_cols_);
+  FactorImpl(0, num_eliminated_blocks);
+  const MatrixX<double> result =
+      L_.MakeDenseBottomRightCorner(block_cols_ - num_eliminated_blocks);
+  FactorImpl(num_eliminated_blocks, block_cols_);
+  return result;
 }
 
 void BlockSparseCholeskySolver::SolveInPlace(VectorX<double>* y) const {
@@ -342,9 +353,9 @@ VectorX<double> BlockSparseCholeskySolver::Solve(
   return x;
 }
 
-void BlockSparseCholeskySolver::FactorImpl(int block_cols_to_factorize) {
-  // DRAKE_DEMAND(!is_factored_);
-  for (int j = 0; j < block_cols_to_factorize; ++j) {
+void BlockSparseCholeskySolver::FactorImpl(int starting_col_block,
+                                           int ending_col_block) {
+  for (int j = starting_col_block; j < ending_col_block; ++j) {
     /* Update diagonal. */
     const Matrix3<double>& Ajj = L_.get_diagonal_block(j);
     const auto llt = Eigen::LLT<Matrix3<double>>(Ajj);

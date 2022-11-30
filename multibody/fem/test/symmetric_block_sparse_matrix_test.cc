@@ -96,6 +96,22 @@ GTEST_TEST(SymmetricBlockSparseMatrixTest, SetZero) {
       CompareMatrices(A_blocks.MakeDenseMatrix(), MatrixXd::Zero(9, 9)));
 }
 
+GTEST_TEST(SymmetricBlockSparseMatrixTest, CalcAdjacencyGrpah) {
+  const SymmetricBlockSparseMatrix<double> A_blocks = MakeBlockSparseMatrix();
+  const std::vector<std::set<int>> adj = A_blocks.CalcAdjacencyGraph();
+  ASSERT_EQ(adj.size(), 3);
+
+  EXPECT_EQ(adj[0].size(), 1);
+  EXPECT_EQ(adj[0].count(0), 1);
+
+  EXPECT_EQ(adj[1].size(), 2);
+  EXPECT_EQ(adj[1].count(1), 1);
+  EXPECT_EQ(adj[1].count(2), 1);
+
+  EXPECT_EQ(adj[2].size(), 1);
+  EXPECT_EQ(adj[2].count(2), 1);
+}
+
 }  // namespace
 }  // namespace internal
 }  // namespace fem

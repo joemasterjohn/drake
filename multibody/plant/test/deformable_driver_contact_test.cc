@@ -19,8 +19,10 @@ using drake::multibody::contact_solvers::internal::ContactSolverResults;
 using drake::multibody::contact_solvers::internal::PartialPermutation;
 using drake::multibody::fem::FemModel;
 using drake::multibody::fem::FemState;
+using drake::multibody::fem::internal::FastSchurComplement;
 using drake::multibody::fem::internal::PetscSymmetricBlockSparseMatrix;
 using drake::multibody::fem::internal::SchurComplement;
+using drake::multibody::fem::internal::SymmetricBlockSparseMatrix;
 using drake::systems::Context;
 using drake::systems::DiscreteStateIndex;
 using Eigen::MatrixXd;
@@ -133,16 +135,30 @@ class DeformableDriverContactTest : public ::testing::Test {
     return driver_->EvalParticipatingVelocityMultiplexer(context);
   }
 
-  const PetscSymmetricBlockSparseMatrix& EvalFreeMotionTangentMatrix(
+  const PetscSymmetricBlockSparseMatrix& EvalPetscFreeMotionTangentMatrix(
       const systems::Context<double>& context,
       DeformableBodyIndex index) const {
-    return driver_->EvalFreeMotionTangentMatrix(context, index);
+    return driver_->EvalPetscFreeMotionTangentMatrix(context, index);
   }
 
   const SchurComplement<double>& EvalFreeMotionTangentMatrixSchurComplement(
       const systems::Context<double>& context,
       DeformableBodyIndex index) const {
     return driver_->EvalFreeMotionTangentMatrixSchurComplement(context, index);
+  }
+
+  const SymmetricBlockSparseMatrix<double>& EvalFreeMotionTangentMatrix(
+      const systems::Context<double>& context,
+      DeformableBodyIndex index) const {
+    return driver_->EvalFreeMotionTangentMatrix(context, index);
+  }
+
+  const FastSchurComplement<double>&
+  EvalFreeMotionTangentMatrixFastSchurComplement(
+      const systems::Context<double>& context,
+      DeformableBodyIndex index) const {
+    return driver_->EvalFreeMotionTangentMatrixFastSchurComplement(context,
+                                                                   index);
   }
 
   /* @} */
@@ -310,9 +326,14 @@ TEST_F(DeformableDriverContactTest, EvalFreeMotionTangentMatrix) {
   const MatrixXd expected_tangent_matrix =
       fem_tangent_matrix->MakeDenseMatrix() * plant_->time_step();
   const PetscSymmetricBlockSparseMatrix& calculated_tangent_matrix =
-      EvalFreeMotionTangentMatrix(plant_context, body_index);
+      EvalPetscFreeMotionTangentMatrix(plant_context, body_index);
   EXPECT_TRUE(CompareMatrices(expected_tangent_matrix,
                               calculated_tangent_matrix.MakeDenseMatrix(),
+                              1e-14, MatrixCompareType::relative));
+  const SymmetricBlockSparseMatrix<double>& calculated_tangent_matrix2 =
+      EvalFreeMotionTangentMatrix(plant_context, body_index);
+  EXPECT_TRUE(CompareMatrices(expected_tangent_matrix,
+                              calculated_tangent_matrix2.MakeDenseMatrix(),
                               1e-14, MatrixCompareType::relative));
 }
 
@@ -322,7 +343,7 @@ TEST_F(DeformableDriverContactTest,
   const Context<double>& plant_context =
       plant_->GetMyContextFromRoot(*context_);
   const PetscSymmetricBlockSparseMatrix& tangent_matrix =
-      EvalFreeMotionTangentMatrix(plant_context, body_index);
+      EvalPetscFreeMotionTangentMatrix(plant_context, body_index);
   const MatrixXd dense_tangent_matrix = tangent_matrix.MakeDenseMatrix();
   /* Schematically the participating block (A), the non-participating block (D),
    and the off-diagonal block (B) look like
@@ -371,6 +392,11 @@ TEST_F(DeformableDriverContactTest,
       EvalFreeMotionTangentMatrixSchurComplement(plant_context, body_index)
           .get_D_complement(),
       1e-10));
+  EXPECT_TRUE(CompareMatrices(
+      expected_complement_matrix,
+      EvalFreeMotionTangentMatrixFastSchurComplement(plant_context, body_index)
+          .get_D_complement(),
+      1e-10));
 }
 
 TEST_F(DeformableDriverContactTest, AppendLinearDynamicsMatrix) {
@@ -381,11 +407,11 @@ TEST_F(DeformableDriverContactTest, AppendLinearDynamicsMatrix) {
   ASSERT_EQ(A.size(), 2);
   DeformableBodyIndex body_index0(0);
   DeformableBodyIndex body_index1(1);
-  EXPECT_EQ(A[0], EvalFreeMotionTangentMatrixSchurComplement(plant_context,
-                                                             body_index0)
+  EXPECT_EQ(A[0], EvalFreeMotionTangentMatrixFastSchurComplement(plant_context,
+                                                                 body_index0)
                       .get_D_complement());
-  EXPECT_EQ(A[1], EvalFreeMotionTangentMatrixSchurComplement(plant_context,
-                                                             body_index1)
+  EXPECT_EQ(A[1], EvalFreeMotionTangentMatrixFastSchurComplement(plant_context,
+                                                                 body_index1)
                       .get_D_complement());
 }
 
@@ -448,7 +474,7 @@ TEST_F(DeformableDriverContactTest, CalcNextFemStateWithContact) {
 
   /* Build A. */
   const MatrixXd A =
-      EvalFreeMotionTangentMatrix(plant_context, DeformableBodyIndex(0))
+      EvalPetscFreeMotionTangentMatrix(plant_context, DeformableBodyIndex(0))
           .MakeDenseMatrix();
 
   /* Build tau. */

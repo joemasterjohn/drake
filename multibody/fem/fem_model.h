@@ -12,6 +12,7 @@
 #include "drake/multibody/fem/dirichlet_boundary_condition.h"
 #include "drake/multibody/fem/fem_state.h"
 #include "drake/multibody/fem/petsc_symmetric_block_sparse_matrix.h"
+#include "drake/multibody/fem/symmetric_block_sparse_matrix.h"
 
 namespace drake {
 namespace multibody {
@@ -167,6 +168,11 @@ class FemModel {
       const FemState<T>& fem_state, const Vector3<T>& weights,
       internal::PetscSymmetricBlockSparseMatrix* tangent_matrix) const;
 
+  /** Alternative signature that writes data to SymmetricBlockSparseMatrix. */
+  void CalcTangentMatrix(
+      const FemState<T>& fem_state, const Vector3<T>& weights,
+      internal::SymmetricBlockSparseMatrix<T>* tangent_matrix) const;
+
   /** Creates a PetscSymmetricBlockSparseMatrix that has the sparsity pattern
    of the tangent matrix of this FEM model. In particular, the size of the
    tangent matrix is `num_dofs()` by `num_dofs()`. All entries are initialized
@@ -174,6 +180,14 @@ class FemModel {
    @throws std::exception if T is not double. */
   std::unique_ptr<internal::PetscSymmetricBlockSparseMatrix>
   MakePetscSymmetricBlockSparseTangentMatrix() const;
+
+  /** Creates a SymmetricBlockSparseMatrix that has the sparsity pattern
+   of the tangent matrix of this FEM model. In particular, the size of the
+   tangent matrix is `num_dofs()` by `num_dofs()`. All entries are initialized
+   to zero.
+   @throws std::exception if T is not double. */
+  std::unique_ptr<internal::SymmetricBlockSparseMatrix<T>>
+  MakeSymmetricBlockSparseTangentMatrix() const;
 
   /** Sets the gravity vector for all elements in this model. */
   void set_gravity_vector(const Vector3<T>& gravity) { gravity_ = gravity; }
@@ -228,10 +242,19 @@ class FemModel {
       const FemState<T>& fem_state, const Vector3<T>& weights,
       internal::PetscSymmetricBlockSparseMatrix* tangent_matrix) const = 0;
 
+  virtual void DoCalcTangentMatrix(
+      const FemState<T>& fem_state, const Vector3<T>& weights,
+      internal::SymmetricBlockSparseMatrix<T>* tangent_matrix) const = 0;
+
   /** FemModelImpl must override this method to provide an implementation for
    the NVI MakePetscSymmetricBlockSparseTangentMatrix(). */
   virtual std::unique_ptr<internal::PetscSymmetricBlockSparseMatrix>
   DoMakePetscSymmetricBlockSparseTangentMatrix() const = 0;
+
+  /** FemModelImpl must override this method to provide an implementation for
+   the NVI MakeSymmetricBlockSparseTangentMatrix(). */
+  virtual std::unique_ptr<internal::SymmetricBlockSparseMatrix<T>>
+  DoMakeSymmetricBlockSparseTangentMatrix() const = 0;
 
   /** Updates the system that manages the states and the cache entries of this
    FEM model. Must be called before calling MakeFemState() after the FEM model

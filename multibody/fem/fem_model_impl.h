@@ -130,6 +130,48 @@ class FemModelImpl : public FemModel<typename Element::T> {
     }
   }
 
+  void DoCalcTangentMatrix(
+      const FemState<T>& fem_state, const Vector3<T>& weights,
+      SymmetricBlockSparseMatrix<T>* tangent_matrix) const final {
+    /* We already check for the scalar type in `CalcTangentMatrix()` but the `if
+     constexpr` here is still needed to make the compiler happy. */
+    if constexpr (std::is_same_v<T, double>) {
+      /* Clears the old data. */
+      tangent_matrix->SetZero();
+
+      const std::vector<Data>& element_data =
+          fem_state.template EvalElementData<Data>(element_data_index_);
+      /* Scratch space to store the contribution to the tangent matrix from each
+       element. */
+      Eigen::Matrix<T, Element::num_dofs, Element::num_dofs>
+          element_tangent_matrix;
+      for (int e = 0; e < num_elements(); ++e) {
+        elements_[e].CalcTangentMatrix(element_data[e], weights,
+                                       &element_tangent_matrix);
+        const std::array<FemNodeIndex, Element::num_nodes>&
+            element_node_indices = elements_[e].node_indices();
+        for (int a = 0; a < Element::num_nodes; ++a) {
+          for (int b = 0; b <= a; ++b) {
+            const int i = element_node_indices[a];
+            const int j = element_node_indices[b];
+            if (i >= j) {
+              tangent_matrix->AddToBlock(
+                  i, j,
+                  element_tangent_matrix.template block<3, 3>(3 * a, 3 * b));
+            } else {
+              tangent_matrix->AddToBlock(
+                  j, i,
+                  element_tangent_matrix.template block<3, 3>(3 * b, 3 * a));
+            }
+          }
+        }
+      }
+    } else {
+      unused(fem_state, weights, tangent_matrix);
+      DRAKE_UNREACHABLE();
+    }
+  }
+
   std::unique_ptr<PetscSymmetricBlockSparseMatrix>
   DoMakePetscSymmetricBlockSparseTangentMatrix() const final {
     /* We already check for the scalar type in `CalcTangentMatrix()` but the `if
@@ -183,6 +225,46 @@ class FemModelImpl : public FemModel<typename Element::T> {
         tangent_matrix->AddToBlock(block_indices, zero_matrix);
       }
       return tangent_matrix;
+    } else {
+      DRAKE_UNREACHABLE();
+    }
+  }
+
+  std::unique_ptr<SymmetricBlockSparseMatrix<T>>
+  DoMakeSymmetricBlockSparseTangentMatrix() const final {
+    /* We already check for the scalar type in `CalcTangentMatrix()` but the `if
+     constexpr` here is still needed to make the compiler happy. */
+    if constexpr (std::is_same_v<T, double>) {
+      std::vector<std::unordered_set<int>> neighbor_nodes(this->num_nodes());
+      /* Create a nonzero block for each pair of nodes that are connected by an
+       edge in the mesh. */
+      for (int e = 0; e < num_elements(); ++e) {
+        const std::array<FemNodeIndex, Element::num_nodes>&
+            element_node_indices = elements_[e].node_indices();
+        for (int a = 0; a < Element::num_nodes; ++a) {
+          for (int b = a; b < Element::num_nodes; ++b) {
+            /* SymmetricBlockSparseMatrix only needs to allocate for the
+             lower triangular part of the matrix. So instead of allocating for
+             both (element_node_indices[a], element_node_indices[b]) and
+             (element_node_indices[b], element_node_indices[a]) blocks, we only
+             allocate for one of them. See SymmetricBlockSparseMatrix. */
+            const int block_col =
+                std::min(element_node_indices[a], element_node_indices[b]);
+            const int block_row =
+                std::max(element_node_indices[a], element_node_indices[b]);
+            neighbor_nodes[block_col].insert(block_row);
+          }
+        }
+      }
+      std::vector<std::vector<int>> sparsity_pattern(this->num_nodes());
+      for (int j = 0; j < this->num_nodes(); ++j) {
+        for (const int i : neighbor_nodes[j]) {
+          sparsity_pattern[j].emplace_back(i);
+        }
+        std::sort(sparsity_pattern[j].begin(), sparsity_pattern[j].end());
+      }
+      return std::make_unique<SymmetricBlockSparseMatrix<T>>(
+          std::move(sparsity_pattern));
     } else {
       DRAKE_UNREACHABLE();
     }

@@ -54,6 +54,23 @@ void FemModel<T>::CalcTangentMatrix(
 }
 
 template <typename T>
+void FemModel<T>::CalcTangentMatrix(
+    const FemState<T>& fem_state, const Vector3<T>& weights,
+    internal::SymmetricBlockSparseMatrix<T>* tangent_matrix) const {
+  if constexpr (std::is_same_v<T, double>) {
+    DRAKE_DEMAND(tangent_matrix != nullptr);
+    DRAKE_DEMAND(tangent_matrix->rows() == num_dofs());
+    DRAKE_DEMAND(tangent_matrix->cols() == num_dofs());
+    ThrowIfModelStateIncompatible(__func__, fem_state);
+    DoCalcTangentMatrix(fem_state, weights, tangent_matrix);
+    // TODO(xuchenhan-tri): Apply boundary condition.
+  } else {
+    throw std::logic_error(
+        "FemModel::CalcTangentMatrix() only supports double at the moment.");
+  }
+}
+
+template <typename T>
 std::unique_ptr<internal::PetscSymmetricBlockSparseMatrix>
 FemModel<T>::MakePetscSymmetricBlockSparseTangentMatrix() const {
   if constexpr (std::is_same_v<T, double>) {
@@ -61,6 +78,18 @@ FemModel<T>::MakePetscSymmetricBlockSparseTangentMatrix() const {
   } else {
     throw std::logic_error(
         "FemModel::MakePetscSymmetricBlockSparseTangentMatrix() only supports "
+        "double at the moment.");
+  }
+}
+
+template <typename T>
+std::unique_ptr<internal::SymmetricBlockSparseMatrix<T>>
+FemModel<T>::MakeSymmetricBlockSparseTangentMatrix() const {
+  if constexpr (std::is_same_v<T, double>) {
+    return DoMakeSymmetricBlockSparseTangentMatrix();
+  } else {
+    throw std::logic_error(
+        "FemModel::MakeSymmetricBlockSparseTangentMatrix() only supports "
         "double at the moment.");
   }
 }

@@ -91,6 +91,16 @@ GTEST_TEST(FemModelTest, CalcTangentMatrix) {
   EXPECT_TRUE(CompareMatrices(tangent_matrix_dense, expected_tangent_matrix,
                               std::numeric_limits<double>::epsilon(),
                               MatrixCompareType::relative));
+
+  unique_ptr<internal::SymmetricBlockSparseMatrix<double>> tangent_matrix2 =
+      model.MakeSymmetricBlockSparseTangentMatrix();
+  ASSERT_EQ(tangent_matrix2->rows(), model.num_dofs());
+  ASSERT_EQ(tangent_matrix2->cols(), model.num_dofs());
+  model.CalcTangentMatrix(*fem_state, weights, tangent_matrix2.get());
+  const MatrixXd tangent_matrix2_dense = tangent_matrix2->MakeDenseMatrix();
+  EXPECT_TRUE(CompareMatrices(tangent_matrix2_dense, expected_tangent_matrix,
+                              std::numeric_limits<double>::epsilon(),
+                              MatrixCompareType::relative));
 }
 
 /* Verifies that performing calculations on incompatible model and states throws

@@ -61,13 +61,19 @@ class BlockSparseCholeskySolver {
   explicit BlockSparseCholeskySolver(
       std::vector<std::vector<int>> sparsity_pattern);
 
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(BlockSparseCholeskySolver);
+  DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(BlockSparseCholeskySolver);
 
   SymmetricBlockSparseMatrix<double>& GetMutableMatrix() { return L_; }
 
+  /* If the SchurComplement is S = A - BᵀD⁻¹B, `num_eliminated_blocks` is the
+   block columns in D. */
   MatrixX<double> CalcSchurComplement(int num_eliminated_blocks);
+  MatrixX<double> CalcSchurComplementAndFactor(int num_eliminated_blocks);
 
-  void Factor() { FactorImpl(block_cols_); }
+  void Factor() {
+    DRAKE_DEMAND(!is_factored_);
+    FactorImpl(0, block_cols_);
+  }
 
   int size() const { return block_cols_ * 3; }
 
@@ -76,7 +82,7 @@ class BlockSparseCholeskySolver {
   VectorX<double> Solve(const VectorX<double>& y) const;
 
  private:
-  void FactorImpl(int block_cols_to_factorize);
+  void FactorImpl(int starting_col_block, int ending_col_block);
 
   /* Performs L(j+1:, j+1:) -= L(j+1:,j) * L(j+1:,j).transpose().
    @pre 0 <= j < block_cols_. */
