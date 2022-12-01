@@ -155,7 +155,7 @@ class FemSolver {
   double absolute_tolerance_{1e-6};  // unit N.
   /* Max number of Newton-Raphson iterations the solver takes before it gives
    up. */
-  int kMaxIterations_{100};
+  int kMaxIterations_{1};
 };
 
 }  // namespace internal
