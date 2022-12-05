@@ -281,7 +281,6 @@ class DeformableDriverTest {
 };
 
 namespace {
-
 /* Verify that jacobian columns corresponding to dofs under zero dirichlet
  boundary conditions are zeroed out. */
 GTEST_TEST(DeformableDriverContactKinematicsWithBcTest,
