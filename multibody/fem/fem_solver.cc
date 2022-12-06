@@ -110,9 +110,9 @@ int FemSolver<T>::SolveWithInitialGuess(
         linear_solve_tolerance(residual_norm, initial_residual_norm));
     const auto linear_solve_status =
         tangent_matrix.Solve(internal::PetscSymmetricBlockSparseMatrix::
-                                 SolverType::kConjugateGradient,
+                                 SolverType::kDirect,
                              internal::PetscSymmetricBlockSparseMatrix::
-                                 PreconditionerType::kIncompleteCholesky,
+                                 PreconditionerType::kCholesky,
                              -b, &dz);
     if (linear_solve_status == PetscSolverStatus::kFailure) {
       drake::log()->warn(
