@@ -45,12 +45,13 @@ class CompliantContactManagerTester {
 };
 
 /* This fixture tests DeformableDriver member functions associated with the
- concept of contact. In particular, it sets up two identical and overlapping
- deformable octahedron bodies centered at world origin, each with 8 elements,
- 7 vertices, and 21 dofs. A rigid rectangle is added so that its top face
- intersects the bottom half of each deformable octahedron. As a result, each
- deformable body has 6 participating vertices (all vertices except the top
- vertex) and 18 participating dofs. */
+ concept of contact. In particular, it sets up two identical deformable
+ octahedron bodies, one centered at world origin and the other shifted by (5, 0,
+ 0) in the world frame. Each octahedron has 8 elements, 7 vertices, and 21 dofs.
+ A rigid rectangle is added so that its top face intersects the bottom half of
+ each deformable octahedron. As a result, each deformable body has 6
+ participating vertices (all vertices except the top vertex) and 18
+ participating dofs. */
 class DeformableDriverContactTest : public ::testing::Test {
  protected:
   static constexpr double kDt = 0.001;
@@ -64,7 +65,8 @@ class DeformableDriverContactTest : public ::testing::Test {
     body_id0_ =
         RegisterDeformableOctahedron(deformable_model.get(), "deformable0");
     body_id1_ =
-        RegisterDeformableOctahedron(deformable_model.get(), "deformable1");
+        RegisterDeformableOctahedron(deformable_model.get(), "deformable1",
+                                     RigidTransformd(Eigen::Vector3d(5, 0, 0)));
     model_ = deformable_model.get();
     plant_->AddPhysicalModel(move(deformable_model));
     plant_->set_discrete_contact_solver(DiscreteContactSolver::kSap);
@@ -80,7 +82,7 @@ class DeformableDriverContactTest : public ::testing::Test {
                                geometry::internal::kRezHint, 1.0);
     RigidTransformd X_WG(Vector3<double>(0, 0, -0.75));
     rigid_geometry_id_ = plant_->RegisterCollisionGeometry(
-        plant_->world_body(), X_WG, geometry::Box(10, 10, 1),
+        plant_->world_body(), X_WG, geometry::Box(20, 20, 1),
         "rigid_collision_geometry", proximity_prop);
     plant_->Finalize();
 
@@ -195,10 +197,11 @@ class DeformableDriverContactTest : public ::testing::Test {
   GeometryId rigid_geometry_id_;
 
  private:
-  DeformableBodyId RegisterDeformableOctahedron(DeformableModel<double>* model,
-                                                std::string name) {
+  DeformableBodyId RegisterDeformableOctahedron(
+      DeformableModel<double>* model, std::string name,
+      RigidTransformd X_WF = RigidTransformd::Identity()) {
     auto geometry = make_unique<GeometryInstance>(
-        RigidTransformd(), make_unique<Sphere>(1.0), move(name));
+        X_WF, make_unique<Sphere>(1.0), move(name));
     geometry::ProximityProperties props;
     geometry::AddContactMaterial({}, kPointContactStiffness,
                                  CoulombFriction<double>(1.0, 1.0), &props);

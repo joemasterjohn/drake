@@ -1,13 +1,4 @@
-/**
- bazel run --config=omp --copt=-march=native deformable_sphere
-
- finishes in about 105 seconds on puget with 12 threads. Corresponding IPC
- example takes 339 seconds with a few caveats:
-  1. No damping is applied in IPC.
-  2. The energy model used in IPC is Neohookean. Both simulation can run fixed
-     corotated but Drake simulation results in non-SPD matrix at dt = 0.01s.
-*/
-
+#include <iostream>
 #include <memory>
 
 #include <gflags/gflags.h>
@@ -45,6 +36,7 @@ using drake::geometry::Mesh;
 using drake::geometry::ProximityProperties;
 using drake::geometry::Sphere;
 using drake::math::RigidTransformd;
+using drake::math::RollPitchYawd;
 using drake::multibody::AddMultibodyPlant;
 using drake::multibody::Body;
 using drake::multibody::CoulombFriction;
@@ -54,7 +46,9 @@ using drake::multibody::MultibodyPlantConfig;
 using drake::multibody::Parser;
 using drake::multibody::fem::DeformableBodyConfig;
 using drake::systems::Context;
+using drake::systems::DiscreteStateIndex;
 using Eigen::Vector2d;
+using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 
@@ -63,6 +57,22 @@ namespace examples {
 namespace multibody {
 namespace deformable_box {
 namespace {
+
+void SetVelocity(DeformableBodyId id, const DeformableModel<double>& model,
+                 Context<double>* plant_context, const Vector3d& v_WB) {
+  const DiscreteStateIndex state_index = model.GetDiscreteStateIndex(id);
+  VectorXd state = plant_context->get_discrete_state(state_index).value();
+  DRAKE_DEMAND(state.size() % 3 == 0);  // q, v, a all the same length.
+  const int num_dofs = state.size() / 3;
+  DRAKE_DEMAND(num_dofs % 3 == 0);  // Each vertex needs a 3-vector.
+  const int num_vertices = num_dofs / 3;
+  VectorXd velocities(num_dofs);
+  for (int i = 0; i < num_vertices; ++i) {
+    velocities.segment<3>(3 * i) = v_WB;
+  }
+  state.segment(num_dofs, num_dofs) = velocities;
+  plant_context->SetDiscreteState(state_index, state);
+}
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -74,29 +84,7 @@ int do_main() {
 
   auto [plant, scene_graph] = AddMultibodyPlant(plant_config, &builder);
 
-  /* Minimum required proximity properties for rigid bodies to interact with
-   deformable bodies.
-   1. A valid Coulomb friction coefficient, and
-   2. A resolution hint. (Rigid bodies need to be tesselated so that collision
-   queries can be performed against deformable geometries.) */
-  ProximityProperties rigid_proximity_props;
-  /* Set the friction coefficient close to that of rubber against rubber. */
-  const CoulombFriction<double> surface_friction(1.0, 1.0);
-  AddContactMaterial({}, {}, surface_friction, &rigid_proximity_props);
-  rigid_proximity_props.AddProperty(geometry::internal::kHydroGroup,
-                                    geometry::internal::kRezHint, 1.0);
-  /* Set up a ground. */
-  Box ground{4, 4, 4};
-  const RigidTransformd X_WG(Eigen::Vector3d{0, 0, -2.0});
-  plant.RegisterCollisionGeometry(plant.world_body(), X_WG, ground,
-                                  "ground_collision", rigid_proximity_props);
-  IllustrationProperties illustration_props;
-  illustration_props.AddProperty("phong", "diffuse",
-                                 Vector4d(0.7, 0.5, 0.4, 0.8));
-  plant.RegisterVisualGeometry(plant.world_body(), X_WG, ground,
-                               "ground_visual", std::move(illustration_props));
-
-  /* Set up a deformable sphere. */
+  /* Set up deformable boxes. */
   auto owned_deformable_model =
       std::make_unique<DeformableModel<double>>(&plant);
 
@@ -106,24 +94,26 @@ int do_main() {
   deformable_config.set_mass_density(FLAGS_density);
   deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
 
-  const std::string sphere_vtk = FindResourceOrThrow(
-      "drake/examples/multibody/deformable_sphere/torus.vtk");
-  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(0.1));
-  const RigidTransformd X_WB(Vector3<double>(0.0, 0.0, 0.1));
-  auto sphere_instance = std::make_unique<GeometryInstance>(
-      X_WB, std::move(sphere_mesh), "deformable_sphere");
+  const std::string box_vtk =
+      FindResourceOrThrow("drake/examples/multibody/deformable_boxes/box.vtk");
+  auto box_mesh = std::make_unique<Mesh>(box_vtk, 1.0);
+  const RigidTransformd X_WB(Vector3<double>(0.0, 0.0, 0.0));
+  auto box_instance =
+      std::make_unique<GeometryInstance>(X_WB, std::move(box_mesh), "box 0");
 
-  auto sphere_mesh2 = std::make_unique<Sphere>(geometry::Sphere(0.1));
-  const RigidTransformd X_WB2(Vector3<double>(0.0, 0.0, 0.3));
-  auto sphere_instance2 = std::make_unique<GeometryInstance>(
-      X_WB2, std::move(sphere_mesh2), "deformable_sphere2");
+  auto box_mesh1 = std::make_unique<Mesh>(box_vtk, 1.0);
+  const RigidTransformd X_WB1(RollPitchYawd(0, 0, 0.0),
+                              Vector3<double>(-1.5, 0.0, 0.0));
+  auto box_instance1 =
+      std::make_unique<GeometryInstance>(X_WB1, std::move(box_mesh1), "box 1");
 
   /* Minimumly required proximity properties for deformable bodies: A valid
    Coulomb friction coefficient. */
   ProximityProperties deformable_proximity_props;
+  const CoulombFriction<double> surface_friction(0.0, 0.0);
   AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
-  sphere_instance->set_proximity_properties(deformable_proximity_props);
-  sphere_instance2->set_proximity_properties(deformable_proximity_props);
+  box_instance->set_proximity_properties(deformable_proximity_props);
+  box_instance1->set_proximity_properties(deformable_proximity_props);
 
   /* Registration of all deformable geometries ostensibly requires a resolution
    hint parameter that dictates how the shape is tesselated. In the case of a
@@ -131,15 +121,15 @@ int do_main() {
    tessellated. */
   // TODO(xuchenhan-tri): Though unused, we still asserts the resolution hint is
   // positive. Remove the requirement of a resolution hint for meshed shapes.
-  owned_deformable_model->RegisterDeformableBody(std::move(sphere_instance),
-                                                 deformable_config, FLAGS_resolution_hint);
-  owned_deformable_model->RegisterDeformableBody(std::move(sphere_instance2),
-                                                 deformable_config, FLAGS_resolution_hint);
+  const auto id0 = owned_deformable_model->RegisterDeformableBody(
+      std::move(box_instance), deformable_config, FLAGS_resolution_hint);
+  const auto id1 = owned_deformable_model->RegisterDeformableBody(
+      std::move(box_instance1), deformable_config, FLAGS_resolution_hint);
   const DeformableModel<double>* deformable_model =
       owned_deformable_model.get();
   plant.AddPhysicalModel(std::move(owned_deformable_model));
 
-  /* All rigid and deformable models have been added. Finalize the plant. */
+  /* All deformable models have been added. Finalize the plant. */
   plant.Finalize();
 
   /* It's essential to connect the vertex position port in DeformableModel to
@@ -155,6 +145,10 @@ int do_main() {
   auto diagram = builder.Build();
   std::unique_ptr<Context<double>> diagram_context =
       diagram->CreateDefaultContext();
+  Context<double>& plant_context =
+      plant.GetMyMutableContextFromRoot(diagram_context.get());
+  SetVelocity(id0, *deformable_model, &plant_context, Vector3d(-0.1, 0, 0));
+  SetVelocity(id1, *deformable_model, &plant_context, Vector3d(0.1, 0, 0));
 
   /* Build the simulator and run! */
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));

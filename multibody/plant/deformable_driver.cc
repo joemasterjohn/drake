@@ -1,5 +1,6 @@
 #include "drake/multibody/plant/deformable_driver.h"
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,6 +21,7 @@ using drake::multibody::contact_solvers::internal::ContactSolverResults;
 using drake::multibody::contact_solvers::internal::PartialPermutation;
 using drake::multibody::fem::FemModel;
 using drake::multibody::fem::FemState;
+using drake::multibody::fem::internal::DirichletBoundaryCondition;
 using drake::multibody::fem::internal::FastSchurComplement;
 using drake::multibody::fem::internal::FemSolver;
 using drake::multibody::fem::internal::FemSolverScratchData;
@@ -285,24 +287,28 @@ void DeformableDriver<T>::AppendDiscreteContactPairs(
     const double default_contact_stiffness = 1.0e12;
     const T k = GetCombinedPointContactStiffness(
         surface.id_A(), surface.id_B(), default_contact_stiffness, inspector);
-    // TODO(xuchenhan-tri): Currently, body_B is guaranteed to be
-    // non-deformable. When we support deformable vs. deformable contact, we
-    // need to update this logic for retrieving body names.
-    DRAKE_DEMAND(manager_->geometry_id_to_body_index().count(surface.id_B()) >
-                 0);
+    std::string body_B_name;
+    if (surface.is_B_deformable()) {
+      body_B_name =
+          fmt::format("deformable body with geometry id {}", surface.id_B());
+    } else {
+      DRAKE_DEMAND(manager_->geometry_id_to_body_index().count(surface.id_B()) >
+                   0);
+      const BodyIndex body_B_index =
+          manager_->geometry_id_to_body_index().at(surface.id_B());
+      const Body<T>& body_B = manager_->plant().get_body(body_B_index);
+      body_B_name = body_B.name();
+    }
     // TODO(xuchenhan-tri): Currently deformable bodies don't have names. When
     // they do get names upon registration (in DeformableModel), update its body
     // name here.
     const std::string body_A_name(
         fmt::format("deformable body with geometry id {}", surface.id_A()));
-    const BodyIndex body_B_index =
-        manager_->geometry_id_to_body_index().at(surface.id_B());
-    const Body<T>& body_B = manager_->plant().get_body(body_B_index);
     /* We use dt as the default dissipation constant so that the contact is in
      near-rigid regime and the compliance is only used as stabilization. */
     const T tau = GetCombinedDissipationTimeConstant(
         surface.id_A(), surface.id_B(), manager_->plant().time_step(),
-        body_A_name, body_B.name(), inspector);
+        body_A_name, body_B_name, inspector);
     const double mu = GetCombinedDynamicCoulombFriction(
         surface.id_A(), surface.id_B(), inspector);
 
@@ -323,91 +329,266 @@ void DeformableDriver<T>::AppendContactKinematics(
     const systems::Context<T>& context,
     std::vector<ContactPairKinematics<T>>* result) const {
   DRAKE_DEMAND(result != nullptr);
-  /* Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian will be:
-     Jv_v_AcBc_W = Jv_v_WBc_W - Jv_v_WAc_W.
-   That is the relative velocity at C is v_AcBc_W = Jv_v_AcBc_W * v.
-   Finally Jv_v_AcBc_C = R_WC.transpose() * Jv_v_AcBc_W.
-   Currently, only deformable vs rigid contact is supported. Deformable
-   body is body A and rigid body is body B. Moreover, the set of dofs for
-   deformable bodies and rigid bodies are mutually exclusive, and
-   Jv_v_WAc_W = 0 for rigid dofs and Jv_v_WBc_W = 0 for deformable dofs. As a
-   result, we know the size of Jv_v_WBc_W up front. */
-  const int nv = manager_->plant().num_velocities();
-  Matrix3X<T> Jv_v_WBc_W(3, nv);
-  const MultibodyTreeTopology& tree_topology =
-      manager_->internal_tree().get_topology();
   const DeformableContact<T>& deformable_contact =
       EvalDeformableContact(context);
   const std::vector<DeformableContactSurface<T>>& contact_surfaces =
       deformable_contact.contact_surfaces();
   for (const auto& surface : contact_surfaces) {
-    const GeometryId id_A = surface.id_A();
-    const GeometryId id_B = surface.id_B();
-    /* Body A is guaranteed to be deformable. */
-    const DeformableBodyIndex index_A =
-        deformable_model_->GetBodyIndex(deformable_model_->GetBodyId(id_A));
-    const TreeIndex clique_index_A(tree_topology.num_trees() + index_A);
-    const ContactParticipation& participation =
-        deformable_contact.contact_participation(id_A);
-    const PartialPermutation& vertex_permutation =
-        EvalVertexPermutation(context, id_A);
-    /* For now, body B is guaranteed to be rigid. */
-    DRAKE_DEMAND(!surface.is_B_deformable());
+    if (surface.is_B_deformable()) {
+      AppendDeformableDeformableContactKinematics(context, surface, result);
+    } else {
+      AppendDeformableRigidContactKinematics(context, surface, result);
+    }
+  }
+}
 
-    for (int i = 0; i < surface.num_contact_points(); ++i) {
-      /* We have at most two blocks per contact. */
-      std::vector<typename ContactPairKinematics<T>::JacobianTreeBlock>
-          jacobian_blocks;
-      jacobian_blocks.reserve(2);
-      /* Contact solver assumes the normal points from A to B whereas the
-       surface's normal points from B to A. */
-      const Vector3<T>& nhat_W = -surface.nhats_W()[i];
-      constexpr int kZAxis = 2;
-      math::RotationMatrix<T> R_WC =
-          math::RotationMatrix<T>::MakeFromOneUnitVector(nhat_W, kZAxis);
-      const math::RotationMatrix<T> R_CW = R_WC.transpose();
-      /* Calculate the jacobian block for the body A. */
-      Matrix3BlockMatrix<T> negative_Jv_v_WAc_C(
-          1, participation.num_vertices_in_contact());
-      Vector4<int> participating_vertices =
-          surface.contact_vertex_indexes_A()[i];
-      const Vector4<T>& b = surface.barycentric_coordinates_A()[i];
-      for (int v = 0; v < 4; ++v) {
-        /* Map indexes to the permuted domain. */
-        participating_vertices(v) =
-            vertex_permutation.permuted_index(participating_vertices(v));
+template <typename T>
+void DeformableDriver<T>::AppendDeformableDeformableContactKinematics(
+    const systems::Context<T>& context,
+    const DeformableContactSurface<T>& surface,
+    std::vector<ContactPairKinematics<T>>* result) const {
+  /* Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian will be:
+     Jv_v_AcBc_W = Jv_v_WBc_W - Jv_v_WAc_W.
+   That is the relative velocity at C is v_AcBc_W = Jv_v_AcBc_W * v.
+   Finally Jv_v_AcBc_C = R_WC.transpose() * Jv_v_AcBc_W. */
+  const DeformableContact<T>& deformable_contact =
+      EvalDeformableContact(context);
+  const MultibodyTreeTopology& tree_topology =
+      manager_->internal_tree().get_topology();
+  const GeometryId id_A = surface.id_A();
+  const GeometryId id_B = surface.id_B();
+
+  /* Get information about A. */
+  const DeformableBodyIndex index_A =
+      deformable_model_->GetBodyIndex(deformable_model_->GetBodyId(id_A));
+  const TreeIndex clique_index_A(tree_topology.num_trees() + index_A);
+  const ContactParticipation& participation_A =
+      deformable_contact.contact_participation(id_A);
+  const PartialPermutation& vertex_permutation_A =
+      EvalVertexPermutation(context, id_A);
+  /* Retrieve the boundary condition information of body A to determine
+   which columns for the jacobian need to be zero out later. */
+  const DeformableBodyId body_id_A = deformable_model_->GetBodyId(id_A);
+  const FemModel<T>& fem_model_A = deformable_model_->GetFemModel(body_id_A);
+  const DirichletBoundaryCondition<T>& bc_A =
+      fem_model_A.dirichlet_boundary_condition();
+  /* The number of boundary conditions added to each vertex. */
+  std::vector<int> num_bcs_A(fem_model_A.num_nodes(), 0);
+  for (const auto& it : bc_A.index_to_boundary_state()) {
+    /* Note that we currently only allow zero boundary conditions. */
+    DRAKE_DEMAND(it.second.y() == 0);
+    DRAKE_DEMAND(it.second.z() == 0);
+    const int dof_index = it.first;
+    const int vertex_index = dof_index / 3;
+    ++num_bcs_A[vertex_index];
+  }
+  /* Note that we currently do not allow partial boundary condition; i.e.,
+   if any dof of a vertex is under bc, then all three dofs associated with the
+   vertex are under bc. */
+  for (int n : num_bcs_A) {
+    DRAKE_ASSERT(n % 3 == 0);
+  }
+
+  /* Get information about B. */
+  const DeformableBodyIndex index_B =
+      deformable_model_->GetBodyIndex(deformable_model_->GetBodyId(id_B));
+  const TreeIndex clique_index_B(tree_topology.num_trees() + index_B);
+  const ContactParticipation& participation_B =
+      deformable_contact.contact_participation(id_B);
+  const PartialPermutation& vertex_permutation_B =
+      EvalVertexPermutation(context, id_B);
+  /* Retrieve the boundary condition information of body B to determine
+   which columns for the jacobian need to be zero out later. */
+  const DeformableBodyId body_id_B = deformable_model_->GetBodyId(id_B);
+  const FemModel<T>& fem_model_B = deformable_model_->GetFemModel(body_id_B);
+  const DirichletBoundaryCondition<T>& bc_B =
+      fem_model_B.dirichlet_boundary_condition();
+  /* The number of boundary conditions added to each vertex. */
+  std::vector<int> num_bcs_B(fem_model_B.num_nodes(), 0);
+  for (const auto& it : bc_B.index_to_boundary_state()) {
+    /* Note that we currently only allow zero boundary conditions. */
+    DRAKE_DEMAND(it.second.y() == 0);
+    DRAKE_DEMAND(it.second.z() == 0);
+    const int dof_index = it.first;
+    const int vertex_index = dof_index / 3;
+    ++num_bcs_B[vertex_index];
+  }
+  /* Note that we currently do not allow partial boundary condition; i.e.,
+   if any dof of a vertex is under bc, then all three dofs associated with the
+   vertex are under bc. */
+  for (int n : num_bcs_B) {
+    DRAKE_ASSERT(n % 3 == 0);
+  }
+
+  for (int i = 0; i < surface.num_contact_points(); ++i) {
+    /* We have at most two blocks per contact. */
+    std::vector<typename ContactPairKinematics<T>::JacobianTreeBlock>
+        jacobian_blocks;
+    jacobian_blocks.reserve(2);
+    const Vector3<T>& nhat_W = -surface.nhats_W()[i];
+    constexpr int kZAxis = 2;
+    math::RotationMatrix<T> R_WC =
+        math::RotationMatrix<T>::MakeFromOneUnitVector(nhat_W, kZAxis);
+    const math::RotationMatrix<T> R_CW = R_WC.transpose();
+    /* Calculate the jacobian block for the body A. */
+    Matrix3BlockMatrix<T> negative_Jv_v_WAc_C(
+        1, participation_A.num_vertices_in_contact());
+    Vector4<int> participating_vertices = surface.contact_vertex_indexes_A()[i];
+    Vector4<T> b = surface.barycentric_coordinates_A()[i];
+    for (int v = 0; v < 4; ++v) {
+      const bool vertex_under_bc = num_bcs_A[participating_vertices(v)] > 0;
+      /* Map indexes to the permuted domain. */
+      participating_vertices(v) =
+          vertex_permutation_A.permuted_index(participating_vertices(v));
+      if (!vertex_under_bc) {
         /* v_WAc = (b₀ * v₀ + b₁ * v₁ + b₂ * v₂ + b₃ * v₃) where v₀, v₁, v₂,
          v₃ are the velocities of the vertices forming the tetrahedron
          containing the contact point and the b's are their corresponding
-         barycentric weights. So Jv_v_WAc_W is b(v) * Matrix3<T>::Identity().
-         Consequently Jv_v_WAc_C is b(v) * R_CW. */
+         barycentric weights. */
         negative_Jv_v_WAc_C.AddTriplet(0, participating_vertices(v),
                                        -b(v) * R_CW.matrix());
       }
-      jacobian_blocks.emplace_back(
-          clique_index_A, JacobianBlock<T>(std::move(negative_Jv_v_WAc_C)));
-
-      /* Calculate the jacobian block for the rigid body B if it's not static.
-       */
-      const BodyIndex index_B = manager_->geometry_id_to_body_index().at(id_B);
-      const TreeIndex tree_index = tree_topology.body_to_tree_index(index_B);
-      if (tree_index.is_valid()) {
-        const Body<T>& rigid_body = manager_->plant().get_body(index_B);
-        const Frame<T>& frame_W = manager_->plant().world_frame();
-        const Vector3<T>& p_WC = surface.contact_points_W()[i];
-        manager_->internal_tree().CalcJacobianTranslationalVelocity(
-            context, JacobianWrtVariable::kV, rigid_body.body_frame(), frame_W,
-            p_WC, frame_W, frame_W, &Jv_v_WBc_W);
-        Matrix3X<T> J =
-            R_CW.matrix() * Jv_v_WBc_W.middleCols(
-                                tree_topology.tree_velocities_start(tree_index),
-                                tree_topology.num_tree_velocities(tree_index));
-        jacobian_blocks.emplace_back(tree_index,
-                                     JacobianBlock<T>(std::move(J)));
-      }
-      result->emplace_back(surface.signed_distances()[i],
-                           std::move(jacobian_blocks), std::move(R_WC));
+      /* If the vertex is under bc, the corresponding jacobain block is zero
+       because the vertex doesn't contribute to the contact velocity. */
     }
+    jacobian_blocks.emplace_back(
+        clique_index_A, JacobianBlock<T>(std::move(negative_Jv_v_WAc_C)));
+
+    Matrix3BlockMatrix<T> Jv_v_WBc_C(1,
+                                     participation_B.num_vertices_in_contact());
+    participating_vertices = surface.contact_vertex_indexes_B()[i];
+    b = surface.barycentric_coordinates_B()[i];
+    for (int v = 0; v < 4; ++v) {
+      const bool vertex_under_bc = num_bcs_B[participating_vertices(v)] > 0;
+      /* Map indexes to the permuted domain. */
+      participating_vertices(v) =
+          vertex_permutation_B.permuted_index(participating_vertices(v));
+      if (!vertex_under_bc) {
+        /* v_WBc = (b₀ * v₀ + b₁ * v₁ + b₂ * v₂ + b₃ * v₃) where v₀, v₁, v₂,
+         v₃ are the velocities of the vertices forming the tetrahedron
+         containing the contact point and the b's are their corresponding
+         barycentric weights. */
+        Jv_v_WBc_C.AddTriplet(0, participating_vertices(v),
+                              b(v) * R_CW.matrix());
+      }
+      /* If the vertex is under bc, the corresponding jacobain block is zero
+       because the vertex doesn't contribute to the contact velocity. */
+    }
+    jacobian_blocks.emplace_back(clique_index_B,
+                                 JacobianBlock<T>(std::move(Jv_v_WBc_C)));
+
+    result->emplace_back(surface.signed_distances()[i],
+                         std::move(jacobian_blocks), std::move(R_WC));
+  }
+}
+
+template <typename T>
+void DeformableDriver<T>::AppendDeformableRigidContactKinematics(
+    const systems::Context<T>& context,
+    const DeformableContactSurface<T>& surface,
+    std::vector<ContactPairKinematics<T>>* result) const {
+  const DeformableContact<T>& deformable_contact =
+      EvalDeformableContact(context);
+  /* Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian will be:
+     Jv_v_AcBc_W = Jv_v_WBc_W - Jv_v_WAc_W.
+   That is the relative velocity at C is v_AcBc_W = Jv_v_AcBc_W * v.
+   Finally Jv_v_AcBc_C = R_WC.transpose() * Jv_v_AcBc_W.
+   Deformable body is body A and rigid body is body B. Moreover, the set of dofs
+   for deformable bodies and rigid bodies are mutually exclusive, and Jv_v_WAc_W
+   = 0 for rigid dofs and Jv_v_WBc_W = 0 for deformable dofs. As a result, we
+   know the size of Jv_v_WBc_W up front. */
+  const int nv = manager_->plant().num_velocities();
+  Matrix3X<T> Jv_v_WBc_W(3, nv);
+  const MultibodyTreeTopology& tree_topology =
+      manager_->internal_tree().get_topology();
+  const GeometryId id_A = surface.id_A();
+  const GeometryId id_B = surface.id_B();
+  /* Body A is guaranteed to be deformable. */
+  const DeformableBodyIndex index_A =
+      deformable_model_->GetBodyIndex(deformable_model_->GetBodyId(id_A));
+  const TreeIndex clique_index_A(tree_topology.num_trees() + index_A);
+  const ContactParticipation& participation =
+      deformable_contact.contact_participation(id_A);
+  const PartialPermutation& vertex_permutation =
+      EvalVertexPermutation(context, id_A);
+  /* Retrieve the boundary condition information of body A to determine
+   which columns for the jacobian need to be zero out later. */
+  const DeformableBodyId body_id_A = deformable_model_->GetBodyId(id_A);
+  const FemModel<T>& fem_model = deformable_model_->GetFemModel(body_id_A);
+  const DirichletBoundaryCondition<T>& bc =
+      fem_model.dirichlet_boundary_condition();
+  /* The number of boundary conditions added to each vertex. */
+  std::vector<int> num_bcs(fem_model.num_nodes(), 0);
+  for (const auto& it : bc.index_to_boundary_state()) {
+    /* Note that we currently only allow zero boundary conditions. */
+    DRAKE_DEMAND(it.second.y() == 0);
+    DRAKE_DEMAND(it.second.z() == 0);
+    const int dof_index = it.first;
+    const int vertex_index = dof_index / 3;
+    ++num_bcs[vertex_index];
+  }
+  /* Note that we currently do not allow partial boundary condition; i.e.,
+   if any dof of a vertex is under bc, then all three dofs associated with the
+   vertex are under bc. */
+  for (int n : num_bcs) {
+    DRAKE_ASSERT(n % 3 == 0);
+  }
+
+  for (int i = 0; i < surface.num_contact_points(); ++i) {
+    /* We have at most two blocks per contact. */
+    std::vector<typename ContactPairKinematics<T>::JacobianTreeBlock>
+        jacobian_blocks;
+    jacobian_blocks.reserve(2);
+    /* Contact solver assumes the normal points from A to B whereas the
+     surface's normal points from B to A. */
+    const Vector3<T>& nhat_W = -surface.nhats_W()[i];
+    constexpr int kZAxis = 2;
+    math::RotationMatrix<T> R_WC =
+        math::RotationMatrix<T>::MakeFromOneUnitVector(nhat_W, kZAxis);
+    const math::RotationMatrix<T> R_CW = R_WC.transpose();
+    /* Calculate the jacobian block for the body A. */
+    Matrix3BlockMatrix<T> negative_Jv_v_WAc_C(
+        1, participation.num_vertices_in_contact());
+    Vector4<int> participating_vertices = surface.contact_vertex_indexes_A()[i];
+    const Vector4<T>& b = surface.barycentric_coordinates_A()[i];
+    for (int v = 0; v < 4; ++v) {
+      const bool vertex_under_bc = num_bcs[participating_vertices(v)] > 0;
+      /* Map indexes to the permuted domain. */
+      participating_vertices(v) =
+          vertex_permutation.permuted_index(participating_vertices(v));
+      if (!vertex_under_bc) {
+        /* v_WAc = (b₀ * v₀ + b₁ * v₁ + b₂ * v₂ + b₃ * v₃) where v₀, v₁, v₂,
+         v₃ are the velocities of the vertices forming the tetrahedron
+         containing the contact point and the b's are their corresponding
+         barycentric weights. */
+        negative_Jv_v_WAc_C.AddTriplet(0, participating_vertices(v),
+                                       -b(v) * R_CW.matrix());
+      }
+      /* If the vertex is under bc, the corresponding jacobain block is zero
+       because the vertex doesn't contribute to the contact velocity. */
+    }
+    jacobian_blocks.emplace_back(
+        clique_index_A, JacobianBlock<T>(std::move(negative_Jv_v_WAc_C)));
+
+    /* Calculate the jacobian block for the rigid body B if it's not static.
+     */
+    const BodyIndex index_B = manager_->geometry_id_to_body_index().at(id_B);
+    const TreeIndex tree_index = tree_topology.body_to_tree_index(index_B);
+    if (tree_index.is_valid()) {
+      const Body<T>& rigid_body = manager_->plant().get_body(index_B);
+      const Frame<T>& frame_W = manager_->plant().world_frame();
+      const Vector3<T>& p_WC = surface.contact_points_W()[i];
+      manager_->internal_tree().CalcJacobianTranslationalVelocity(
+          context, JacobianWrtVariable::kV, rigid_body.body_frame(), frame_W,
+          p_WC, frame_W, frame_W, &Jv_v_WBc_W);
+      Matrix3X<T> J =
+          R_CW.matrix() *
+          Jv_v_WBc_W.middleCols(tree_topology.tree_velocities_start(tree_index),
+                                tree_topology.num_tree_velocities(tree_index));
+      jacobian_blocks.emplace_back(tree_index, JacobianBlock<T>(std::move(J)));
+    }
+    result->emplace_back(surface.signed_distances()[i],
+                         std::move(jacobian_blocks), std::move(R_WC));
   }
 }
 

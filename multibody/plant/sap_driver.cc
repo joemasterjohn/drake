@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>

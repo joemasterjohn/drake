@@ -311,6 +311,16 @@ class DeformableContact {
       std::vector<Vector4<int>> contact_vertex_indexes,
       std::vector<Vector4<T>> barycentric_coordinates);
 
+  void AddDeformableDeformableContactSurface(
+      GeometryId id0, GeometryId id1,
+      const std::unordered_set<int>& participating_vertices0,
+      const std::unordered_set<int>& participating_vertices1,
+      PolygonSurfaceMesh<T> contact_mesh_W, std::vector<T> signed_distances,
+      std::vector<Vector4<int>> contact_vertex_indexes0,
+      std::vector<Vector4<int>> contact_vertex_indexes1,
+      std::vector<Vector4<T>> barycentric_coordinates0,
+      std::vector<Vector4<T>> barycentric_coordinates1);
+
   /* Registers a deformable geometry with the given `id` as having the given
    number of vertices. This is a prerequisite of adding any contact
    information about this deformable geometry. */

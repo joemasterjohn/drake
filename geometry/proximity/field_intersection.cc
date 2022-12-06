@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <iostream>
 #include <utility>
 
 #include "drake/common/default_scalars.h"

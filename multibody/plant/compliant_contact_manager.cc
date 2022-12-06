@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -251,7 +252,8 @@ void CompliantContactManager<T>::CalcDiscreteContactPairs(
   DRAKE_DEMAND(contact_pairs != nullptr);
 
   contact_pairs->clear();
-  if (plant().num_collision_geometries() == 0) return;
+  if (plant().num_collision_geometries() == 0 && deformable_driver_ == nullptr)
+    return;
 
   const auto contact_model = plant().get_contact_model();
 

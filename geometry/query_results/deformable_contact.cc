@@ -1,5 +1,6 @@
 #include "drake/geometry/query_results/deformable_contact.h"
 
+#include <iostream>
 #include <utility>
 
 namespace drake {
@@ -136,6 +137,39 @@ void DeformableContact<T>::AddDeformableRigidContactSurface(
       deformable_id, rigid_id, move(contact_mesh_W), move(signed_distances),
       move(contact_vertex_indexes), move(barycentric_coordinates), std::nullopt,
       std::nullopt);
+}
+
+template <typename T>
+void DeformableContact<T>::AddDeformableDeformableContactSurface(
+    GeometryId id0, GeometryId id1,
+    const std::unordered_set<int>& participating_vertices0,
+    const std::unordered_set<int>& participating_vertices1,
+    PolygonSurfaceMesh<T> contact_mesh_W, std::vector<T> signed_distances,
+    std::vector<Vector4<int>> contact_vertex_indexes0,
+    std::vector<Vector4<int>> contact_vertex_indexes1,
+    std::vector<Vector4<T>> barycentric_coordinates0,
+    std::vector<Vector4<T>> barycentric_coordinates1) {
+  const auto iter0 = contact_participations_.find(id0);
+  const auto iter1 = contact_participations_.find(id1);
+  DRAKE_THROW_UNLESS(iter0 != contact_participations_.end());
+  DRAKE_THROW_UNLESS(iter1 != contact_participations_.end());
+  DRAKE_DEMAND(static_cast<int>(signed_distances.size()) ==
+               contact_mesh_W.num_faces());
+  DRAKE_DEMAND(static_cast<int>(contact_vertex_indexes0.size()) ==
+               contact_mesh_W.num_faces());
+  DRAKE_DEMAND(static_cast<int>(contact_vertex_indexes1.size()) ==
+               contact_mesh_W.num_faces());
+  DRAKE_DEMAND(static_cast<int>(barycentric_coordinates0.size()) ==
+               contact_mesh_W.num_faces());
+  DRAKE_DEMAND(static_cast<int>(barycentric_coordinates1.size()) ==
+               contact_mesh_W.num_faces());
+  iter0->second.Participate(participating_vertices0);
+  iter1->second.Participate(participating_vertices1);
+
+  contact_surfaces_.emplace_back(
+      id0, id1, move(contact_mesh_W), move(signed_distances),
+      move(contact_vertex_indexes0), move(barycentric_coordinates0),
+      move(contact_vertex_indexes1), move(barycentric_coordinates1));
 }
 
 template class DeformableContactSurface<double>;
