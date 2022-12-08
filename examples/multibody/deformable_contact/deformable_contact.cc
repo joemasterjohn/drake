@@ -1,13 +1,3 @@
-/**
- bazel run --config=omp --copt=-march=native deformable_sphere
-
- finishes in about 105 seconds on puget with 12 threads. Corresponding IPC
- example takes 339 seconds with a few caveats:
-  1. No damping is applied in IPC.
-  2. The energy model used in IPC is Neohookean. Both simulation can run fixed
-     corotated but Drake simulation results in non-SPD matrix at dt = 0.01s.
-*/
-
 #include <memory>
 
 #include <gflags/gflags.h>
@@ -55,6 +45,7 @@ using drake::multibody::Parser;
 using drake::multibody::fem::DeformableBodyConfig;
 using drake::systems::Context;
 using Eigen::Vector2d;
+using Eigen::Vector3d;
 using Eigen::Vector4d;
 using Eigen::VectorXd;
 
@@ -63,6 +54,23 @@ namespace examples {
 namespace multibody {
 namespace deformable_box {
 namespace {
+
+void AddSphere(DeformableModel<double>* model,
+               DeformableBodyConfig<double> config, double radius,
+               double resolution_hint, Vector3d center_W, std::string name) {
+  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(radius));
+  const RigidTransformd X_WB(center_W);
+  auto sphere_instance =
+      std::make_unique<GeometryInstance>(X_WB, std::move(sphere_mesh), name);
+  /* Minimumly required proximity properties for deformable bodies: A valid
+   Coulomb friction coefficient. */
+  ProximityProperties deformable_proximity_props;
+  const CoulombFriction<double> surface_friction(1.0, 1.0);
+  AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
+  sphere_instance->set_proximity_properties(deformable_proximity_props);
+  model->RegisterDeformableBody(std::move(sphere_instance), config,
+                                resolution_hint);
+}
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -106,35 +114,16 @@ int do_main() {
   deformable_config.set_mass_density(FLAGS_density);
   deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
 
-  const std::string sphere_vtk = FindResourceOrThrow(
-      "drake/examples/multibody/deformable_sphere/torus.vtk");
-  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(0.1));
-  const RigidTransformd X_WB(Vector3<double>(0.0, 0.0, 0.1));
-  auto sphere_instance = std::make_unique<GeometryInstance>(
-      X_WB, std::move(sphere_mesh), "deformable_sphere");
+  const double radius = 0.1;
+  AddSphere(owned_deformable_model.get(), deformable_config, radius,
+            FLAGS_resolution_hint, Vector3d(0, 0, 0.12), "ball0");
+  AddSphere(owned_deformable_model.get(), deformable_config, radius,
+            FLAGS_resolution_hint, Vector3d(0, 0, 0.36), "ball1");
+  AddSphere(owned_deformable_model.get(), deformable_config, radius,
+            FLAGS_resolution_hint, Vector3d(0, 0, 0.6), "ball2");
+  AddSphere(owned_deformable_model.get(), deformable_config, radius,
+            FLAGS_resolution_hint, Vector3d(0, 0, 0.84), "ball3");
 
-  auto sphere_mesh2 = std::make_unique<Sphere>(geometry::Sphere(0.1));
-  const RigidTransformd X_WB2(Vector3<double>(0.0, 0.0, 0.3));
-  auto sphere_instance2 = std::make_unique<GeometryInstance>(
-      X_WB2, std::move(sphere_mesh2), "deformable_sphere2");
-
-  /* Minimumly required proximity properties for deformable bodies: A valid
-   Coulomb friction coefficient. */
-  ProximityProperties deformable_proximity_props;
-  AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
-  sphere_instance->set_proximity_properties(deformable_proximity_props);
-  sphere_instance2->set_proximity_properties(deformable_proximity_props);
-
-  /* Registration of all deformable geometries ostensibly requires a resolution
-   hint parameter that dictates how the shape is tesselated. In the case of a
-   `Mesh` shape, the resolution hint is unused because the shape is already
-   tessellated. */
-  // TODO(xuchenhan-tri): Though unused, we still asserts the resolution hint is
-  // positive. Remove the requirement of a resolution hint for meshed shapes.
-  owned_deformable_model->RegisterDeformableBody(std::move(sphere_instance),
-                                                 deformable_config, FLAGS_resolution_hint);
-  owned_deformable_model->RegisterDeformableBody(std::move(sphere_instance2),
-                                                 deformable_config, FLAGS_resolution_hint);
   const DeformableModel<double>* deformable_model =
       owned_deformable_model.get();
   plant.AddPhysicalModel(std::move(owned_deformable_model));

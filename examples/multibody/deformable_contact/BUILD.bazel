@@ -7,13 +7,9 @@ load(
 load("//tools/lint:lint.bzl", "add_lint_tests")
 
 drake_cc_binary(
-    name = "deformable_sphere",
+    name = "deformable_contact",
     srcs = [
-        "deformable_sphere.cc",
-    ],
-    data = [
-        "sphere_1k.vtk",
-        "torus.vtk",
+        "deformable_contact.cc",
     ],
     test_rule_args = [
         "-simulation_time=0.1",
