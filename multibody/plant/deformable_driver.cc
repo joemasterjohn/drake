@@ -284,7 +284,7 @@ void DeformableDriver<T>::AppendDiscreteContactPairs(
     /* We use an arbitrarily large stiffness as the default stiffness so that
      the contact is in near-rigid regime and the compliance is only used as
      stabilization. */
-    const double default_contact_stiffness = 1.0e12;
+    const double default_contact_stiffness = 1.0e16;
     const T k = GetCombinedPointContactStiffness(
         surface.id_A(), surface.id_B(), default_contact_stiffness, inspector);
     std::string body_B_name;
@@ -304,11 +304,13 @@ void DeformableDriver<T>::AppendDiscreteContactPairs(
     // name here.
     const std::string body_A_name(
         fmt::format("deformable body with geometry id {}", surface.id_A()));
-    /* We use dt as the default dissipation constant so that the contact is in
-     near-rigid regime and the compliance is only used as stabilization. */
+    /* The contact constraint will be under near-rigid regime by default given
+     the large contact stiffness. Here we choose the default dissipation time
+     to be the same as the rigid vs. rigid case. */
+    const T default_tau = 0.1;
     const T tau = GetCombinedDissipationTimeConstant(
-        surface.id_A(), surface.id_B(), manager_->plant().time_step(),
-        body_A_name, body_B_name, inspector);
+        surface.id_A(), surface.id_B(), default_tau, body_A_name, body_B_name,
+        inspector);
     const double mu = GetCombinedDynamicCoulombFriction(
         surface.id_A(), surface.id_B(), inspector);
 

@@ -56,7 +56,7 @@ class DeformableDriverContactTest : public ::testing::Test {
  protected:
   static constexpr double kDt = 0.001;
   static constexpr double kPointContactStiffness = 1e6;
-  static constexpr double kDissipationTimeScale = 0.1;
+  static constexpr double kDissipationTimeScale = 0.2;
 
   void SetUp() override {
     systems::DiagramBuilder<double> builder;
@@ -434,8 +434,8 @@ TEST_F(DeformableDriverContactTest, AppendDiscreteContactPairs) {
   EXPECT_GT(num_contact_points, 0);
   EXPECT_EQ(contact_pairs.size(), num_contact_points);
   /* tau for deformable body is set to kDissipationTimeScale and is unset for
-   rigid body (which then assumes the default value, dt). */
-  constexpr double expected_tau = kDissipationTimeScale + kDt;
+   rigid body (which then assumes the default value, 0.1). */
+  constexpr double expected_tau = kDissipationTimeScale + 0.1;
   constexpr double expected_k = kPointContactStiffness / 2.0;
   GeometryId id0 = model_->GetGeometryId(body_id0_);
   GeometryId id1 = model_->GetGeometryId(body_id1_);
