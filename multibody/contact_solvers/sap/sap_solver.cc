@@ -1,8 +1,8 @@
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
 
 #include <algorithm>
-#include <limits>
 #include <iostream>
+#include <limits>
 #include <type_traits>
 #include <utility>
 #include <vector>

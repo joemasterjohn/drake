@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -9,17 +10,12 @@
 #include "drake/common/identifier.h"
 #include "drake/multibody/fem/deformable_body_config.h"
 #include "drake/multibody/fem/fem_model.h"
+#include "drake/multibody/plant/deformable_indexes.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/physical_model.h"
 
 namespace drake {
 namespace multibody {
-
-/** Uniquely identifies a deformable body. It is valid before and after
- Finalize(). */
-using DeformableBodyId = Identifier<class DeformableBodyTag>;
-/** Internally indexes deformable bodies, only used after Finalize(). */
-using DeformableBodyIndex = TypeSafeIndex<class DeformableBodyTag>;
 
 /** DeformableModel implements the interface in PhysicalModel and provides the
  functionalities to specify deformable bodies. Unlike rigid bodies, the shape of
@@ -116,6 +112,15 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
    registered in this model. */
   const VectorX<T>& GetReferencePositions(DeformableBodyId id) const;
 
+  /** Returns the vertex position of v-th vertex in the deformable body with the
+   given `id` in the world frame in the given `context`.
+   @throws std::exception if MultibodyPlant::Finalize() has not been called yet
+   or if no body with the given `id` has been registered.
+   @pre v is non-negative and smaller than the number of vertices
+   in body with the given `id`. */
+  Vector3<T> GetVertexPosition(const systems::Context<T>& context,
+                               DeformableBodyId id, int v) const;
+
   /** Returns the DeformableBodyId of the body with the given body index.
    @throws std::exception if MultibodyPlant::Finalize() has not been called yet
    or if index is larger than or equal to the total number of registered
@@ -147,6 +152,57 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
     this->ThrowIfSystemResourcesNotDeclared(__func__);
     return plant_->get_output_port(vertex_positions_port_index_);
   }
+
+  /** Returns the weld constraints registered for the body the given `id`.
+   @throws std::exception if the given `id` does not correspond to a deformable
+   body registered with this model. */
+  const std::vector<internal::DeformableRigidWeldConstraintSpecs>&
+  weld_constraint_specs(DeformableBodyId id) const {
+    return weld_constraint_specs_.at(id);
+  }
+
+  bool has_constraint(DeformableBodyId id) const {
+    return weld_constraint_specs_.count(id) > 0 &&
+           weld_constraint_specs_.at(id).size() > 0;
+  }
+
+  /** Defines a distance constraint between a vertex P of a deformable body A
+   and a point Q rigidly affixed to a rigid body B.
+
+   This constraint can be compliant, modeling a spring with zero rest length
+   and given `stiffness` and `damping` parameters between points P
+   and Q. For d = ‖p_PQ‖, a compliant weld constraint models a spring with force
+   along p_PQ given by:
+
+      f = −stiffness ⋅ d − damping ⋅ ḋ
+
+   @param[in] body_A_id    Id of the deformable body
+   @param[in] vertex_index The index of the deformable body under constraint
+   @param[in] body_B       Body to which point Q is rigidly attached.
+   @param[in] p_BQ         Position of point Q in body B's frame.
+   @param[in] stiffness    For modeling a spring with zero rest length, the
+                           stiffness parameter in N/m. Optional, with its
+                           default value being infinite.
+   @param[in] damping      For modeling a spring with zero rest length, the
+                           damping parameter in N⋅s/m. Optional, with its
+                           default value being zero for a non-dissipative
+                           constraint.
+   @returns the index to the newly added constraint.
+   @pre `body_B` is registered with the same multibody plant owning this
+   deformable model.
+   @pre `vertex_index` is non-negative and smaller than the number of vertices
+   in body A.
+   @throws std::exception if no deformable body with the given `body_A_id`
+           has been registered.
+   @throws std::exception if `stiffness` is not positive or zero.
+   @throws std::exception if `damping` is not positive or zero.
+   @throws std::exception if Finalize() has been called on the multibody plant
+   owning this deformable model. */
+  void AddWeldConstraint(
+      DeformableBodyId body_A_id, int vertex_index, const Body<T>& body_B,
+      const Vector3<double>& p_BQ,
+      double stiffness = std::numeric_limits<double>::infinity(),
+      double damping = 0.0);
 
  private:
   internal::PhysicalModelPointerVariant<T> DoToPhysicalModelPointerVariant()
@@ -200,6 +256,10 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
   std::vector<DeformableBodyId> body_ids_;
   std::unordered_map<DeformableBodyId, DeformableBodyIndex> body_id_to_index_;
   systems::OutputPortIndex vertex_positions_port_index_;
+  /* Vector of weld constraints specifications. */
+  std::unordered_map<DeformableBodyId,
+                     std::vector<internal::DeformableRigidWeldConstraintSpecs>>
+      weld_constraint_specs_;
 };
 
 }  // namespace multibody

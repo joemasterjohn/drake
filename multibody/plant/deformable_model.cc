@@ -120,6 +120,19 @@ const VectorX<T>& DeformableModel<T>::GetReferencePositions(
 }
 
 template <typename T>
+Vector3<T> DeformableModel<T>::GetVertexPosition(
+    const systems::Context<T>& context, DeformableBodyId id, int v) const {
+  this->ThrowIfSystemResourcesNotDeclared(__func__);
+  ThrowUnlessRegistered(__func__, id);
+  const fem::FemModel<T>& fem_model = GetFemModel(id);
+  DRAKE_DEMAND(0 <= v && v < fem_model.num_nodes());
+
+  const VectorX<T>& q =
+      context.get_discrete_state(GetDiscreteStateIndex(id)).value();
+  return q.template segment<3>(3 * v);
+}
+
+template <typename T>
 DeformableBodyId DeformableModel<T>::GetBodyId(
     DeformableBodyIndex index) const {
   this->ThrowIfSystemResourcesNotDeclared(__func__);
@@ -151,6 +164,29 @@ DeformableBodyId DeformableModel<T>::GetBodyId(
                     geometry_id));
   }
   return geometry_id_to_body_id_.at(geometry_id);
+}
+
+template <typename T>
+void DeformableModel<T>::AddWeldConstraint(DeformableBodyId body_A_id,
+                                           int vertex_index,
+                                           const Body<T>& body_B,
+                                           const Vector3<double>& p_BQ,
+                                           double stiffness, double damping) {
+  this->ThrowIfSystemResourcesDeclared(__func__);
+  ThrowUnlessRegistered(__func__, body_A_id);
+  const fem::FemModel<T>& fem_model = GetFemModel(body_A_id);
+  DRAKE_DEMAND(0 <= vertex_index && vertex_index < fem_model.num_nodes());
+
+  internal::DeformableRigidWeldConstraintSpecs spec{
+      body_A_id, vertex_index, body_B.index(), p_BQ, stiffness, damping};
+  if (!spec.IsValid()) {
+    const std::string msg = fmt::format(
+        "Invalid set of parameters for constraint between deformable body '{}' "
+        "and rigid body'{}'. stiffness = {}, damping = {}.",
+        body_A_id, body_B.name(), stiffness, damping);
+    throw std::runtime_error(msg);
+  }
+  weld_constraint_specs_[body_A_id].push_back(spec);
 }
 
 template <typename T>

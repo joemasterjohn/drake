@@ -44,6 +44,10 @@ class ContactParticipation {
  public:
   DRAKE_DEFAULT_COPY_AND_MOVE_AND_ASSIGN(ContactParticipation)
 
+  /* Constructs a ContactParticipation for a deformable geometry with no
+   vertices. */
+  ContactParticipation() = default;
+
   /* Constructs a ContactParticipation for a deformable geometry with the
    given number of vertices in its mesh representation.
    @pre num_vertices > 0. */

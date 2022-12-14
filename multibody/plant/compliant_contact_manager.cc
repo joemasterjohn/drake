@@ -1,8 +1,8 @@
 #include "drake/multibody/plant/compliant_contact_manager.h"
 
 #include <algorithm>
-#include <limits>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -508,6 +508,22 @@ void CompliantContactManager<T>::
       }
     }
   }
+}
+
+template <typename T>
+std::vector<WeldConstraintData<T>>
+CompliantContactManager<T>::CalcWeldConstraintData(
+    const systems::Context<T>& context) const {
+  std::vector<WeldConstraintData<T>> result;
+  // TODO(xuchenhan-tri): Append weld constraints between rigid and rigid.
+  unused(context);
+
+  if constexpr (std::is_same_v<T, double>) {
+    if (deformable_driver_ != nullptr) {
+      deformable_driver_->AppendWeldConstraintData(context, &result);
+    }
+  }
+  return result;
 }
 
 template <typename T>

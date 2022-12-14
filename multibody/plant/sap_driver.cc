@@ -1,8 +1,8 @@
 #include "drake/multibody/plant/sap_driver.h"
 
 #include <algorithm>
-#include <limits>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -364,6 +364,35 @@ void SapDriver<T>::AddCouplerConstraints(const systems::Context<T>& context,
 }
 
 template <typename T>
+void SapDriver<T>::AddWeldConstraints(const systems::Context<T>& context,
+                                      SapContactProblem<T>* problem) const {
+  DRAKE_DEMAND(problem != nullptr);
+
+  std::vector<WeldConstraintData<T>> data =
+      manager().CalcWeldConstraintData(context);
+  // Weld constraints do not have impulse limits, they are bi-lateral
+  // constraints. Each distance constraint introduces three constraint
+  // equations.
+  constexpr double kInfinity = std::numeric_limits<double>::infinity();
+  const Vector3<T> gamma_lower = Vector3<T>::Constant(-kInfinity);
+  const Vector3<T> gamma_upper = Vector3<T>::Constant(kInfinity);
+
+  // TODO(amcastro-tri): consider exposing this parameter.
+  const double beta = 0.1;
+  const double stiffness = 1e16;
+  const double dissipation_time_scale = 0.1;
+  const typename SapHolonomicConstraint<T>::Parameters parameters{
+      gamma_lower, gamma_upper, Vector3<T>::Constant(stiffness),
+      Vector3<T>::Constant(dissipation_time_scale), beta};
+
+  for (const auto& c : data) {
+    problem->AddConstraint(std::make_unique<SapHolonomicConstraint<T>>(
+        c.jacobian[0].tree, c.jacobian[1].tree, c.p_PQ_W, c.jacobian[0].J,
+        c.jacobian[1].J, parameters));
+  }
+}
+
+template <typename T>
 void SapDriver<T>::CalcContactProblemCache(
     const systems::Context<T>& context, ContactProblemCache<T>* cache) const {
   SapContactProblem<T>& problem = *cache->sap_problem;
@@ -379,6 +408,7 @@ void SapDriver<T>::CalcContactProblemCache(
   cache->R_WC = AddContactConstraints(context, &problem);
   AddLimitConstraints(context, problem.v_star(), &problem);
   AddCouplerConstraints(context, &problem);
+  AddWeldConstraints(context, &problem);
 }
 
 template <typename T>

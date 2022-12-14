@@ -206,6 +206,11 @@ class CompliantContactManager final
   const std::vector<internal::DiscreteContactPair<T>>& EvalDiscreteContactPairs(
       const systems::Context<T>& context) const final;
 
+  // This method computes sparse kinematics information for each weld
+  // constraint given the configuration stored in `context`.
+  std::vector<WeldConstraintData<T>> CalcWeldConstraintData(
+      const systems::Context<T>& context) const;
+
   // Computes all continuous forces in the MultibodyPlant model. Joint limits
   // are not included as continuous compliant forces but rather as constraints
   // in the solver, and therefore must be excluded.

@@ -14,6 +14,7 @@
 #include "drake/multibody/plant/contact_pair_kinematics.h"
 #include "drake/multibody/plant/deformable_model.h"
 #include "drake/multibody/plant/discrete_update_manager.h"
+#include "drake/multibody/plant/weld_constraint_data.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
@@ -155,6 +156,13 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
       const geometry::internal::DeformableContactSurface<T>& surface,
       std::vector<ContactPairKinematics<T>>* result) const;
 
+  /* Appends the weld constraint data between for all weld constraints added to
+   all deformable rigid pairs.
+   @pre result != nullptr. */
+  void AppendWeldConstraintData(
+      const systems::Context<T>& context,
+      std::vector<WeldConstraintData<T>>* result) const;
+
   /* Evaluates FemState at the next time step for each deformable body and
    copies the them into the corresponding DiscreteValues.
    @pre next_states != nullptr. */
@@ -171,6 +179,7 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
   friend class DeformableDriverContactTest;
   friend class DeformableDriverContactKinematicsTest;
   friend class DeformableIntegrationTest;
+  friend class DeformableWeldConstraintTest;
 
   /* Struct used to conglomerate the indexes of cache entries declared by
    the manager. */
@@ -181,6 +190,7 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
     std::vector<systems::CacheIndex> next_fem_states;
     std::vector<systems::CacheIndex> fem_solver_scratches;
     systems::CacheIndex deformable_contact;
+    std::vector<systems::CacheIndex> contact_participations;
     std::vector<systems::CacheIndex> dof_permutations;
     std::unordered_map<geometry::GeometryId, systems::CacheIndex>
         vertex_permutations;
@@ -250,6 +260,18 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
   /* Eval version of CalcDeformableContact(). */
   const geometry::internal::DeformableContact<T>& EvalDeformableContact(
       const systems::Context<T>& context) const;
+
+  /* Computes the contact participation information about the body with the
+   given `index`.
+   @pre fem_state_star != nullptr and is compatible with the state of the
+   deformable body with the given `index`. */
+  void CalcContactParticipation(
+      const systems::Context<T>& context, DeformableBodyIndex index,
+      geometry::internal::ContactParticipation* contact_participation) const;
+
+  /* Eval version of CalcContactParticipation(). */
+  const geometry::internal::ContactParticipation& EvalContactParticipation(
+      const systems::Context<T>& context, DeformableBodyIndex index) const;
 
   /* Computes the partial permutation that maps degrees of freedom of the
    deformable body with the given `index` to degrees of freedom that belong

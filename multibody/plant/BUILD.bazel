@@ -24,6 +24,7 @@ drake_cc_package_library(
         ":contact_properties",
         ":contact_results",
         ":coulomb_friction",
+        ":deformable_indexes",
         ":discrete_contact_pair",
         ":externally_applied_spatial_force",
         ":externally_applied_spatial_force_multiplexer",
@@ -39,6 +40,7 @@ drake_cc_package_library(
         ":propeller",
         ":slicing_and_indexing",
         ":tamsi_solver",
+        ":weld_constraint_data",
         ":wing",
     ],
 )
@@ -49,7 +51,18 @@ drake_cc_library(
         "constraint_specs.h",
     ],
     deps = [
+        ":deformable_indexes",
         "//multibody/tree:multibody_tree_indexes",
+    ],
+)
+
+drake_cc_library(
+    name = "deformable_indexes",
+    hdrs = [
+        "deformable_indexes.h",
+    ],
+    deps = [
+        "//common:essential",
     ],
 )
 
@@ -120,12 +133,14 @@ drake_cc_library(
         ":contact_properties",
         ":contact_results",
         ":coulomb_friction",
+        ":deformable_indexes",
         ":discrete_contact_pair",
         ":externally_applied_spatial_force",
         ":hydroelastic_traction",
         ":multibody_plant_config",
         ":slicing_and_indexing",
         ":tamsi_solver",
+        ":weld_constraint_data",
         "//common:default_scalars",
         "//common:essential",
         "//geometry:geometry_ids",
@@ -177,6 +192,22 @@ drake_cc_library(
     ],
     hdrs = [
         "contact_pair_kinematics.h",
+    ],
+    deps = [
+        ":jacobian_matrix",
+        "//common:default_scalars",
+        "//math:geometric_transform",
+        "//multibody/tree:multibody_tree_indexes",
+    ],
+)
+
+drake_cc_library(
+    name = "weld_constraint_data",
+    srcs = [
+        "weld_constraint_data.cc",
+    ],
+    hdrs = [
+        "weld_constraint_data.h",
     ],
     deps = [
         ":jacobian_matrix",
@@ -933,6 +964,17 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "deformable_integration_test",
+    deps = [
+        ":multibody_plant_core",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//geometry:drake_visualizer",
+        "//systems/analysis:simulator",
+        "//systems/framework:diagram_builder",
+    ],
+)
+
+drake_cc_googletest(
+    name = "deformable_weld_constraint_test",
     deps = [
         ":multibody_plant_core",
         "//common/test_utilities:eigen_matrix_compare",
