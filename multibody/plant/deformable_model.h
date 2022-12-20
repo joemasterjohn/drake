@@ -8,6 +8,7 @@
 
 #include "drake/common/eigen_types.h"
 #include "drake/common/identifier.h"
+#include "drake/math/rigid_transform.h"
 #include "drake/multibody/fem/deformable_body_config.h"
 #include "drake/multibody/fem/fem_model.h"
 #include "drake/multibody/plant/deformable_indexes.h"
@@ -203,6 +204,24 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
       const Vector3<double>& p_BQ,
       double stiffness = std::numeric_limits<double>::infinity(),
       double damping = 0.0);
+
+  /* Welds vertices of deformable body A to rigid body B. The vertices that are
+   welded are those that are close to z=0 in its body frame. */
+  void Weld(DeformableBodyId body_A_id, const Body<T>& body_B,
+            const math::RigidTransform<T>& X_WA,
+            const math::RigidTransform<T>& X_WB) {
+    const VectorX<T>& reference_positions = GetReferencePositions(body_A_id);
+    const int num_verts = reference_positions.size() / 3;
+    const double tol = 5e-4;
+    for (int i = 0; i < num_verts; ++i) {
+      const Vector3<T>& p_WV = reference_positions.template segment<3>(3 * i);
+      const Vector3<T> p_AV = X_WA.inverse() * p_WV;
+      if (std::abs(p_AV(2)) < tol) {
+        const Vector3<T> p_BV = X_WB.inverse() * p_WV;
+        AddWeldConstraint(body_A_id, i, body_B, p_BV);
+      }
+    }
+  }
 
  private:
   internal::PhysicalModelPointerVariant<T> DoToPhysicalModelPointerVariant()
