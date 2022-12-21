@@ -21,26 +21,16 @@
 #include "drake/systems/primitives/adder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 
-DEFINE_double(simulation_time, 20.0, "Desired duration of the simulation [s].");
+DEFINE_double(simulation_time, 8.0, "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 0.0, "Desired real time rate.");
-DEFINE_double(time_step, 1.0e-3,
+DEFINE_double(time_step, 5.0e-3,
               "Discrete time step for the system [s]. Must be positive.");
-DEFINE_double(E, 1e4, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(E, 2e3, "Young's modulus of the deformable body [Pa].");
 DEFINE_double(nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
 DEFINE_double(density, 100, "Mass density of the deformable body [kg/m³].");
 DEFINE_double(beta, 0.005,
               "Stiffness damping coefficient for the deformable body [1/s].");
 DEFINE_double(resolution_hint, 0.05, "rezhint");
-
-// Parameters for squeezing the spatula.
-DEFINE_double(gripper_force, 2,
-              "The baseline force to be applied by the gripper. [N].");
-DEFINE_double(amplitude, 8,
-              "The amplitude of the oscillations "
-              "carried out by the gripper. [N].");
-DEFINE_double(duty_cycle, 0.666666, "Duty cycle of the control signal.");
-DEFINE_double(period, 6, "Period of the control signal. [s].");
-DEFINE_double(phase, 0, "Phase of the control signal. [s].");
 
 using drake::geometry::AddContactMaterial;
 using drake::geometry::Box;
