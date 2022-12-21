@@ -73,61 +73,92 @@ namespace multibody {
 namespace deformable_box {
 namespace {
 
-// We create a simple leaf system that outputs a square wave signal for our
-// open loop controller. The Square system here supports an arbitrarily
-// dimensional signal, but we will use a 2-dimensional signal for our gripper.
-class Square final : public systems::LeafSystem<double> {
+/* We create a leaf system that uses PD control to output a force signal to
+ a gripper to follow a close-lift-open motion sequence. The signal is
+ 2-dimensional with the first element corresponding to the wrist degree of
+ freedom and the second element corresponding to the left finger degree of
+ freedom. This control is a time-based state machine, where forces change based
+ on the context time. This is strictly for demo purposes and is not intended to
+ generalize to other cases. There are four states: 0. The fingers are open in
+ the initial state.
+  1. The fingers are closed to secure a grasp.
+  2. The gripper is lifted to a prescribed final height.
+  3. The fingers are open to loosen a grasp.
+ The desired state is interpolated between these states. */
+class GripperPositionControl : public systems::LeafSystem<double> {
  public:
-  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(Square)
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(GripperPositionControl);
 
-  // Constructs a %Square system where different amplitudes, duty cycles,
-  // periods, and phases can be applied to each square wave.
-  //
-  // @param[in] amplitudes the square wave amplitudes. (unitless)
-  // @param[in] duty_cycles the square wave duty cycles.
-  //                        (ratio of pulse duration to period of the waveform)
-  // @param[in] periods the square wave periods. (seconds)
-  // @param[in] phases the square wave phases. (radians)
-  Square(const Eigen::VectorXd& amplitudes, const Eigen::VectorXd& duty_cycles,
-         const Eigen::VectorXd& periods, const Eigen::VectorXd& phases)
-      : amplitude_(amplitudes),
-        duty_cycle_(duty_cycles),
-        period_(periods),
-        phase_(phases) {
-    // Ensure the incoming vectors are all the same size.
-    DRAKE_THROW_UNLESS(duty_cycles.size() == amplitudes.size());
-    DRAKE_THROW_UNLESS(duty_cycles.size() == periods.size());
-    DRAKE_THROW_UNLESS(duty_cycles.size() == phases.size());
-
-    this->DeclareVectorOutputPort("Square Wave Output", duty_cycles.size(),
-                                  &Square::CalcValueOutput);
+  /* Constructs a GripperPositionControl system with the given parameters.
+   @param[in] open_width   The width between fingers in the open state. (meters)
+   @param[in] closed_width The width between fingers in the closed state.
+                           (meters)
+   @param[in] height       The height of the gripper in the lifted state.
+                           (meters) */
+  GripperPositionControl(double open_width, double closed_width, double height)
+      : initial_state_(0, -open_width / 2),
+        closed_state_(0, -closed_width / 2),
+        lifted_state_(height, -closed_width / 2),
+        open_state_(height, -open_width / 2) {
+    this->DeclareVectorOutputPort("gripper force", BasicVector<double>(2),
+                                  &GripperPositionControl::SetAppliedForce);
+    this->DeclareVectorInputPort("gripper state", BasicVector<double>(6));
   }
 
  private:
-  void CalcValueOutput(const Context<double>& context,
+  void SetAppliedForce(const Context<double>& context,
                        BasicVector<double>* output) const {
-    Eigen::VectorBlock<VectorX<double>> output_block =
-        output->get_mutable_value();
-
-    const double time = context.get_time();
-
-    for (int i = 0; i < duty_cycle_.size(); ++i) {
-      // Add phase offset.
-      double t = time + (period_[i] * phase_[i] / (2 * M_PI));
-
-      output_block[i] =
-          amplitude_[i] *
-          (t - floor(t / period_[i]) * period_[i] < duty_cycle_[i] * period_[i]
-               ? 1
-               : 0);
+    const VectorXd gripper_state =
+        EvalVectorInput(context, GetInputPort("gripper state").get_index())
+            ->get_value();
+    /* There are 6 dofs in the state, corresponding to
+     q_translate_joint, q_left_finger, q_right_finger,
+     v_translate_joint, v_left_finger, v_right_finger. */
+    /* The positions of the translate joint and the left finger. */
+    const Vector2d measured_positions = gripper_state.segment<2>(0);
+    /* The velocities of the translate joint and the left finger. */
+    const Vector2d measured_velocities = gripper_state.segment<2>(3);
+    const Vector2d desired_velocities(0, 0);
+    Vector2d desired_positions;
+    const double t = context.get_time();
+    if (t < fingers_closed_time_) {
+      const double end_time = fingers_closed_time_;
+      const double theta = t / end_time;
+      desired_positions =
+          theta * closed_state_ + (1.0 - theta) * initial_state_;
+    } else if (t < gripper_lifted_time_) {
+      const double end_time = gripper_lifted_time_ - fingers_closed_time_;
+      const double theta = (t - fingers_closed_time_) / end_time;
+      desired_positions = theta * lifted_state_ + (1.0 - theta) * closed_state_;
+    } else if (t < hold_time_) {
+      desired_positions = lifted_state_;
+    } else if (t < fingers_open_time_) {
+      const double end_time = fingers_open_time_ - hold_time_;
+      const double theta = (t - hold_time_) / end_time;
+      desired_positions = theta * open_state_ + (1.0 - theta) * lifted_state_;
+    } else {
+      desired_positions = open_state_;
     }
+    const Vector2d force = kp_ * (desired_positions - measured_positions) +
+                           kd_ * (desired_velocities - measured_velocities);
+    output->get_mutable_value() << force(1), force(0);
   }
 
-  const Eigen::VectorXd amplitude_;
-  const Eigen::VectorXd duty_cycle_;
-  const Eigen::VectorXd period_;
-  const Eigen::VectorXd phase_;
+  /* The time at which the fingers reach the desired closed state. */
+  const double fingers_closed_time_{1.5};
+  /* The time at which the gripper reaches the desired "lifted" state. */
+  const double gripper_lifted_time_{3.0};
+  const double hold_time_{5.5};
+  /* The time at which the fingers reach the desired open state. */
+  const double fingers_open_time_{7.0};
+  Vector2d initial_state_;
+  Vector2d closed_state_;
+  Vector2d lifted_state_;
+  Vector2d open_state_;
+  const double kp_{2000};
+  const double kd_{60.0};
 };
+
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -168,12 +199,11 @@ int do_main() {
   parser.AddModels(gripper_file);
   // Pose the gripper and weld it to the world.
   const math::RigidTransform<double> X_WF0 = math::RigidTransform<double>(
-      math::RollPitchYaw(0.0, -1.57, 0.0), Eigen::Vector3d(0, 0, 0.25));
-  plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("gripper"), X_WF0);
-
-  const std::string spatula_file =
-      FindResourceOrThrow("drake/examples/multibody/teddy/models/spatula.sdf");
-  parser.AddModels(spatula_file);
+      math::RollPitchYaw(0.0, -1.57, 0.0), Eigen::Vector3d(0.06, 0.0, 0.0));
+  const auto& translate_joint = plant.AddJoint<PrismaticJoint>(
+      "translate_joint", plant.world_body(), {}, plant.GetBodyByName("gripper"),
+      X_WF0, Vector3d::UnitZ());
+  plant.AddJointActuator("slider", translate_joint);
 
   /* Set up a deformable sphere. */
   auto owned_deformable_model =
@@ -189,7 +219,7 @@ int do_main() {
   const std::string teddy_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/teddy.vtk");
   auto teddy_mesh = std::make_unique<Mesh>(teddy_vtk, 0.1);
-  const RigidTransformd X_WB(RollPitchYawd(1.57, 0, 0), Vector3d(0, 0, 0));
+  const RigidTransformd X_WB(RollPitchYawd(1.57, 0, -1.57), Vector3d(-0.21, 0.0, 0));
   auto teddy_instance =
       std::make_unique<GeometryInstance>(X_WB, std::move(teddy_mesh), "teddy");
   /* Minimumly required proximity properties for deformable bodies: A valid
@@ -198,14 +228,14 @@ int do_main() {
   AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
   teddy_instance->set_proximity_properties(deformable_proximity_props);
 
-  //   deformable_model->RegisterDeformableBody(std::move(teddy_instance),
-  //                                            deformable_config, 1.0);
+    deformable_model->RegisterDeformableBody(std::move(teddy_instance),
+                                             deformable_config, 1.0);
 
   const std::string bubble_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/bubble.vtk");
   auto left_bubble_mesh = std::make_unique<Mesh>(bubble_vtk);
-  const RigidTransformd X_FB1(RollPitchYawd(0, 1.5708, -1.5708),
-                              Vector3d(0.0, -0.05, -0.182));
+  const RigidTransformd X_FB1(RollPitchYawd(0, 1.57, -1.57),
+                              Vector3d(0.06, -0.095, 0.245));
   const RigidTransformd X_WB1 = X_WF0 * X_FB1;
   auto left_bubble_instance = std::make_unique<GeometryInstance>(
       X_WB1, std::move(left_bubble_mesh), "left bubble");
@@ -214,12 +244,12 @@ int do_main() {
       std::move(left_bubble_instance), deformable_config, 1.0);
   const Body<double>& left_finger = plant.GetBodyByName("left_finger_bubble");
   deformable_model->Weld(left_bubble_id, left_finger, X_WB1,
-                         RigidTransformd(RollPitchYawd(0, -1.57, 0),
-                                         Vector3d(0.0725, -0.02, 0.249942)));
+                         RigidTransformd(RollPitchYawd(0, 1.57, 0),
+                                         Vector3d(-0.0725796, -0.065, 0.0599422)));
 
   auto right_bubble_mesh = std::make_unique<Mesh>(bubble_vtk);
-  const RigidTransformd X_FB2(RollPitchYawd(0, 1.5708, 1.5708),
-                              Vector3d(0.0, 0.05, -0.182));
+  const RigidTransformd X_FB2(RollPitchYawd(0.0, 1.57, 1.57),
+                              Vector3d(0.06, 0.095, 0.245));
   const RigidTransformd X_WB2 = X_WF0 * X_FB2;
   auto right_bubble_instance = std::make_unique<GeometryInstance>(
       X_WB2, std::move(right_bubble_mesh), "right bubble");
@@ -228,16 +258,18 @@ int do_main() {
       std::move(right_bubble_instance), deformable_config, 1.0);
   const Body<double>& right_finger = plant.GetBodyByName("right_finger_bubble");
   deformable_model->Weld(right_bubble_id, right_finger, X_WB2,
-                         RigidTransformd(RollPitchYawd(0, -1.57, 0),
-                                         Vector3d(0.0725, 0.02, 0.249942)));
+                         RigidTransformd(RollPitchYawd(0, 1.57, 0),
+                                         Vector3d(-0.0725796, 0.065, 0.0599422)));
 
   plant.AddPhysicalModel(std::move(owned_deformable_model));
 
-  const PrismaticJoint<double>& right_joint =
-      plant.GetJointByName<PrismaticJoint>("right_finger_sliding_joint");
-  const PrismaticJoint<double>& left_joint =
-      plant.GetJointByName<PrismaticJoint>("left_finger_sliding_joint");
+  PrismaticJoint<double>& right_joint =
+      plant.GetMutableJointByName<PrismaticJoint>("right_finger_sliding_joint");
+  PrismaticJoint<double>& left_joint =
+      plant.GetMutableJointByName<PrismaticJoint>("left_finger_sliding_joint");
   plant.AddCouplerConstraint(left_joint, right_joint, -1.0);
+  left_joint.set_default_damping(50.0);
+  right_joint.set_default_damping(50.0);
 
   /* All rigid and deformable models have been added. Finalize the plant. */
   plant.Finalize();
@@ -249,26 +281,17 @@ int do_main() {
       deformable_model->vertex_positions_port(),
       scene_graph.get_source_configuration_port(plant.get_source_id().value()));
 
-  /* Construct the open loop square wave controller. To oscillate around a
-   constant force, we construct a ConstantVectorSource and combine it with
-   the square wave output using an Adder. */
-  const double f0 = FLAGS_gripper_force;
+  /* Set the width between the fingers for open and closed states as well as the
+   height to which the gripper lifts the deformable torus. */
+  const double kL = 0.08;
+  const double open_width = kL * 1.5;
+  const double closed_width = kL * 0.4;
+  const double lifted_height = 0.18;
 
-  const Eigen::Vector2d amplitudes(FLAGS_amplitude, -FLAGS_amplitude);
-  const Eigen::Vector2d duty_cycles(FLAGS_duty_cycle, FLAGS_duty_cycle);
-  const Eigen::Vector2d periods(FLAGS_period, FLAGS_period);
-  const Eigen::Vector2d phases(FLAGS_phase, FLAGS_phase);
-  const auto& square_force =
-      *builder.AddSystem<Square>(amplitudes, duty_cycles, periods, phases);
-  const auto& constant_force =
-      *builder.AddSystem<systems::ConstantVectorSource<double>>(
-          Eigen::Vector2d(f0, -f0));
-  const auto& adder = *builder.AddSystem<systems::Adder<double>>(2, 2);
-  builder.Connect(square_force.get_output_port(), adder.get_input_port(0));
-  builder.Connect(constant_force.get_output_port(), adder.get_input_port(1));
-
-  /* Connect the output of the adder to the plant's actuation input. */
-  builder.Connect(adder.get_output_port(0), plant.get_actuation_input_port());
+  const auto& control = *builder.AddSystem<GripperPositionControl>(
+      open_width, closed_width, lifted_height);
+  builder.Connect(plant.get_state_output_port(), control.get_input_port());
+  builder.Connect(control.get_output_port(), plant.get_actuation_input_port());
 
   /* Add a visualizer that emits LCM messages for visualization. */
   geometry::DrakeVisualizerParams params;
@@ -289,15 +312,9 @@ int do_main() {
   Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(plant, &mutable_root_context);
 
-  // Set spatula's free body pose.
-  const math::RigidTransform<double> X_WF1 = math::RigidTransform<double>(
-      math::RollPitchYaw(-0.4, 0.0, 1.57), Eigen::Vector3d(0.35, 0, 0.26));
-  const auto& base_link = plant.GetBodyByName("spatula");
-  plant.SetFreeBodyPose(&plant_context, base_link, X_WF1);
-
   // Set finger joint positions.
-  left_joint.set_translation(&plant_context, -0.02);
-  right_joint.set_translation(&plant_context, 0.02);
+  left_joint.set_translation(&plant_context, -0.065);
+  right_joint.set_translation(&plant_context, 0.065);
 
   simulator.Initialize();
   simulator.set_target_realtime_rate(FLAGS_realtime_rate);

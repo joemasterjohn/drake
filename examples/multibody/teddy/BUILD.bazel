@@ -30,7 +30,6 @@ drake_cc_binary(
         ":models",
         "teddy.vtk",
         "bubble.vtk",
-        "bubble2.vtk",
         "//manipulation/models/wsg_50_description:models",
     ],
     srcs = [
