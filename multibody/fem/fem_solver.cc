@@ -12,9 +12,14 @@ namespace internal {
 
 template <typename T>
 void FemSolverScratchData<T>::Resize(const FemModel<T>& model) {
-  b_.resize(model.num_dofs());
-  dz_.resize(model.num_dofs());
-  tangent_matrix_ = model.MakePetscSymmetricBlockSparseTangentMatrix();
+  if (num_dofs() != model.num_dofs() || petsc_tangent_matrix_ == nullptr ||
+      tangent_matrix_ == nullptr) {
+    b_.resize(model.num_dofs());
+    dz_.resize(model.num_dofs());
+    petsc_tangent_matrix_ = model.MakePetscSymmetricBlockSparseTangentMatrix();
+    tangent_matrix_ = model.MakeSymmetricBlockSparseTangentMatrix();
+    linear_solver_.SetMatrix(*tangent_matrix_);
+  }
 }
 
 template <typename T>
@@ -23,16 +28,22 @@ std::unique_ptr<FemSolverScratchData<T>> FemSolverScratchData<T>::Clone()
   std::unique_ptr<FemSolverScratchData<T>> clone(new FemSolverScratchData<T>());
   clone->b_ = this->b_;
   clone->dz_ = this->dz_;
+  DRAKE_DEMAND(petsc_tangent_matrix_ != nullptr);
+  petsc_tangent_matrix_->AssembleIfNecessary();
+  clone->petsc_tangent_matrix_ = this->petsc_tangent_matrix_->Clone();
   DRAKE_DEMAND(tangent_matrix_ != nullptr);
-  tangent_matrix_->AssembleIfNecessary();
-  clone->tangent_matrix_ = this->tangent_matrix_->Clone();
+  clone->tangent_matrix_ =
+      std::make_unique<internal::SymmetricBlockSparseMatrix<T>>(
+          *this->tangent_matrix_);
+  clone->linear_solver_ = this->linear_solver_;
   return clone;
 }
 
 template <typename T>
 FemSolver<T>::FemSolver(const FemModel<T>* model,
-                        const DiscreteTimeIntegrator<T>* integrator)
-    : model_(model), integrator_(integrator) {
+                        const DiscreteTimeIntegrator<T>* integrator,
+                        FemSolverOption option)
+    : model_(model), integrator_(integrator), option_(option) {
   DRAKE_DEMAND(model_ != nullptr);
   DRAKE_DEMAND(integrator_ != nullptr);
 }
@@ -85,8 +96,11 @@ int FemSolver<T>::SolveWithInitialGuess(
 
   VectorX<T>& b = scratch->mutable_b();
   VectorX<T>& dz = scratch->mutable_dz();
-  internal::PetscSymmetricBlockSparseMatrix& tangent_matrix =
+  internal::PetscSymmetricBlockSparseMatrix& petsc_tangent_matrix =
+      scratch->mutable_petsc_tangent_matrix();
+  internal::SymmetricBlockSparseMatrix<T>& tangent_matrix =
       scratch->mutable_tangent_matrix();
+  internal::BlockSparseCholeskySolver& solver = scratch->mutable_linear_solver();
 
   model_->ApplyBoundaryCondition(state);
   model_->CalcResidual(*state, &b);
@@ -102,22 +116,29 @@ int FemSolver<T>::SolveWithInitialGuess(
          /* Equivalent to residual_norm < absolute_tolerance_ on first
             iteration. */
          !solver_converged(residual_norm, initial_residual_norm)) {
-    model_->CalcTangentMatrix(*state, integrator_->GetWeights(),
-                              &tangent_matrix);
-    tangent_matrix.AssembleIfNecessary();
-    /* Solve for A * dz = -b, where A is the tangent matrix. */
-    tangent_matrix.set_relative_tolerance(
-        linear_solve_tolerance(residual_norm, initial_residual_norm));
-    const auto linear_solve_status =
-        tangent_matrix.Solve(internal::PetscSymmetricBlockSparseMatrix::
-                                 SolverType::kDirect,
-                             internal::PetscSymmetricBlockSparseMatrix::
-                                 PreconditionerType::kCholesky,
-                             -b, &dz);
-    if (linear_solve_status == PetscSolverStatus::kFailure) {
-      drake::log()->warn(
-          "Linear solve did not converge in Newton iterations in FemSolver.");
-      return -1;
+    if (option_ == FemSolverOption::kUsePetsc) {
+      model_->CalcTangentMatrix(*state, integrator_->GetWeights(),
+                                &petsc_tangent_matrix);
+      petsc_tangent_matrix.AssembleIfNecessary();
+      /* Solve for A * dz = -b, where A is the tangent matrix. */
+      petsc_tangent_matrix.set_relative_tolerance(
+          linear_solve_tolerance(residual_norm, initial_residual_norm));
+      const auto linear_solve_status = petsc_tangent_matrix.Solve(
+          internal::PetscSymmetricBlockSparseMatrix::SolverType::kConjugateGradient,
+          internal::PetscSymmetricBlockSparseMatrix::PreconditionerType::
+              kIncompleteCholesky,
+          -b, &dz);
+      if (linear_solve_status == PetscSolverStatus::kFailure) {
+        drake::log()->warn(
+            "Linear solve did not converge in Newton iterations in FemSolver.");
+        return -1;
+      }
+    } else {
+      model_->CalcTangentMatrix(*state, integrator_->GetWeights(),
+                                &tangent_matrix);
+      solver.UpdateMatrix(tangent_matrix);
+      solver.Factor();
+      dz = solver.Solve(-b);
     }
     integrator_->UpdateStateFromChangeInUnknowns(dz, state);
     model_->CalcResidual(*state, &b);

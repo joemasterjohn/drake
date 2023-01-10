@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "drake/common/eigen_types.h"
+#include "drake/multibody/fem/block_sparse_cholesky_solver.h"
 #include "drake/multibody/fem/discrete_time_integrator.h"
 #include "drake/multibody/fem/fem_model.h"
 #include "drake/multibody/fem/fem_state.h"
@@ -34,23 +35,44 @@ class FemSolverScratchData {
   const VectorX<T>& b() const { return b_; }
   /* Returns the solution to A * dz = -b, where A is the tangent matrix. */
   const VectorX<T>& dz() const { return dz_; }
-  const internal::PetscSymmetricBlockSparseMatrix& tangent_matrix() const {
+  const internal::PetscSymmetricBlockSparseMatrix& petsc_tangent_matrix()
+      const {
+    return *petsc_tangent_matrix_;
+  }
+  const internal::SymmetricBlockSparseMatrix<T>& tangent_matrix() const {
     return *tangent_matrix_;
+  }
+  const internal::BlockSparseCholeskySolver& linear_solver() const {
+    return linear_solver_;
   }
 
   VectorX<T>& mutable_b() { return b_; }
   VectorX<T>& mutable_dz() { return dz_; }
-  internal::PetscSymmetricBlockSparseMatrix& mutable_tangent_matrix() {
+  internal::PetscSymmetricBlockSparseMatrix& mutable_petsc_tangent_matrix() {
+    return *petsc_tangent_matrix_;
+  }
+  internal::SymmetricBlockSparseMatrix<T>& mutable_tangent_matrix() {
     return *tangent_matrix_;
+  }
+  internal::BlockSparseCholeskySolver& mutable_linear_solver() {
+    return linear_solver_;
   }
 
  private:
   /* Private default constructor to facilitate cloning. */
   FemSolverScratchData() = default;
 
-  std::unique_ptr<internal::PetscSymmetricBlockSparseMatrix> tangent_matrix_;
+  std::unique_ptr<internal::PetscSymmetricBlockSparseMatrix>
+      petsc_tangent_matrix_;
+  std::unique_ptr<internal::SymmetricBlockSparseMatrix<T>> tangent_matrix_;
+  internal::BlockSparseCholeskySolver linear_solver_;
   VectorX<T> b_;
   VectorX<T> dz_;
+};
+
+enum class FemSolverOption {
+  kUsePetsc,
+  kUseBlockSparseCholesky,
 };
 
 /* FemSolver solves discrete dynamic elasticity problems. The governing PDE of
@@ -73,7 +95,8 @@ class FemSolver {
    @pre model != nullptr.
    @pre integrator != nullptr.*/
   FemSolver(const FemModel<T>* model,
-            const DiscreteTimeIntegrator<T>* integrator);
+            const DiscreteTimeIntegrator<T>* integrator,
+            FemSolverOption option = FemSolverOption::kUsePetsc);
 
   /* Advances the state of the FEM model by one time step with the integrator
    prescribed at construction.
@@ -156,6 +179,7 @@ class FemSolver {
   /* Max number of Newton-Raphson iterations the solver takes before it gives
    up. */
   int kMaxIterations_{1};
+  FemSolverOption option_;
 };
 
 }  // namespace internal

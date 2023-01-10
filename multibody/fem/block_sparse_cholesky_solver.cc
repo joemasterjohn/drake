@@ -1,6 +1,7 @@
 #include "drake/multibody/fem/block_sparse_cholesky_solver.h"
 
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -19,7 +20,41 @@ namespace internal {
 using std::set;
 using std::unordered_set;
 using Vector4i = Vector4<int>;
+using contact_solvers::internal::PartialPermutation;
 using std::vector;
+
+namespace {
+
+/* Given an input matrix M, and a permutation mapping e, sets the resulting
+ matrix M̃ such that M̃(e(i), e(j)) = M(i, j). */
+template <typename T>
+void InversePermuteDenseMatrix(const MatrixX<T>& input,
+                               const std::vector<int>& permutation,
+                               MatrixX<T>* result) {
+  DRAKE_DEMAND(result != nullptr);
+  const int N = permutation.size();
+  DRAKE_DEMAND(3 * N == input.cols());
+  DRAKE_DEMAND(3 * N == result->cols());
+  result->setZero();
+
+  /* Construct the inverse mapping of e, f. */
+  std::vector<int> inverse_permutation(permutation.size());
+  for (int i = 0; i < static_cast<int>(permutation.size()); ++i) {
+    inverse_permutation[permutation[i]] = i;
+  }
+  /* Expand the permutation into permutation on dofs instead of vertices. */
+  VectorX<int> p(3 * permutation.size());
+  for (int i = 0; i < static_cast<int>(permutation.size()); ++i) {
+    for (int d = 0; d < 3; ++d) {
+      p(3 * i + d) = 3 * inverse_permutation[i] + d;
+    }
+  }
+
+  Eigen::PermutationMatrix<Eigen::Dynamic> P(p);
+  *result = P.inverse() * input * P;
+}
+
+}  // namespace
 
 vector<set<int>> BuildAdjacencyGraph(int num_verts,
                                      const vector<Vector4i>& elements) {
@@ -36,16 +71,13 @@ vector<set<int>> BuildAdjacencyGraph(int num_verts,
   return adj;
 }
 
-std::vector<int> CalcEliminationOrdering(
-    const std::vector<std::set<int>>& adjacency_graph) {
+vector<int> CalcEliminationOrdering(const vector<set<int>>& adjacency_graph) {
   /* Size of the matrix. */
   const int N = adjacency_graph.size();
   int nnz = 0;
   for (const auto& col : adjacency_graph) {
     nnz += col.size();
   }
-  // TODO(xuchenhan-tri): Figure out if the upper triangular part of the matrix
-  // needs to be filled out.
   /* Build a matrix A for symbolic analysis. */
   cholmod_common cm;
   cholmod_start(&cm);
@@ -74,15 +106,6 @@ std::vector<int> CalcEliminationOrdering(
     }
   }
   auto L = std::unique_ptr<cholmod_factor>(cholmod_analyze(A.get(), &cm));
-  // std::cout << "-------------------------- " << std::endl;
-  // std::cout << "n = " << L->n << std::endl;
-  // std::cout << "nnz= " << L->nzmax << std::endl;
-  // std::cout << "supernodal nnz= " << L->xsize << std::endl;
-  // std::cout << "ordering= " << L->ordering << std::endl;
-  // std::cout << "is_ll= " << L->is_ll << std::endl;
-  // std::cout << "is_super= " << L->is_super << std::endl;
-  // std::cout << "is_monotonic= " << L->is_monotonic << std::endl;
-  // std::cout << "-------------------------- " << std::endl;
   std::vector<int> permutation(N);
   memcpy(permutation.data(), L->Perm,
          permutation.size() * sizeof(permutation[0]));
@@ -283,52 +306,142 @@ std::vector<std::vector<int>> GetFillInGraph(
   return results;
 }
 
-BlockSparseCholeskySolver::BlockSparseCholeskySolver(
-    std::vector<std::vector<int>> sparsity_pattern)
-    : block_cols_(sparsity_pattern.size()),
-      L_(std::move(sparsity_pattern)),
-      L_diag_(block_cols_) {}
+/* Given an input matrix M, and a permutation mapping e, sets the resulting
+ matrix M̃ such that M̃(i, j) = M(e(i), e(j)). */
+void PermuteSymmetricBlockSparseMatrix(
+    const SymmetricBlockSparseMatrix<double>& input,
+    const std::vector<int>& permutation,
+    SymmetricBlockSparseMatrix<double>* result) {
+  DRAKE_DEMAND(result != nullptr);
+  const int N = permutation.size();
+  DRAKE_DEMAND(3 * N == input.cols());
+  DRAKE_DEMAND(3 * N == result->cols());
+  result->SetZero();
 
-MatrixX<double> BlockSparseCholeskySolver::CalcSchurComplement(
-    int num_eliminated_blocks) {
-  DRAKE_DEMAND(!is_factored_);
-  DRAKE_DEMAND(0 <= num_eliminated_blocks &&
-               num_eliminated_blocks <= block_cols_);
-  FactorImpl(0, num_eliminated_blocks);
-  return L_.MakeDenseBottomRightCorner(block_cols_ - num_eliminated_blocks);
+  /* Construct the inverse mapping of e, f. */
+  std::vector<int> inverse_permutation(permutation.size());
+  for (int i = 0; i < static_cast<int>(permutation.size()); ++i) {
+    inverse_permutation[permutation[i]] = i;
+  }
+  /* M̃(i, j) = M(e(i), e(j)) is equivalent to M̃(f(i), f(j)) = M(i, j). */
+  for (int j = 0; j < N; ++j) {
+    const std::vector<int>& row_indices = input.get_col_blocks(j);
+    for (int i : row_indices) {
+      const Matrix3<double>& block = input.get_block(i, j);
+      const int fi = inverse_permutation[i];
+      const int fj = inverse_permutation[j];
+      if (fi >= fj) {
+        result->SetBlock(fi, fj, block);
+      } else {
+        result->SetBlock(fj, fi, block.transpose());
+      }
+    }
+  }
+}
+
+void BlockSparseCholeskySolver::SetMatrix(
+    const SymmetricBlockSparseMatrix<double>& A) {
+  const std::vector<std::set<int>> adj = A.CalcAdjacencyGraph();
+  std::vector<int> elimination_ordering = CalcEliminationOrdering(adj);
+  SetMatrixImpl(A, adj, elimination_ordering);
+}
+
+void BlockSparseCholeskySolver::SetMatrix(
+    const SymmetricBlockSparseMatrix<double>& A,
+    const std::vector<int>& elimination_ordering) {
+  const std::vector<std::set<int>> adj = A.CalcAdjacencyGraph();
+  SetMatrixImpl(A, adj, elimination_ordering);
+}
+
+void BlockSparseCholeskySolver::UpdateMatrix(
+    const SymmetricBlockSparseMatrix<double>& A) {
+  PermuteSymmetricBlockSparseMatrix(A, internal_to_original_.permutation(),
+                                    &L_);
+  is_factored_ = false;
 }
 
 MatrixX<double> BlockSparseCholeskySolver::CalcSchurComplementAndFactor(
-    int num_eliminated_blocks) {
-  DRAKE_DEMAND(!is_factored_);
-  DRAKE_DEMAND(0 <= num_eliminated_blocks &&
-               num_eliminated_blocks <= block_cols_);
+    const SymmetricBlockSparseMatrix<double>& M,
+    const std::vector<int>& eliminated_block_indices) {
+  const int D_size = eliminated_block_indices.size();
+  if (D_size == 0) return M.MakeDenseMatrix();
+  /* The number of block columns in M. */
+  const int N = M.cols() / 3;
+  const int A_size = N - D_size;
+  DRAKE_DEMAND(A_size >= 0);
+  if (A_size == 0) return MatrixX<double>::Zero(0, 0);
+
+  const std::vector<std::set<int>> adjacency_graph = M.CalcAdjacencyGraph();
+  /* Ensure that the eliminated blocks appear first in the elimination order. */
+  const std::vector<int> elimination_order = RestrictOrdering(
+      CalcEliminationOrdering(adjacency_graph), eliminated_block_indices);
+  SetMatrixImpl(M, adjacency_graph, elimination_order);
+
+  std::unordered_set<int> D_set(eliminated_block_indices.begin(),
+                                eliminated_block_indices.end());
+  /* Maps the global index of a vertex to its implied index within a group (A or
+   D). For example, suppose D_indices are {0, 2, 5}, and A_indices are {1, 3, 4,
+   6}, then the implied indices for D vertices are 0 -> 0, 2 -> 1, 5 -> 2, and
+   the implied indices for A vertices are 1 -> 0, 3 -> 1, 4 -> 2, 6 -> 3, and
+   the global_to_local mapping is {0, 0, 1, 1, 2, 2, 3}. */
+  std::vector<int> global_to_local(N);
+  int local_D_index = 0;
+  int local_A_index = 0;
+
+  for (int i = 0; i < N; ++i) {
+    if (D_set.count(i) > 0) {
+      global_to_local[i] = local_D_index++;
+    } else {
+      global_to_local[i] = local_A_index++;
+    }
+  }
+
+  /* The permutation of A indices induced by the elimination ordering. Note
+   that A_vertex_permutation[new_index] = old_index. */
+  std::vector<int> A_vertex_permutation;
+  A_vertex_permutation.reserve(A_size);
+  for (int i = 0; i < static_cast<int>(elimination_order.size()); ++i) {
+    const int old_index = elimination_order[i];
+    if (D_set.count(old_index) == 0) {
+      A_vertex_permutation.emplace_back(global_to_local[old_index]);
+    }
+  }
+
+  const int num_eliminated_blocks = D_size;
   FactorImpl(0, num_eliminated_blocks);
-  const MatrixX<double> result =
+  const MatrixX<double> permuted_S =
       L_.MakeDenseBottomRightCorner(block_cols_ - num_eliminated_blocks);
   FactorImpl(num_eliminated_blocks, block_cols_);
-  return result;
+  MatrixX<double> S;
+  S.resizeLike(permuted_S);
+  InversePermuteDenseMatrix(permuted_S, A_vertex_permutation, &S);
+  return S;
 }
 
 void BlockSparseCholeskySolver::SolveInPlace(VectorX<double>* y) const {
   DRAKE_DEMAND(is_factored_);
   DRAKE_DEMAND(y != nullptr);
-  DRAKE_DEMAND(y->size() == size()); /* Solve Lz = y in place. */
+  DRAKE_DEMAND(y->size() == size());
+  VectorX<double> permuted_y(*y);
+  internal_to_original_dof_.ApplyInverse(*y, &permuted_y);
+
+  /* Solve Lz = y in place. */
   for (int j = 0; j < block_cols_; ++j) {
     /* Solve for the j-th block entry. */
-    y->segment<3>(3 * j) =
-        L_diag_[j].triangularView<Eigen::Lower>().solve(y->segment<3>(3 * j));
-    const auto& yj = y->segment<3>(3 * j);
+    permuted_y.segment<3>(3 * j) =
+        L_diag_[j].triangularView<Eigen::Lower>().solve(
+            permuted_y.segment<3>(3 * j));
+    const auto& yj = permuted_y.segment<3>(3 * j);
     /* Eliminate for the j-th block entry from the system. */
     const auto& blocks_in_col_j = L_.get_col_blocks(j);
     for (int flat = 1; flat < static_cast<int>(blocks_in_col_j.size());
          ++flat) {
       const int i = blocks_in_col_j[flat];
-      y->segment<3>(3 * i) -= L_.get_block(i, j) * yj;
+      permuted_y.segment<3>(3 * i) -= L_.get_block(i, j) * yj;
     }
   }
 
-  VectorX<double>* z = y;
+  VectorX<double>& permuted_z = permuted_y;
   /* Solve Lᵀx = z in place. */
   for (int j = block_cols_ - 1; j >= 0; --j) {
     /* Eliminate all solved variables. */
@@ -336,14 +449,15 @@ void BlockSparseCholeskySolver::SolveInPlace(VectorX<double>* y) const {
     for (int flat = 1; flat < static_cast<int>(blocks_in_col_j.size());
          ++flat) {
       const int i = blocks_in_col_j[flat];
-      z->segment<3>(3 * j) -=
-          L_.get_block(i, j).transpose() * z->segment<3>(3 * i);
+      permuted_z.segment<3>(3 * j) -=
+          L_.get_block(i, j).transpose() * permuted_z.segment<3>(3 * i);
     }
     /* Solve for the j-th block entry. */
-    z->segment<3>(3 * j) =
+    permuted_z.segment<3>(3 * j) =
         L_diag_[j].transpose().triangularView<Eigen::Upper>().solve(
-            z->segment<3>(3 * j));
+            permuted_z.segment<3>(3 * j));
   }
+  internal_to_original_dof_.Apply(permuted_z, y);
 }
 
 VectorX<double> BlockSparseCholeskySolver::Solve(
@@ -351,6 +465,29 @@ VectorX<double> BlockSparseCholeskySolver::Solve(
   VectorX<double> x(y);
   SolveInPlace(&x);
   return x;
+}
+
+void BlockSparseCholeskySolver::SetMatrixImpl(
+    const SymmetricBlockSparseMatrix<double>& A,
+    const std::vector<std::set<int>>& adjacency_graph,
+    const std::vector<int>& elimination_ordering) {
+  DRAKE_DEMAND(elimination_ordering.size() == adjacency_graph.size());
+  block_cols_ = elimination_ordering.size();
+  vector<int> dof_permutation(elimination_ordering.size() * 3);
+  for (int i = 0; i < static_cast<int>(elimination_ordering.size()); ++i) {
+    for (int d = 0; d < 3; ++d) {
+      dof_permutation[3 * i + d] = 3 * elimination_ordering[i] + d;
+    }
+  }
+  internal_to_original_ = PartialPermutation(move(elimination_ordering));
+  internal_to_original_dof_ = PartialPermutation(move(dof_permutation));
+
+  L_diag_.resize(block_cols_);
+
+  std::vector<std::vector<int>> sparsitiy_pattern =
+      CalcSparsityPattern(adjacency_graph, internal_to_original_.permutation());
+  L_ = SymmetricBlockSparseMatrix<double>(std::move(sparsitiy_pattern));
+  UpdateMatrix(A);
 }
 
 void BlockSparseCholeskySolver::FactorImpl(int starting_col_block,

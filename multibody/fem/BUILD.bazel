@@ -251,6 +251,7 @@ drake_cc_library(
         "fem_solver.h",
     ],
     deps = [
+        ":block_sparse_cholesky_solver",
         ":discrete_time_integrator",
         ":fem_model",
         "//common:essential",
@@ -436,6 +437,7 @@ drake_cc_library(
     deps = [
         ":symmetric_block_sparse_matrix",
         "//common:essential",
+        "//multibody/contact_solvers/sap:partial_permutation",
         "@cholmod",
     ],
 )
@@ -484,7 +486,6 @@ drake_cc_library(
         ":symmetric_block_sparse_matrix",
         "//common:default_scalars",
         "//common:essential",
-        "//multibody/contact_solvers/sap:partial_permutation",
     ],
 )
 

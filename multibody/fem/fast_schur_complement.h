@@ -4,7 +4,6 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
-#include "drake/multibody/contact_solvers/sap/partial_permutation.h"
 #include "drake/multibody/fem/block_sparse_cholesky_solver.h"
 #include "drake/multibody/fem/symmetric_block_sparse_matrix.h"
 
@@ -55,14 +54,10 @@ class FastSchurComplement {
   VectorX<T> SolveForX(const Eigen::Ref<const VectorX<T>>& y) const;
 
  private:
-  int D_size_{0};
-  int A_size_{0};
+  std::vector<int> D_indices_;
+  std::vector<int> A_indices_;
   BlockSparseCholeskySolver solver_;
   MatrixX<T> S_;  // S = A - BᵀD⁻¹B.
-  /* Permutation for D block indices. */
-  contact_solvers::internal::PartialPermutation D_dof_permutation_;
-  /* Permutation for A block indices. */
-  contact_solvers::internal::PartialPermutation A_dof_permutation_;
 };
 
 }  // namespace internal
