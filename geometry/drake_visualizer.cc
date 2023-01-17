@@ -180,6 +180,7 @@ lcmt_viewer_geometry_data MakeDeformableSurfaceMesh(
   Eigen::Map<Eigen::Vector4f> color(geometry_data.color);
   Eigen::Vector4d color_vec(in_color.r(), in_color.g(), in_color.b(),
                             in_color.a());
+  color_vec = Eigen::Vector4d(0.7, 0.7, 0.7, 1.0);
   color = color_vec.cast<float>();
 
   // We can define the mesh in the float data as:

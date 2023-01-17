@@ -163,6 +163,10 @@ class _ViewerApplet:
             vertices, faces, rgba, pose = self._convert_deformable_geom(geom)
             self._meshcat.SetTriangleMesh(
                 path=geom_path, vertices=vertices, faces=faces, rgba=rgba)
+            wireframe_rgba = Rgba(1.0, 1.0, 1.0, 1.0)
+            self._meshcat.SetTriangleMesh(
+                path=geom_path+"wireframe", vertices=vertices, faces=faces,
+                rgba=wireframe_rgba, wireframe=True)
             self._meshcat.SetTransform(path=link_path, X_ParentPath=pose)
         if self._waiting_for_first_draw_message:
             self._waiting_for_first_draw_message = False
