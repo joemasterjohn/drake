@@ -218,9 +218,9 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
   const fem::FemState<T>& EvalFemState(const systems::Context<T>& context,
                                        DeformableBodyIndex index) const;
 
-  /* Given the state of the deformable body with `index` in the given
-   `context`, computes its "free motion" state (the state the body would
-   have at the next time step in the absense of contact or constraints).
+  /* Given the state of the deformable body with `index` in the given `context`,
+   computes its "free motion" state (the state the body would have at the next
+   time step in the absence of contact or constraints).
    @pre fem_state_star != nullptr and is compatible with the state of the
    deformable body with the given `index`. */
   void CalcFreeMotionFemState(const systems::Context<T>& context,
@@ -235,9 +235,9 @@ class DeformableDriver : public ScalarConvertibleComponent<T> {
    `context`, computes the state of the deformable body at the next time
    step.
    @note The state of the deformable body will the same as the "free motion"
-         state in the absense of contact or constraints. Otherwise, the
-   discrete solver results for participating dofs are evaluated, and the
-   Schur complement of the tangent matrix is used to update the
+         state in the absence of contact or constraints. Otherwise, the discrete
+         solver results for participating dofs are evaluated, and the Schur
+         complement of the tangent matrix is used to update the
          non-participating dofs.
    @pre next_fem_state != nullptr and is compatible with the state of
         the deformable body with the given `index`. */
