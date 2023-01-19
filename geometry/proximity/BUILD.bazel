@@ -147,7 +147,7 @@ drake_cc_library(
         ":collision_filter",
         ":proximity_utilities",
         "//geometry:geometry_ids",
-        "@fcl",
+        "@fcl_internal//:fcl",
     ],
 )
 
@@ -236,7 +236,7 @@ drake_cc_library(
         "//geometry:geometry_ids",
         "//geometry/query_results:signed_distance_to_point",
         "//math:geometric_transform",
-        "@fcl",
+        "@fcl_internal//:fcl",
     ],
 )
 
@@ -305,7 +305,7 @@ drake_cc_library(
         ":collision_filter",
         ":proximity_utilities",
         "//common:sorted_pair",
-        "@fcl",
+        "@fcl_internal//:fcl",
         "@fmt",
     ],
 )
@@ -332,7 +332,7 @@ drake_cc_library(
         "//geometry:proximity_properties",
         "//geometry/query_results:contact_surface",
         "//math:geometric_transform",
-        "@fcl",
+        "@fcl_internal//:fcl",
         "@fmt",
     ],
 )
@@ -703,7 +703,7 @@ drake_cc_library(
         "//common:nice_type_name",
         "//geometry/query_results:penetration_as_point_pair",
         "//geometry/query_results:signed_distance_to_point",
-        "@fcl",
+        "@fcl_internal//:fcl",
     ],
 )
 
@@ -754,7 +754,7 @@ drake_cc_library(
         "//common:sorted_pair",
         "//geometry:geometry_ids",
         "//geometry:shape_specification",
-        "@fcl",
+        "@fcl_internal//:fcl",
         "@fmt",
     ],
 )
@@ -890,7 +890,7 @@ drake_cc_library(
         "//geometry:utilities",
         "//geometry/proximity:proximity_utilities",
         "//math:geometric_transform",
-        "@fcl",
+        "@fcl_internal//:fcl",
     ],
 )
 
