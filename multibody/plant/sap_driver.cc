@@ -565,6 +565,7 @@ void SapDriver<T>::AddBallConstraints(
   }
 }
 
+template <typename T>
 void SapDriver<T>::AddPdControllerConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
