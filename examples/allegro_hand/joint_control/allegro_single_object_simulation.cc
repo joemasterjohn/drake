@@ -44,6 +44,7 @@ using multibody::JointActuator;
 using multibody::JointActuatorIndex;
 using multibody::ModelInstanceIndex;
 using multibody::MultibodyPlant;
+using multibody::DiscreteContactSolver;
 
 DEFINE_double(simulation_time, std::numeric_limits<double>::infinity(),
               "Desired duration of the simulation in seconds");
@@ -102,8 +103,15 @@ void DoMain() {
   const std::string object_model_path = FindResourceOrThrow(
       "drake/examples/allegro_hand/joint_control/simple_mug.sdf");
   multibody::Parser parser(&plant);
-  parser.AddModels(hand_model_path);
+  std::vector<ModelInstanceIndex> hand_model_indices =
+      parser.AddModels(hand_model_path);
   parser.AddModels(object_model_path);
+
+  DRAKE_DEMAND(hand_model_indices.size() == 1);
+
+  ModelInstanceIndex hand_model_index = hand_model_indices[0];
+
+  plant.set_discrete_contact_solver(DiscreteContactSolver::kSap);
 
   // Weld the hand to the world frame
   const auto& joint_hand_root = plant.GetBodyByName("hand_root");
@@ -164,6 +172,22 @@ void DoMain() {
   const double reflected_inertia = rotor_inertia * gear_ratio * gear_ratio;
   // We expect all fingers to be actuated.
   DRAKE_DEMAND(plant.num_actuators() == 16);
+
+  // Estimate rotational inertia for an average finger of mass 0.17/3 kg (0.17
+  // is the mass of one finger) and length 5 cm. We estimate it using the
+  // rotational inertia for a rod about its end, i.e. I = 1/3⋅m⋅ℓ².
+  const double mass_finger = 0.17 / 3.0;
+  const double length_finger = 0.05;
+  const double Ifinger = mass_finger / 3.0 * length_finger * length_finger;
+
+  // Approximate effective finger inertia.
+  const double Ieff = Ifinger + reflected_inertia;
+
+  // PID controller for position control of the finger joints
+  VectorX<double> kp, kd, ki;
+  //SetPositionControlledGains(FLAGS_pid_frequency, Ieff, &kp, &ki, &kd);
+  SetPositionControlledGains(1.0 / FLAGS_mbp_discrete_update_period, Ieff, &kp, &ki, &kd);
+
   // N.B. This change MUST be performed before Finalize() in order to take
   // effect.
   for (JointActuatorIndex actuator_index(0);
@@ -172,6 +196,8 @@ void DoMain() {
         plant.get_mutable_joint_actuator(actuator_index);
     actuator.set_default_rotor_inertia(rotor_inertia);
     actuator.set_default_gear_ratio(gear_ratio);
+    int joint_index = actuator.joint().index();
+    actuator.set_controller_gains({kp[joint_index], kd[joint_index]});
   }
 
   if (!FLAGS_add_gravity) {
@@ -187,27 +213,19 @@ void DoMain() {
   multibody::ConnectContactResultsToDrakeVisualizer(
       &builder, plant, scene_graph, lcm);
 
-  // Estimate rotational inertia for an average finger of mass 0.17/3 kg (0.17
-  // is the mass of one finger) and length 5 cm. We estimate it using the
-  // rotational inertia for a rod about its end, i.e. I = 1/3⋅m⋅ℓ².
-  const double mass_finger = 0.17 / 3.0;
-  const double length_finger = 0.05;
-  const double Ifinger = mass_finger / 3.0 * length_finger * length_finger;
-
-  // Approximate effective finger inertia.
-  const double Ieff = Ifinger + reflected_inertia;
-
-  // PID controller for position control of the finger joints
-  VectorX<double> kp, kd, ki;
   MatrixX<double> Sx, Sy;
   GetControlPortMapping(plant, &Sx, &Sy);
-  SetPositionControlledGains(FLAGS_pid_frequency, Ieff, &kp, &ki, &kd);
+
   auto& hand_controller = *builder.AddSystem<
       systems::controllers::PidController>(Sx, Sy, kp, ki, kd);
   builder.Connect(plant.get_state_output_port(),
                   hand_controller.get_input_port_estimated_state());
-  builder.Connect(hand_controller.get_output_port_control(),
-                  plant.get_actuation_input_port());
+// No longer send the output of this controller to the plant's actuation input.
+// Desired state will be sent directly and the plant's internal PID controllers
+// will handle control.
+
+//   builder.Connect(hand_controller.get_output_port_control(),
+//                   plant.get_actuation_input_port());
 
   // Create an output port of the continuous state from the plant that only
   // output the status of the hand finger joints related DOFs, and put them in
@@ -242,6 +260,9 @@ void DoMain() {
                   hand_command_receiver.get_input_port(0));
   builder.Connect(hand_command_receiver.get_commanded_state_output_port(),
                   hand_controller.get_input_port_desired_state());
+  // Send the desired state to the hand controller and the plant itself.
+  builder.Connect(hand_command_receiver.get_commanded_state_output_port(),
+                  plant.get_desired_state_input_port(hand_model_index));
   builder.Connect(hand_status_converter.get_output_port(),
                   status_sender.get_state_input_port());
   builder.Connect(hand_command_receiver.get_output_port(0),
