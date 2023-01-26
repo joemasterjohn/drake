@@ -66,6 +66,9 @@ DEFINE_double(
 DEFINE_double(
     pid_frequency, 10.0,
     "This frequency determines the time scale of the PID controller.");
+DEFINE_double(Kp, 100, "Proportional gain");
+DEFINE_double(Kd, 20, "Derivative gain");
+
 
 // Modeling the Allegro hand with and without reflected inertia.
 // The default command line parameters are set to model an Allegro hand that
@@ -196,8 +199,9 @@ void DoMain() {
         plant.get_mutable_joint_actuator(actuator_index);
     actuator.set_default_rotor_inertia(rotor_inertia);
     actuator.set_default_gear_ratio(gear_ratio);
-    int joint_index = actuator.joint().index();
-    actuator.set_controller_gains({kp[joint_index], kd[joint_index]});
+    //int joint_index = actuator.joint().index();
+    //actuator.set_controller_gains({kp[joint_index], kd[joint_index]});
+    actuator.set_controller_gains({FLAGS_Kp, FLAGS_Kd});
   }
 
   if (!FLAGS_add_gravity) {

@@ -11,6 +11,8 @@
 /// get stuck by collisions.
 
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 #include "lcm/lcm-cpp.hpp"
 #include <Eigen/Dense>
@@ -48,25 +50,38 @@ class PositionCommander {
     Eigen::VectorXd target_joint_position(kAllegroNumJoints);
     target_joint_position.setZero();
     MovetoPositionUntilStuck(target_joint_position);
+    std::chrono::seconds duration(1);
 
-    // close thumb
-    target_joint_position(0) = 1.396;
-    target_joint_position(1) = 0.3;
+    // Move thumb to start pose
+    target_joint_position(4) = 1.5707963267948966;
+    target_joint_position(5) = 0.3;
     MovetoPositionUntilStuck(target_joint_position);
-
-    // close other fingers
-    target_joint_position.segment<4>(0) =
-        hand_state_.FingerGraspJointPosition(0);
-    target_joint_position.segment<4>(4) =
-        hand_state_.FingerGraspJointPosition(1);
-    target_joint_position.segment<4>(8) =
-        hand_state_.FingerGraspJointPosition(2);
-    target_joint_position.segment<4>(12) =
-        hand_state_.FingerGraspJointPosition(3);
-    MovetoPositionUntilStuck(target_joint_position);
-    std::cout << "Hand is closed. \n";
+    std::cout << "Thumb. \n";
     while (0 == lcm_.handleTimeout(10)) {
     }
+    std::this_thread::sleep_for(duration);
+
+    // close  fingers
+    target_joint_position.segment<4>(4) =
+        hand_state_.FingerGraspJointPosition(0);
+    std::cout << "Finger 1. \n";
+    target_joint_position.segment<4>(0) =
+        hand_state_.FingerGraspJointPosition(1);
+    std::cout << "Finger 0. \n";
+    target_joint_position.segment<4>(8) =
+        hand_state_.FingerGraspJointPosition(2);
+    std::cout << "Finger 2. \n";
+    target_joint_position.segment<4>(12) =
+        hand_state_.FingerGraspJointPosition(3);
+    std::cout << "Finger 3. \n";
+
+    MovetoPositionUntilStuck(target_joint_position);
+
+    while (0 == lcm_.handleTimeout(10)) {
+    }
+
+    // Sleep a little bit.
+    std::this_thread::sleep_for(duration);
 
     // Record the joint position q when the fingers are close and gripping the
     // object
@@ -85,25 +100,29 @@ class PositionCommander {
           (0.1 * Eigen::Vector3d(1, 1, 0.5));
       // The thumb works as another pivot finger, and is expected to exert a
       // large force in order to keep stabilization.
-      target_joint_position.segment<4>(0) =
+      target_joint_position.segment<4>(1) =
           hand_state_.FingerGraspJointPosition(0);
+      std::this_thread::sleep_for(duration);
+
       // The index finger works as the actuating finger, where (1, 0.3, 0.5) is
       // the portion of the joint motion for actuating the mug rotation, 0.6 is
       // the coefficient to determine how much the rotation should be.
-      target_joint_position.segment<3>(5) +=
+      target_joint_position.segment<3>(1) +=
           (0.6 * Eigen::Vector3d(1, 0.3, 0.5));
       MovetoPositionUntilStuck(target_joint_position);
+      std::this_thread::sleep_for(duration);
 
       target_joint_position = close_hand_joint_position;
       target_joint_position.segment<3>(9) +=
           (0.1 * Eigen::Vector3d(1, 1, 0.5));
-      target_joint_position.segment<4>(0) =
+      target_joint_position.segment<4>(1) =
           hand_state_.FingerGraspJointPosition(0);
       // The ring finger works as the actuating finger now to rotate the mug in
       // the opposite direction.
       target_joint_position.segment<3>(13) +=
           (0.6 * Eigen::Vector3d(1, 0.3, 0.5));
       MovetoPositionUntilStuck(target_joint_position);
+    std::this_thread::sleep_for(duration);
     }
   }
 

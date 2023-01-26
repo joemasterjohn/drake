@@ -127,7 +127,7 @@ Eigen::Vector4d AllegroHandMotionState::FingerGraspJointPosition(
   // are usually larger than the preset values, so that the fingers continuously
   // apply force on the object.
   if (finger_index == 0)
-    position << 1.396, 0.85, 0, 1.3;
+    position << 1.5707963267948966, 0.0, 0, 1.3;
   else if (finger_index == 1)
     position << 0.08, 0.9, 0.75, 1.5;
   else if (finger_index == 2)
