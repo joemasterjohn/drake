@@ -50,7 +50,7 @@ class PositionCommander {
     Eigen::VectorXd target_joint_position(kAllegroNumJoints);
     target_joint_position.setZero();
     MovetoPositionUntilStuck(target_joint_position);
-    std::chrono::seconds duration(1);
+    std::chrono::milliseconds duration(500);
 
     // Move thumb to start pose
     target_joint_position(4) = 1.5707963267948966;
@@ -85,44 +85,56 @@ class PositionCommander {
 
     // Record the joint position q when the fingers are close and gripping the
     // object
-    Eigen::VectorXd close_hand_joint_position = Eigen::Map<Eigen::VectorXd>(
-        &(allegro_status_.joint_position_measured[0]), kAllegroNumJoints);
-    // twisting the cup repeatedly
+    Eigen::VectorXd close_hand_joint_position = target_joint_position;
+    // // twisting the cup repeatedly
+    // for (int cycle = 0; cycle < FLAGS_max_cycles; ++cycle) {
+    //   target_joint_position = close_hand_joint_position;
+    //   // The middle finger works as a pivot finger for the rotation, and exert
+    //   // a little force to maintain the stabilization of the mug, which is
+    //   // realized by adding some extra pushing motion towards the balance
+    //   // position. Eigen::Vector3d(1, 1, 0.5) is a number based on experience
+    //   // to keep the finger position, and 0.1 is the coefficient related to
+    //   // the extra force to apply.
+    //   target_joint_position.segment<3>(9) += (0.2 * Eigen::Vector3d(1, 1, 1));
+    //   target_joint_position.segment<3>(5) += (0.2 * Eigen::Vector3d(0, 1, 1));
+    //   // The thumb works as another pivot finger, and is expected to exert a
+    //   // large force in order to keep stabilization.
+    //   // The index finger works as the actuating finger, where (1, 0.3, 0.5) is
+    //   // the portion of the joint motion for actuating the mug rotation, 0.6 is
+    //   // the coefficient to determine how much the rotation should be.
+    //   target_joint_position.segment<3>(1) +=
+    //       (0.2 * Eigen::Vector3d(2, 1, 1));
+    //   std::cout << "Flex index finger.\n";
+    //   MovetoPositionUntilStuck(target_joint_position);
+    //   // std::this_thread::sleep_for(duration);
+
+    //   target_joint_position = close_hand_joint_position;
+    //   target_joint_position.segment<3>(9) += (0.2 * Eigen::Vector3d(1, 1, 1));
+    //   target_joint_position.segment<3>(5) += (0.2 * Eigen::Vector3d(0, 1, 1));
+
+    //   // The ring finger works as the actuating finger now to rotate the mug in
+    //   // the opposite direction.
+    //   target_joint_position.segment<3>(13) +=
+    //       (0.2 * Eigen::Vector3d(2, 1, 1));
+    //   std::cout << "Un-flex index and flex ring finger.\n";
+    //   MovetoPositionUntilStuck(target_joint_position);
+    //   // std::this_thread::sleep_for(duration);
+    // }
+
+    // roll the cup on the middle finger
     for (int cycle = 0; cycle < FLAGS_max_cycles; ++cycle) {
-      target_joint_position = close_hand_joint_position;
-      // The middle finger works as a pivot finger for the rotation, and exert
-      // a little force to maintain the stabilization of the mug, which is
-      // realized by adding some extra pushing motion towards the balance
-      // position. Eigen::Vector3d(1, 1, 0.5) is a number based on experience
-      // to keep the finger position, and 0.1 is the coefficient related to
-      // the extra force to apply.
-      target_joint_position.segment<3>(9) +=
-          (0.1 * Eigen::Vector3d(1, 1, 0.5));
-      // The thumb works as another pivot finger, and is expected to exert a
-      // large force in order to keep stabilization.
-      target_joint_position.segment<4>(1) =
-          hand_state_.FingerGraspJointPosition(0);
-      std::this_thread::sleep_for(duration);
-
-      // The index finger works as the actuating finger, where (1, 0.3, 0.5) is
-      // the portion of the joint motion for actuating the mug rotation, 0.6 is
-      // the coefficient to determine how much the rotation should be.
-      target_joint_position.segment<3>(1) +=
-          (0.6 * Eigen::Vector3d(1, 0.3, 0.5));
-      MovetoPositionUntilStuck(target_joint_position);
-      std::this_thread::sleep_for(duration);
 
       target_joint_position = close_hand_joint_position;
-      target_joint_position.segment<3>(9) +=
-          (0.1 * Eigen::Vector3d(1, 1, 0.5));
-      target_joint_position.segment<4>(1) =
-          hand_state_.FingerGraspJointPosition(0);
-      // The ring finger works as the actuating finger now to rotate the mug in
-      // the opposite direction.
-      target_joint_position.segment<3>(13) +=
-          (0.6 * Eigen::Vector3d(1, 0.3, 0.5));
+      target_joint_position.segment<3>(9) += (0.2 * Eigen::Vector3d(1, 1, 1));
+      target_joint_position.segment<3>(5) += (0.2 * Eigen::Vector3d(0, 1, 1));
       MovetoPositionUntilStuck(target_joint_position);
-    std::this_thread::sleep_for(duration);
+
+
+      target_joint_position.segment<3>(9) +=
+          (0.8 * Eigen::Vector3d(2, -1.5, -1.5));
+      std::cout << "Flex middle finger.\n";
+      MovetoPositionUntilStuck(target_joint_position);
+      std::this_thread::sleep_for(duration);
     }
   }
 

@@ -38,6 +38,9 @@ drake_cc_binary(
         "//systems/framework:diagram",
         "//systems/lcm:lcm_pubsub_system",
         "//systems/primitives:matrix_gain",
+        "//geometry:meshcat",
+        "//geometry:meshcat_visualizer",
+        "//multibody/meshcat:joint_sliders",
         "@gflags",
     ],
 )
