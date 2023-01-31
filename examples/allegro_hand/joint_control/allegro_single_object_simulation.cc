@@ -9,6 +9,8 @@
 
 #include <gflags/gflags.h>
 
+#include <memory>
+
 #include "drake/common/drake_assert.h"
 #include "drake/common/find_resource.h"
 #include "drake/examples/allegro_hand/allegro_common.h"
@@ -38,6 +40,10 @@
 #include "drake/systems/lcm/lcm_publisher_system.h"
 #include "drake/systems/lcm/lcm_subscriber_system.h"
 #include "drake/systems/primitives/matrix_gain.h"
+
+#include "drake/geometry/meshcat.h"
+#include "drake/geometry/meshcat_visualizer.h"
+#include "drake/multibody/meshcat/joint_sliders.h"
 
 namespace drake {
 namespace examples {
@@ -72,6 +78,10 @@ using multibody::JointActuator;
 using multibody::JointActuatorIndex;
 using multibody::ModelInstanceIndex;
 using multibody::MultibodyPlant;
+using multibody::DiscreteContactSolver;
+using geometry::Meshcat;
+using geometry::MeshcatVisualizer;
+using multibody::meshcat::JointSliders;
 
 DEFINE_double(simulation_time, std::numeric_limits<double>::infinity(),
               "Desired duration of the simulation in seconds");
@@ -95,6 +105,8 @@ DEFINE_double(
     "This frequency determines the time scale of the PID controller.");
 DEFINE_double(Kp, 100, "Proportional gain");
 DEFINE_double(Kd, 20, "Derivative gain");
+
+DEFINE_bool(sliders, false, "Switch between joint slilder mode and simulation mode");
 
 
 DEFINE_double(E, 1e5, "Young's modulus of the deformable body [Pa].");
@@ -288,6 +300,28 @@ void DoMain() {
   multibody::ConnectContactResultsToDrakeVisualizer(
       &builder, plant, scene_graph, lcm);
 
+  std::shared_ptr<Meshcat> meshcat = std::make_shared<Meshcat>();
+  MeshcatVisualizer<double>::AddToBuilder(&builder, scene_graph, meshcat);
+
+  JointSliders<double>* joint_sliders = nullptr;
+
+  if (FLAGS_sliders) {
+    AllegroHandMotionState hand_state;
+    VectorX<double> initial_values = VectorX<double>::Zero(23);
+    initial_values.segment<4>(4) = hand_state.FingerGraspJointPosition(0);
+    initial_values.segment<4>(0) = hand_state.FingerGraspJointPosition(1);
+    initial_values.segment<4>(8) = hand_state.FingerGraspJointPosition(2);
+    initial_values.segment<4>(12) = hand_state.FingerGraspJointPosition(3);
+
+    initial_values.segment<7>(16) =
+        (VectorX<double>() << 1.0, 1.0, 0.0, 0.0, 0.062, 0.062, 0.12)
+            .finished();
+    joint_sliders = builder.AddSystem<JointSliders<double>>(meshcat, &plant,
+                                                            initial_values);
+  } else {
+    drake::unused(joint_sliders);
+  }
+
   MatrixX<double> Sx, Sy;
   GetControlPortMapping(plant, &Sx, &Sy);
 
@@ -363,18 +397,18 @@ void DoMain() {
   diagram->SetDefaultContext(diagram_context.get());
 
   // Set the position of object
-//   const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
-//   systems::Context<double>& plant_context =
-//       diagram->GetMutableSubsystemContext(plant, diagram_context.get());
+  const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
+  systems::Context<double>& plant_context =
+      diagram->GetMutableSubsystemContext(plant, diagram_context.get());
 
-//   // Initialize the mug pose to be right in the middle between the fingers.
-//   const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
-//   const Eigen::Vector3d& p_WHand =
-//       plant.EvalBodyPoseInWorld(plant_context, hand).translation();
-//   RigidTransformd X_WM(
-//       RollPitchYawd(M_PI / 2, 0, 0),
-//       p_WHand + Eigen::Vector3d(0.095, 0.062, 0.095));
-//   plant.SetFreeBodyPose(&plant_context, mug, X_WM);
+  // Initialize the mug pose to be right in the middle between the fingers.
+  const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
+  const Eigen::Vector3d& p_WHand =
+      plant.EvalBodyPoseInWorld(plant_context, hand).translation();
+  RigidTransformd X_WM(
+      RollPitchYawd(M_PI / 2, 0, 0),
+      p_WHand + Eigen::Vector3d(0.062, 0.062, 0.12));
+  plant.SetFreeBodyPose(&plant_context, mug, X_WM);
 
   // set the initial command for the hand
   hand_command_receiver.set_initial_position(
@@ -383,9 +417,13 @@ void DoMain() {
       VectorX<double>::Zero(plant.num_actuators()));
 
   // Set up simulator.
-  auto simulator =
-      MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
-  simulator->AdvanceTo(FLAGS_simulation_time);
+  if (FLAGS_sliders) {
+    joint_sliders->Run(*diagram);
+  } else {
+    auto simulator =
+        MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
+    simulator->AdvanceTo(FLAGS_simulation_time);
+  }
 }
 
 }  // namespace
