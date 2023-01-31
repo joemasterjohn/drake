@@ -46,6 +46,11 @@
             <size>0.0408 0.113 0.095</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="hand_root_fixed_joint_lump__palm_link_visual">
         <pose>0 0 0.095 0 0 0</pose>
@@ -77,6 +82,11 @@
             <size>0.0196 0.0275 0.0164</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_0_visual">
         <geometry>
@@ -122,6 +132,11 @@
             <size>0.0196 0.0275 0.054</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_1_visual">
         <geometry>
@@ -167,6 +182,11 @@
             <size>0.0196 0.0275 0.0384</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_2_visual">
         <geometry>
@@ -212,6 +232,11 @@
             <size>0.0196 0.0275 0.0267</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <collision name="link_3_tip_collision_1">
         <pose>0 0 0.0267 0 0 0</pose>
@@ -220,6 +245,11 @@
             <radius>0.012</radius>
           </sphere>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>0.006</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_3_visual">
         <geometry>
@@ -274,6 +304,11 @@
             <size>0.0358 0.034 0.0455</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_12_visual">
         <geometry>
@@ -312,7 +347,6 @@
           <izz>   1.496e-06</izz>
         </inertia>
       </inertial>
-      <!--
       <collision name='link_13_collision'>
         <pose>0 0 0.00885 0 0 0</pose>
         <geometry>
@@ -320,8 +354,12 @@
             <size>0.0196 0.0275 0.0177</size>
           </box>
         </geometry>
-      </collision>  
-    -->
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
+      </collision>
       <visual name="link_13_visual">
         <geometry>
           <mesh>
@@ -366,6 +404,11 @@
             <size>0.0196 0.0275 0.0514</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_14_visual">
         <geometry>
@@ -412,6 +455,11 @@
             <size>0.0196 0.0275 0.0423</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <collision name="link_15_tip_collision_1">
         <pose>0 0 0.0423 0 0 0</pose>
@@ -420,6 +468,11 @@
             <radius>0.012</radius>
           </sphere>
         </geometry>
+        <drake:proximity_properties>
+          <drake:mesh_resolution_hint>0.006</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_15_visual">
         <geometry>
@@ -474,6 +527,11 @@
             <size>0.0196 0.0275 0.0164</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_4_visual">
         <geometry>
@@ -519,6 +577,11 @@
             <size>0.0196 0.0275 0.054</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_5_visual">
         <geometry>
@@ -564,6 +627,11 @@
             <size>0.0196 0.0275 0.0384</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_6_visual">
         <geometry>
@@ -609,6 +677,11 @@
             <size>0.0196 0.0275 0.0267</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <collision name="link_7_tip_collision_1">
         <pose>0 0 0.0267 0 0 0</pose>
@@ -617,6 +690,11 @@
             <radius>0.012</radius>
           </sphere>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>0.006</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_7_visual">
         <geometry>
@@ -671,6 +749,11 @@
             <size>0.0196 0.0275 0.0164</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_8_visual">
         <geometry>
@@ -716,6 +799,11 @@
             <size>0.0196 0.0275 0.054</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_9_visual">
         <geometry>
@@ -761,6 +849,11 @@
             <size>0.0196 0.0275 0.0384</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_10_visual">
         <geometry>
@@ -806,6 +899,11 @@
             <size>0.0196 0.0275 0.0267</size>
           </box>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>1</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <collision name="link_11_tip_collision_1">
         <pose>0 0 0.0267 0 0 0</pose>
@@ -814,6 +912,11 @@
             <radius>0.012</radius>
           </sphere>
         </geometry>
+                <drake:proximity_properties>
+          <drake:mesh_resolution_hint>0.006</drake:mesh_resolution_hint>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+          <drake:mu_dynamic>1.0</drake:mu_dynamic>
+        </drake:proximity_properties>
       </collision>
       <visual name="link_11_visual">
         <geometry>

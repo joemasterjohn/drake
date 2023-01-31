@@ -114,7 +114,7 @@ DEFINE_double(nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
 DEFINE_double(density, 1e3, "Mass density of the deformable body [kg/m³].");
 DEFINE_double(beta, 0.005,
               "Stiffness damping coefficient for the deformable body [1/s].");
-DEFINE_double(resolution_hint, 0.03, "rezhint");
+DEFINE_double(resolution_hint, 0.035, "rezhint");
 
 // Modeling the Allegro hand with and without reflected inertia.
 // The default command line parameters are set to model an Allegro hand that
@@ -129,24 +129,6 @@ DEFINE_double(resolution_hint, 0.03, "rezhint");
 //   mbp_discrete_update_period = 1.5e-4 sec.
 //   pid_frequency = 30 Hz.
 
-void AddSphere(DeformableModel<double>* model,
-               DeformableBodyConfig<double> config, double radius,
-               double resolution_hint, Vector3d center_W, std::string name) {
-  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(radius));
-  const RigidTransformd X_WB(center_W);
-  auto sphere_instance =
-      std::make_unique<GeometryInstance>(X_WB, std::move(sphere_mesh), name);
-  /* Minimumly required proximity properties for deformable bodies: A valid
-   Coulomb friction coefficient. */
-  ProximityProperties deformable_proximity_props;
-  const CoulombFriction<double> surface_friction(1.0, 1.0);
-  AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
-  sphere_instance->set_proximity_properties(deformable_proximity_props);
-  model->RegisterDeformableBody(std::move(sphere_instance), config,
-                                resolution_hint);
-}
-
-
 void DoMain() {
   DRAKE_DEMAND(FLAGS_simulation_time > 0);
 
@@ -155,6 +137,11 @@ void DoMain() {
 
   auto [plant, scene_graph] = multibody::AddMultibodyPlantSceneGraph(
       &builder, FLAGS_mbp_discrete_update_period);
+
+  if (!FLAGS_add_gravity) {
+    plant.mutable_gravity_field().set_gravity_vector(
+        Eigen::Vector3d::Zero());
+  }
 
   std::string hand_model_path;
   if (FLAGS_use_right_hand) {
@@ -170,24 +157,6 @@ void DoMain() {
 //   const std::string object_model_path = FindResourceOrThrow(
 //       "drake/examples/allegro_hand/joint_control/simple_mug.sdf");
 
-  /* Set up a deformable sphere. */
-  auto owned_deformable_model =
-      std::make_unique<DeformableModel<double>>(&plant);
-
-  DeformableBodyConfig<double> deformable_config;
-  deformable_config.set_youngs_modulus(FLAGS_E);
-  deformable_config.set_poissons_ratio(FLAGS_nu);
-  deformable_config.set_mass_density(FLAGS_density);
-  deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
-
-  const double radius = 0.14;
-  AddSphere(owned_deformable_model.get(), deformable_config, radius,
-            FLAGS_resolution_hint, Vector3d(0.095, 0.062, 0.095), "ball");
-
-  const DeformableModel<double>* deformable_model =
-      owned_deformable_model.get();
-  plant.AddPhysicalModel(std::move(owned_deformable_model));
-
   multibody::Parser parser(&plant);
   std::vector<ModelInstanceIndex> hand_model_indices =
       parser.AddModels(hand_model_path);
@@ -198,6 +167,29 @@ void DoMain() {
   ModelInstanceIndex hand_model_index = hand_model_indices[0];
 
   plant.set_discrete_contact_solver(DiscreteContactSolver::kSap);
+
+  /* Minimum required proximity properties for rigid bodies to interact with
+   deformable bodies.
+   1. A valid Coulomb friction coefficient, and
+   2. A resolution hint. (Rigid bodies need to be tesselated so that collision
+   queries can be performed against deformable geometries.) */
+  ProximityProperties rigid_proximity_props;
+  /* Set the friction coefficient close to that of rubber against rubber. */
+  const CoulombFriction<double> surface_friction(1.0, 1.0);
+  AddContactMaterial({}, {}, surface_friction, &rigid_proximity_props);
+  rigid_proximity_props.AddProperty(geometry::internal::kHydroGroup,
+                                    geometry::internal::kRezHint, 1.0);
+  /* Set up a ground. */
+  Box ground{4, 4, 4};
+  const RigidTransformd X_WG(Eigen::Vector3d{0, 0, -2.1});
+  plant.RegisterCollisionGeometry(plant.world_body(), X_WG, ground,
+                                  "ground_collision", rigid_proximity_props);
+  IllustrationProperties illustration_props;
+  illustration_props.AddProperty("phong", "diffuse",
+                                 Vector4d(0.7, 0.5, 0.4, 0.8));
+  plant.RegisterVisualGeometry(plant.world_body(), X_WG, ground,
+                               "ground_visual", std::move(illustration_props));
+
 
   // Weld the hand to the world frame
   const auto& joint_hand_root = plant.GetBodyByName("hand_root");
@@ -287,10 +279,35 @@ void DoMain() {
     actuator.set_controller_gains({FLAGS_Kp, FLAGS_Kd});
   }
 
-  if (!FLAGS_add_gravity) {
-    plant.mutable_gravity_field().set_gravity_vector(
-        Eigen::Vector3d::Zero());
-  }
+
+  /* Set up a deformable sphere. */
+  auto owned_deformable_model =
+      std::make_unique<DeformableModel<double>>(&plant);
+
+  DeformableBodyConfig<double> deformable_config;
+  deformable_config.set_youngs_modulus(FLAGS_E);
+  deformable_config.set_poissons_ratio(FLAGS_nu);
+  deformable_config.set_mass_density(FLAGS_density);
+  deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
+
+  const double radius = 0.07;
+
+  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(radius));
+  //const RigidTransformd X_WB(Vector3d(0.095, 0.062, 0.095));
+  const RigidTransformd X_WB(Vector3d(1, 1, 1));
+  auto sphere_instance =
+      std::make_unique<GeometryInstance>(X_WB, std::move(sphere_mesh), "ball");
+  /* Minimumly required proximity properties for deformable bodies: A valid
+   Coulomb friction coefficient. */
+  ProximityProperties deformable_proximity_props;
+  AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
+  sphere_instance->set_proximity_properties(deformable_proximity_props);
+  owned_deformable_model->RegisterDeformableBody(
+      std::move(sphere_instance), deformable_config, FLAGS_resolution_hint);
+
+  const DeformableModel<double>* deformable_model =
+      owned_deformable_model.get();
+  plant.AddPhysicalModel(std::move(owned_deformable_model));
 
   // Finished building the plant
   plant.Finalize();
