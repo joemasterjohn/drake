@@ -27,6 +27,7 @@ drake_cc_binary(
         "//examples/allegro_hand:allegro_common",
         "//examples/allegro_hand:allegro_lcm",
         "//geometry:drake_visualizer",
+        "//geometry:scene_graph",
         "//lcmtypes:allegro",
         "//math:geometric_transform",
         "//multibody/parsing",

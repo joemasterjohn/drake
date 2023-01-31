@@ -14,13 +14,19 @@
 #include "drake/examples/allegro_hand/allegro_common.h"
 #include "drake/examples/allegro_hand/allegro_lcm.h"
 #include "drake/geometry/drake_visualizer.h"
+#include "drake/geometry/proximity_properties.h"
+#include "drake/geometry/scene_graph.h"
 #include "drake/lcmt_allegro_command.hpp"
 #include "drake/lcmt_allegro_status.hpp"
+#include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
+#include "drake/multibody/fem/deformable_body_config.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/contact_results.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
+#include "drake/multibody/plant/deformable_model.h"
 #include "drake/multibody/plant/multibody_plant.h"
+#include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/multibody/tree/uniform_gravity_field_element.h"
 #include "drake/multibody/tree/weld_joint.h"
 #include "drake/systems/analysis/simulator.h"
@@ -38,13 +44,34 @@ namespace examples {
 namespace allegro_hand {
 namespace {
 
+using drake::geometry::AddContactMaterial;
+using drake::geometry::Box;
+using drake::geometry::GeometryInstance;
+using drake::geometry::IllustrationProperties;
+using drake::geometry::Mesh;
+using drake::geometry::ProximityProperties;
+using drake::geometry::Sphere;
+using drake::math::RigidTransformd;
+using drake::multibody::AddMultibodyPlant;
+using drake::multibody::Body;
+using drake::multibody::CoulombFriction;
+using drake::multibody::DeformableBodyId;
+using drake::multibody::DeformableModel;
+using drake::multibody::MultibodyPlantConfig;
+using drake::multibody::Parser;
+using drake::multibody::fem::DeformableBodyConfig;
+using drake::systems::Context;
+using Eigen::Vector2d;
+using Eigen::Vector3d;
+using Eigen::Vector4d;
+using Eigen::VectorXd;
 using math::RigidTransformd;
 using math::RollPitchYawd;
+using multibody::DiscreteContactSolver;
 using multibody::JointActuator;
 using multibody::JointActuatorIndex;
 using multibody::ModelInstanceIndex;
 using multibody::MultibodyPlant;
-using multibody::DiscreteContactSolver;
 
 DEFINE_double(simulation_time, std::numeric_limits<double>::infinity(),
               "Desired duration of the simulation in seconds");
@@ -70,6 +97,13 @@ DEFINE_double(Kp, 100, "Proportional gain");
 DEFINE_double(Kd, 20, "Derivative gain");
 
 
+DEFINE_double(E, 1e5, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
+DEFINE_double(density, 1e3, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(beta, 0.005,
+              "Stiffness damping coefficient for the deformable body [1/s].");
+DEFINE_double(resolution_hint, 0.03, "rezhint");
+
 // Modeling the Allegro hand with and without reflected inertia.
 // The default command line parameters are set to model an Allegro hand that
 // includes the effect of reflected inertia due to the high gear ratio of the
@@ -82,6 +116,24 @@ DEFINE_double(Kd, 20, "Derivative gain");
 //   rotor_inertia = 0.0.
 //   mbp_discrete_update_period = 1.5e-4 sec.
 //   pid_frequency = 30 Hz.
+
+void AddSphere(DeformableModel<double>* model,
+               DeformableBodyConfig<double> config, double radius,
+               double resolution_hint, Vector3d center_W, std::string name) {
+  auto sphere_mesh = std::make_unique<Sphere>(geometry::Sphere(radius));
+  const RigidTransformd X_WB(center_W);
+  auto sphere_instance =
+      std::make_unique<GeometryInstance>(X_WB, std::move(sphere_mesh), name);
+  /* Minimumly required proximity properties for deformable bodies: A valid
+   Coulomb friction coefficient. */
+  ProximityProperties deformable_proximity_props;
+  const CoulombFriction<double> surface_friction(1.0, 1.0);
+  AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
+  sphere_instance->set_proximity_properties(deformable_proximity_props);
+  model->RegisterDeformableBody(std::move(sphere_instance), config,
+                                resolution_hint);
+}
+
 
 void DoMain() {
   DRAKE_DEMAND(FLAGS_simulation_time > 0);
@@ -103,12 +155,31 @@ void DoMain() {
         "allegro_hand_description/sdf/allegro_hand_description_left.sdf");
   }
 
-  const std::string object_model_path = FindResourceOrThrow(
-      "drake/examples/allegro_hand/joint_control/simple_mug.sdf");
+//   const std::string object_model_path = FindResourceOrThrow(
+//       "drake/examples/allegro_hand/joint_control/simple_mug.sdf");
+
+  /* Set up a deformable sphere. */
+  auto owned_deformable_model =
+      std::make_unique<DeformableModel<double>>(&plant);
+
+  DeformableBodyConfig<double> deformable_config;
+  deformable_config.set_youngs_modulus(FLAGS_E);
+  deformable_config.set_poissons_ratio(FLAGS_nu);
+  deformable_config.set_mass_density(FLAGS_density);
+  deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
+
+  const double radius = 0.14;
+  AddSphere(owned_deformable_model.get(), deformable_config, radius,
+            FLAGS_resolution_hint, Vector3d(0.095, 0.062, 0.095), "ball");
+
+  const DeformableModel<double>* deformable_model =
+      owned_deformable_model.get();
+  plant.AddPhysicalModel(std::move(owned_deformable_model));
+
   multibody::Parser parser(&plant);
   std::vector<ModelInstanceIndex> hand_model_indices =
       parser.AddModels(hand_model_path);
-  parser.AddModels(object_model_path);
+//   parser.AddModels(object_model_path);
 
   DRAKE_DEMAND(hand_model_indices.size() == 1);
 
@@ -276,6 +347,13 @@ void DoMain() {
   builder.Connect(status_sender.get_output_port(0),
                   hand_status_pub.get_input_port());
 
+  /* It's essential to connect the vertex position port in DeformableModel to
+   the source configuration port in SceneGraph when deformable bodies are
+   present in the plant. */
+  builder.Connect(
+      deformable_model->vertex_positions_port(),
+      scene_graph.get_source_configuration_port(plant.get_source_id().value()));
+
   // Now the model is complete.
   std::unique_ptr<systems::Diagram<double>> diagram = builder.Build();
 
@@ -285,18 +363,18 @@ void DoMain() {
   diagram->SetDefaultContext(diagram_context.get());
 
   // Set the position of object
-  const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
-  systems::Context<double>& plant_context =
-      diagram->GetMutableSubsystemContext(plant, diagram_context.get());
+//   const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
+//   systems::Context<double>& plant_context =
+//       diagram->GetMutableSubsystemContext(plant, diagram_context.get());
 
-  // Initialize the mug pose to be right in the middle between the fingers.
-  const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
-  const Eigen::Vector3d& p_WHand =
-      plant.EvalBodyPoseInWorld(plant_context, hand).translation();
-  RigidTransformd X_WM(
-      RollPitchYawd(M_PI / 2, 0, 0),
-      p_WHand + Eigen::Vector3d(0.095, 0.062, 0.095));
-  plant.SetFreeBodyPose(&plant_context, mug, X_WM);
+//   // Initialize the mug pose to be right in the middle between the fingers.
+//   const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
+//   const Eigen::Vector3d& p_WHand =
+//       plant.EvalBodyPoseInWorld(plant_context, hand).translation();
+//   RigidTransformd X_WM(
+//       RollPitchYawd(M_PI / 2, 0, 0),
+//       p_WHand + Eigen::Vector3d(0.095, 0.062, 0.095));
+//   plant.SetFreeBodyPose(&plant_context, mug, X_WM);
 
   // set the initial command for the hand
   hand_command_receiver.set_initial_position(
