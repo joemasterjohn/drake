@@ -396,19 +396,19 @@ void DoMain() {
       diagram->CreateDefaultContext();
   diagram->SetDefaultContext(diagram_context.get());
 
-  // Set the position of object
-  const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
-  systems::Context<double>& plant_context =
-      diagram->GetMutableSubsystemContext(plant, diagram_context.get());
+//   // Set the position of object
+//   const multibody::Body<double>& hand = plant.GetBodyByName("hand_root");
+//   systems::Context<double>& plant_context =
+//       diagram->GetMutableSubsystemContext(plant, diagram_context.get());
 
-  // Initialize the mug pose to be right in the middle between the fingers.
-  const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
-  const Eigen::Vector3d& p_WHand =
-      plant.EvalBodyPoseInWorld(plant_context, hand).translation();
-  RigidTransformd X_WM(
-      RollPitchYawd(M_PI / 2, 0, 0),
-      p_WHand + Eigen::Vector3d(0.062, 0.062, 0.12));
-  plant.SetFreeBodyPose(&plant_context, mug, X_WM);
+//   // Initialize the mug pose to be right in the middle between the fingers.
+//   const multibody::Body<double>& mug = plant.GetBodyByName("simple_mug");
+//   const Eigen::Vector3d& p_WHand =
+//       plant.EvalBodyPoseInWorld(plant_context, hand).translation();
+//   RigidTransformd X_WM(
+//       RollPitchYawd(M_PI / 2, 0, 0),
+//       p_WHand + Eigen::Vector3d(0.062, 0.062, 0.12));
+//   plant.SetFreeBodyPose(&plant_context, mug, X_WM);
 
   // set the initial command for the hand
   hand_command_receiver.set_initial_position(
