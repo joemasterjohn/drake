@@ -15,6 +15,7 @@ enum class MaterialModel {
    computationally expensive than the linear elasticity model. */
   kCorotated,
   kLinearCorotated,
+  kMooneyRivlin,
   /** Linear elasticity model. Recommended for modeling small deformations.
    Less computationally expensive than non-linear models but is inaccurate
    for large deformations. */
@@ -109,7 +110,7 @@ class DeformableBodyConfig {
   T mass_damping_coefficient_{0};
   T stiffness_damping_coefficient_{0};
   T mass_density_{1.5e3};
-  MaterialModel material_model_{MaterialModel::kLinearCorotated};
+  MaterialModel material_model_{MaterialModel::kMooneyRivlin};
 };
 
 }  // namespace fem

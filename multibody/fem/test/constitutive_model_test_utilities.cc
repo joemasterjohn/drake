@@ -9,6 +9,7 @@
 #include "drake/multibody/fem/corotated_model.h"
 #include "drake/multibody/fem/linear_constitutive_model.h"
 #include "drake/multibody/fem/matrix_utilities.h"
+#include "drake/multibody/fem/mooney_rivlin_model.h"
 
 namespace drake {
 namespace multibody {
@@ -45,8 +46,8 @@ std::array<Matrix3<AutoDiffXd>, num_locations> MakeDeformationGradients() {
 
 /* Tests the constructors correctly initializes St.Venant-Kichhoff like
 constitutive models and rejects invalid Young's modulus and Poisson's ratio.
-@tparam Model    Must be instantiations of LinearConstitutiveModel or
-CorotatedModel. */
+@tparam Model    Must be instantiations of LinearConstitutiveModel,
+CorotatedModel, or MooneyRivlinModel. */
 template <class Model>
 void TestParameters() {
   using T = typename Model::T;
@@ -185,6 +186,11 @@ template void TestUndeformedState<CorotatedModel<double, 1>>();
 template void TestUndeformedState<CorotatedModel<AutoDiffXd, 1>>();
 template void TestPIsDerivativeOfPsi<CorotatedModel<AutoDiffXd, 1>>();
 template void TestdPdFIsDerivativeOfP<CorotatedModel<AutoDiffXd, 1>>();
+
+template void TestUndeformedState<MooneyRivlinModel<double, 1>>();
+template void TestUndeformedState<MooneyRivlinModel<AutoDiffXd, 1>>();
+template void TestPIsDerivativeOfPsi<MooneyRivlinModel<AutoDiffXd, 1>>();
+template void TestdPdFIsDerivativeOfP<MooneyRivlinModel<AutoDiffXd, 1>>();
 
 }  // namespace test
 }  // namespace internal

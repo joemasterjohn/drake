@@ -105,6 +105,18 @@ template <typename T>
 VectorX<T> PermuteBlockVector(const Eigen::Ref<const VectorX<T>>& v,
                               const std::vector<int>& block_permutation);
 
+template <typename T, int S>
+Eigen::Matrix<T, S * S, S * S> KroneckerProduct(
+    const Eigen::Matrix<T, S, S>& A, const Eigen::Matrix<T, S, S>& B) {
+  Eigen::Matrix<T, S * S, S * S> result;
+  for (int i = 0; i < S; ++i) {
+    for (int j = 0; j < S; ++j) {
+      result.template block<S, S>(i * S, j * S) = A(i, j) * B;
+    }
+  }
+  return result;
+}
+
 }  // namespace internal
 }  // namespace fem
 }  // namespace multibody

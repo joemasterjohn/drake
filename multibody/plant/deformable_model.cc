@@ -9,6 +9,7 @@
 #include "drake/multibody/fem/linear_constitutive_model.h"
 #include "drake/multibody/fem/linear_corotated_model.h"
 #include "drake/multibody/fem/linear_simplex_element.h"
+#include "drake/multibody/fem/mooney_rivlin_model.h"
 #include "drake/multibody/fem/simplex_gaussian_quadrature.h"
 #include "drake/multibody/fem/volumetric_model.h"
 
@@ -208,6 +209,10 @@ void DeformableModel<T>::BuildLinearVolumetricModel(
       break;
     case MaterialModel::kLinearCorotated:
       BuildLinearVolumetricModelHelper<fem::internal::LinearCorotatedModel>(
+          id, mesh, config);
+      break;
+    case MaterialModel::kMooneyRivlin:
+      BuildLinearVolumetricModelHelper<fem::internal::MooneyRivlinModel>(
           id, mesh, config);
       break;
   }
