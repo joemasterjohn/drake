@@ -129,7 +129,10 @@ class JacobianBlock {
   /* Testing and debugging utilities. */
   MatrixX<T> MakeDenseMatrix() const;
   bool operator==(const JacobianBlock<T>& other) const {
-    return this->MakeDenseMatrix() == other.MakeDenseMatrix();
+    if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+      return this->MakeDenseMatrix() == other.MakeDenseMatrix();
+    }
+    return true;
   }
 
  private:

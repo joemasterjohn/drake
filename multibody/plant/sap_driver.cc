@@ -392,6 +392,7 @@ void SapDriver<T>::AddWeldConstraints(const systems::Context<T>& context,
   }
 }
 
+template <typename T>
 void SapDriver<T>::AddDistanceConstraints(const systems::Context<T>& context,
                                           SapContactProblem<T>* problem) const {
   DRAKE_DEMAND(problem != nullptr);
