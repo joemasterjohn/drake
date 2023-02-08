@@ -691,6 +691,21 @@ const VectorX<T>& GeometryState<T>::get_configurations_in_world(
 }
 
 template <typename T>
+const VectorX<T>& GeometryState<T>::get_vertex_strains(
+    GeometryId geometry_id) const {
+  FindOrThrow(geometry_id, geometries_, [geometry_id]() {
+    return "No vertex strains available for invalid geometry id: " +
+           to_string(geometry_id);
+  });
+  const auto& geometry = GetValueOrThrow(geometry_id, geometries_);
+  if (!geometry.is_deformable()) {
+    throw std::logic_error(
+        "Non-deformable geometries do not have per-vertex strain information.");
+  }
+  return kinematics_data_.vertex_strains.at(geometry_id);
+}
+
+template <typename T>
 SourceId GeometryState<T>::RegisterNewSource(const std::string& name) {
   SourceId source_id = SourceId::get_new_id();
   const std::string final_name =
@@ -1326,6 +1341,17 @@ void GeometryState<T>::SetGeometryConfiguration(
       GetValueOrThrow(source_id, source_deformable_geometry_id_map_);
   for (const auto g_id : g_ids) {
     kinematics_data->q_WGs[g_id] = configurations.value(g_id);
+  }
+}
+
+template <typename T>
+void GeometryState<T>::SetVertexStrains(
+    SourceId source_id, const GeometryConfigurationVector<T>& vertex_strains,
+    internal::KinematicsData<T>* kinematics_data) const {
+  const GeometryIdSet& g_ids =
+      GetValueOrThrow(source_id, source_deformable_geometry_id_map_);
+  for (const auto g_id : g_ids) {
+    kinematics_data->vertex_strains[g_id] = vertex_strains.value(g_id);
   }
 }
 

@@ -80,6 +80,8 @@ struct KinematicsData {
   // In other words, it is the full evaluation of the kinematic chain from
   // frame i to the world frame.
   std::vector<math::RigidTransform<T>> X_WFs;
+
+  std::unordered_map<GeometryId, VectorX<T>> vertex_strains;
 };
 
 }  // namespace internal
@@ -339,6 +341,8 @@ class GeometryState {
 
   /** Implementation of QueryObject::GetConfigurationsInWorld().  */
   const VectorX<T>& get_configurations_in_world(GeometryId geometry_id) const;
+
+  const VectorX<T>& get_vertex_strains(GeometryId geometry_id) const;
   //@}
 
   /** @name        State management
@@ -675,6 +679,10 @@ class GeometryState {
   void SetGeometryConfiguration(
       SourceId source_id, const GeometryConfigurationVector<T>& configurations,
       internal::KinematicsData<T>* kinematics_data) const;
+
+  void SetVertexStrains(SourceId source_id,
+                        const GeometryConfigurationVector<T>& vertex_strains,
+                        internal::KinematicsData<T>* kinematics_data) const;
 
   // Confirms that the set of ids provided include _all_ of the frames
   // registered to the set's source id and that no extra frames are included.

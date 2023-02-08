@@ -135,6 +135,7 @@ SceneGraph<T>::SceneGraph(const SceneGraph<U>& other)
     const auto& ref_ports = other.input_source_ids_.at(source_id);
     DRAKE_DEMAND(new_ports.pose_port == ref_ports.pose_port);
     DRAKE_DEMAND(new_ports.configuration_port == ref_ports.configuration_port);
+    DRAKE_DEMAND(new_ports.vertex_strains_port == ref_ports.vertex_strains_port);
   }
 }
 
@@ -166,6 +167,14 @@ const InputPort<T>& SceneGraph<T>::get_source_configuration_port(
   ThrowUnlessRegistered(
       id, "Can't acquire configuration port for unknown source id: ");
   return this->get_input_port(input_source_ids_.at(id).configuration_port);
+}
+
+template <typename T>
+const InputPort<T>& SceneGraph<T>::get_source_vertex_strains_port(
+    SourceId id) const {
+  ThrowUnlessRegistered(
+      id, "Can't acquire configuration port for unknown source id: ");
+  return this->get_input_port(input_source_ids_.at(id).vertex_strains_port);
 }
 
 template <typename T>
@@ -418,6 +427,11 @@ void SceneGraph<T>::MakeSourcePorts(SourceId source_id) {
               model_.GetName(source_id) + "_configuration",
               Value<GeometryConfigurationVector<T>>())
           .get_index();
+  source_ports.vertex_strains_port =
+      this->DeclareAbstractInputPort(
+              model_.GetName(source_id) + "_vertex_strains",
+              Value<GeometryConfigurationVector<T>>())
+          .get_index();
 }
 
 template <typename T>
@@ -527,6 +541,18 @@ void SceneGraph<T>::CalcConfigurationUpdate(const Context<T>& context,
             configuration_port
                 .template Eval<GeometryConfigurationVector<T>>(context);
         state.SetGeometryConfiguration(source_id, configs, &kinematics_data);
+
+        const auto& vertex_strains_port = this->get_input_port(itr->second.vertex_strains_port);
+        if (!vertex_strains_port.HasValue(context)) {
+          throw std::logic_error(fmt::format(
+              "Source '{}' (id: {}) has registered deformable geometry "
+              "but is not connected to the appropriate input port.",
+              state.GetName(source_id), source_id));
+        }
+        const auto& vertex_strains =
+            vertex_strains_port.template Eval<GeometryConfigurationVector<T>>(
+                context);
+        state.SetVertexStrains(source_id, vertex_strains, &kinematics_data);
       }
     }
   }

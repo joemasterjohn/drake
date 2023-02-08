@@ -361,6 +361,8 @@ class SceneGraph final : public systems::LeafSystem<T> {
    @throws std::exception if the source_id is _not_ recognized.  */
   const systems::InputPort<T>& get_source_configuration_port(SourceId id) const;
 
+  const systems::InputPort<T>& get_source_vertex_strains_port(SourceId id) const;
+
   /** Returns the output port which produces the QueryObject for performing
    geometric queries.  */
   const systems::OutputPort<T>& get_query_output_port() const {
@@ -1047,6 +1049,7 @@ class SceneGraph final : public systems::LeafSystem<T> {
   struct SourcePorts {
     int pose_port{-1};
     int configuration_port{-1};
+    int vertex_strains_port{-1};
   };
 
   // A mapping from added source identifier to the port indices associated with

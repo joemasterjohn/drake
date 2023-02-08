@@ -187,6 +187,8 @@ class QueryObject {
   const VectorX<T>& GetConfigurationsInWorld(
       GeometryId deformable_geometry_id) const;
 
+  const VectorX<T>& GetVertexStrains(GeometryId deformable_geometry_id) const;
+
   //@}
 
   /**

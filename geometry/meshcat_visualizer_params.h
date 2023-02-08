@@ -21,6 +21,8 @@ struct MeshcatVisualizerParams {
     a->Visit(DRAKE_NVP(prefix));
     a->Visit(DRAKE_NVP(delete_on_initialization_event));
     a->Visit(DRAKE_NVP(enable_alpha_slider));
+    a->Visit(DRAKE_NVP(min_strain));
+    a->Visit(DRAKE_NVP(max_strain));
   }
 
   /** The duration (in simulation seconds) between attempts to update poses in
@@ -50,6 +52,9 @@ struct MeshcatVisualizerParams {
 
   /** Determines whether to enable the alpha slider for geometry display. */
   bool enable_alpha_slider{false};
+
+  double min_strain{0.0};
+  double max_strain{1e-5};
 };
 
 }  // namespace geometry

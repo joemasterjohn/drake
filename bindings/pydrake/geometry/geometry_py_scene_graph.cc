@@ -184,7 +184,10 @@ void DoScalarDependentDefinitions(py::module m, T) {
             py_rvp::reference_internal, cls_doc.get_source_pose_port.doc)
         .def("get_source_configuration_port",
             &Class::get_source_configuration_port, py_rvp::reference_internal,
-            cls_doc.get_source_configuration_port.doc);
+            cls_doc.get_source_configuration_port.doc)
+        .def("get_source_vertex_strains_port",
+            &Class::get_source_vertex_strains_port, py_rvp::reference_internal,
+            cls_doc.get_source_vertex_strains_port.doc);
 
     cls  // BR
         .def("get_query_output_port", &Class::get_query_output_port,

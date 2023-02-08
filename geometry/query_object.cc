@@ -95,6 +95,16 @@ const VectorX<T>& QueryObject<T>::GetConfigurationsInWorld(
 }
 
 template <typename T>
+const VectorX<T>& QueryObject<T>::GetVertexStrains(
+    GeometryId deformable_geometry_id) const {
+  ThrowIfNotCallable();
+
+  FullConfigurationUpdate();
+  const GeometryState<T>& state = geometry_state();
+  return state.get_vertex_strains(deformable_geometry_id);
+}
+
+template <typename T>
 std::vector<PenetrationAsPointPair<T>>
 QueryObject<T>::ComputePointPairPenetration() const {
   ThrowIfNotCallable();

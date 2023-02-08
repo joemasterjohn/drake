@@ -1463,7 +1463,9 @@ PYBIND11_MODULE(plant, m) {
             },
             py::arg("geometry_id"), cls_doc.GetBodyId.doc_1args_geometry_id)
         .def("vertex_positions_port", &Class::vertex_positions_port,
-            py_rvp::reference_internal, cls_doc.vertex_positions_port.doc);
+            py_rvp::reference_internal, cls_doc.vertex_positions_port.doc)
+        .def("vertex_strains_port", &Class::vertex_strains_port,
+            py_rvp::reference_internal, cls_doc.vertex_strains_port.doc);
   }
   // Deformable identifier.
   {

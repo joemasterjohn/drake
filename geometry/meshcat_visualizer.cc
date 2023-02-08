@@ -9,6 +9,8 @@
 
 #include <fmt/format.h>
 
+#include <iostream>
+
 #include "drake/common/extract_double.h"
 #include "drake/geometry/utilities.h"
 #include "drake/geometry/proximity/sorted_triplet.h"
@@ -154,6 +156,9 @@ MeshcatVisualizer<T>::MeshcatVisualizer(std::shared_ptr<Meshcat> meshcat,
         "Role::kUnassigned value. Please choose kProximity, kPerception, or "
         "kIllustration");
   }
+
+  std::cout << fmt::format("params.max: {}", params.max_strain);
+  std::cout << fmt::format("params_.max: {}", params_.max_strain);
 
   this->DeclarePeriodicPublishEvent(params_.publish_period, 0.0,
                                     &MeshcatVisualizer<T>::UpdateMeshcat);
@@ -343,28 +348,18 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
   std::map<GeometryId, std::string> deformable_geometries_to_delete{};
   deformable_geometries_.swap(deformable_geometries_to_delete);
 
-  auto color = [](int index) {
-    switch(index) {
-      case 0:
-        return Rgba(1, 0, 0, 1);
-      case 1:
-        return Rgba(0, 1, 0, 1);
-      case 2:
-        return Rgba(0, 0, 1, 1);
-      default:
-        return Rgba(0.5, 0.3, 0.6, 1);
-    }
-  };
-
   for (int idx = 0; idx < static_cast<int>(deformable_data.size()); ++idx) {
     const internal::MeshcatDeformableMeshData& data = deformable_data[idx];
     const GeometryId g_id = data.geometry_id;
     const VectorX<T>& volume_vertex_positions =
         query_object.GetConfigurationsInWorld(g_id);
+    const VectorX<T>& volume_vertex_strains =
+        query_object.GetVertexStrains(g_id);
 
     /* Allocate matrices for vertices and faces for consumption by Meshcat.*/
     Eigen::Matrix3Xd vertices(3, data.surface_to_volume_vertices.size());
     Eigen::Matrix3Xi faces(3, data.surface_triangles.size());
+    Eigen::Matrix3Xd colors(3, data.surface_to_volume_vertices.size());
 
     // Copy the surface vertex positions from the volume vertex positions
     for (int i = 0;
@@ -373,6 +368,18 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
       for (int d = 0; d < 3; ++d) {
         vertices(d, i) =
             ExtractDoubleOrThrow(volume_vertex_positions[3 * v_i + d]);
+      }
+      const double strain = ExtractDoubleOrThrow(volume_vertex_strains[v_i]) ;
+      const double norm_strain = (strain - params_.min_strain) / (params_.max_strain - params_.min_strain);
+
+      colors(0, i) = std::clamp(((norm_strain - 0.25) * 4.0), 0.0, 1.0);
+      colors(1, i) = std::clamp(((norm_strain - 0.5) * 4.0), 0.0, 1.0);
+      if (norm_strain < 0.25) {
+        colors(2, i) = std::clamp(norm_strain * 4.0, 0.0, 1.0);
+      } else if (norm_strain > 0.75) {
+        colors(2, i) = std::clamp((norm_strain - 0.75) * 4.0, 0.0, 1.0);
+      } else {
+        colors(2, i) = std::clamp(1.0 - (norm_strain - 0.25) * 4.0, 0.0, 1.0);
       }
     }
 
@@ -387,7 +394,7 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
     const std::string mesh_path = fmt::format("{}_{}", path, "mesh");
     const std::string wireframe_path = fmt::format("{}_{}", path, "wireframe");
 
-    meshcat_->SetTriangleMesh(mesh_path, vertices, faces, color(idx));
+    meshcat_->SetTriangleColorMesh(mesh_path, vertices, faces, colors);
     meshcat_->SetTriangleMesh(wireframe_path, vertices, faces,
                               params_.default_color, true);
 
