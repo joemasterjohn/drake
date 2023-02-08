@@ -17,6 +17,28 @@
 namespace drake {
 namespace geometry {
 
+namespace internal {
+
+/* Helper data structure to hold the topology information necessary to visualize
+ the surface of a volume mesh. */
+struct MeshcatDeformableMeshData {
+  GeometryId geometry_id;
+  /* The name of the deformable mesh. Included in all lcm messages.  */
+  std::string name;
+  /* An *implicit* map from *surface* vertex indices to volume vertex indices.
+   The iᵗʰ surface vertex corresponds to the volume vertex with index
+   `surface_to_volume_vertices_[i]`.  */
+  std::vector<int> surface_to_volume_vertices;
+  /* Surface triangle mesh representing the topology of the volume mesh's
+   surfaces. Each triangle is encoded with three index values that are keys for
+   surface_to_volume_vertices. */
+  std::vector<Vector3<int>> surface_triangles;
+  /* The total number of vertices implied by the tetrahedra definitions.  */
+  int volume_vertex_count{};
+};
+
+}
+
 /** A system wrapper for Meshcat that publishes the current state of a
 SceneGraph instance (whose QueryObject-valued output port is connected to this
 system's input port).  While this system will add geometry to Meshcat, the
@@ -165,11 +187,33 @@ class MeshcatVisualizer final : public systems::LeafSystem<T> {
   void SetTransforms(const systems::Context<T>& context,
                      const QueryObject<T>& query_object) const;
 
+  /* Makes calls to Meshcat::SetTriangleMesh to update deformable meshes from
+   * SceneGraph. */
+  void SetDeformableMeshes(
+      const systems::Context<T>& context, const QueryObject<T>& query_object,
+      const std::vector<internal::MeshcatDeformableMeshData>& deformable_data) const;
+
   /* Makes calls to Meshcat::SetProperty to update color alphas. */
   void SetColorAlphas() const;
 
   /* Handles the initialization event. */
   systems::EventStatus OnInitialization(const systems::Context<T>&) const;
+
+  /* Identifies all of the deformable geometries to be visualized and adds the
+   required visualization data to the `deformable_data`.
+   @note `deformable_data` is cleared before any data is added.
+   @note There are no guarantees on the order of the entries in
+        `deformable_data`. */
+  void CalcMeshcatDeformableMeshData(
+      const systems::Context<T>& context,
+      std::vector<internal::MeshcatDeformableMeshData>* deformable_data) const;
+
+  /* Recalculates and returns the cached deformable geometry data.  */
+  const std::vector<internal::MeshcatDeformableMeshData>& RefreshMeshcatDeformableMeshData(
+      const systems::Context<T>& context) const;
+
+  const std::vector<internal::MeshcatDeformableMeshData>& EvalMeshcatDeformableMeshData(
+      const systems::Context<T>& context) const;
 
   /* The index of this System's QueryObject-valued input port. */
   int query_object_input_port_{};
@@ -198,6 +242,10 @@ class MeshcatVisualizer final : public systems::LeafSystem<T> {
   /* A store of the geometries sent to Meshcat, so that they can be removed if a
    new geometry version appears that does not contain them. */
   mutable std::map<GeometryId, std::string> geometries_{};
+
+  /* A store of the deformable geometries sent to Meshcat, so that they can be
+   * removed if a new geometry version appears that does not contain them. */
+  mutable std::map<GeometryId, std::string> deformable_geometries_{};
 
   /* A store of the original colors for the objects in geometries_. */
   mutable std::map<GeometryId, Rgba> colors_{};
@@ -235,6 +283,10 @@ class MeshcatVisualizer final : public systems::LeafSystem<T> {
 
   /* The name of the alpha slider, if any. */
   std::string alpha_slider_name_;
+
+  /* The index of the cache entry that stores the deformable geometry data.  */
+  systems::CacheIndex deformable_data_cache_index_{};
+
 };
 
 /** A convenient alias for the MeshcatVisualizer class when using the `double`
