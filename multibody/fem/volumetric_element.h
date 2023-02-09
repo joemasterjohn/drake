@@ -76,6 +76,9 @@ struct VolumetricElementData {
   Eigen::Matrix<T, num_dofs, num_dofs> stiffness_matrix;
   Eigen::Matrix<T, num_dofs, num_dofs> damping_matrix;
   Vector<T, num_dofs> inverse_dynamics_force;
+  static constexpr int num_nodes = num_dofs / 3;
+  Vector<T, num_nodes> strain_measure;
+  Vector<T, num_nodes> lumped_mass;
 };
 
 /* Forward declaration needed for defining the traits below. */
@@ -427,6 +430,30 @@ class VolumetricElement
         this->damping_model().stiffness_coeff_beta() * stiffness_matrix;
   }
 
+  void CalcStrainMeasure(
+      const std::array<Matrix3<T>, num_quadrature_points>& element_strain,
+      Vector<T, num_nodes>* vertex_strain) const {
+    const std::array<Vector<T, num_nodes>, num_quadrature_points>& S =
+        isoparametric_element_.GetShapeFunctions();
+    /* S_mat is the matrix representation of S. */
+    Eigen::Matrix<T, num_nodes, num_quadrature_points> S_mat;
+    for (int q = 0; q < num_quadrature_points; ++q) {
+      S_mat.col(q) = S[q];
+    }
+    /* A scalar measure of the strain. Here we take the frobenius norm. */
+    Vector<T, num_quadrature_points> element_strain_measure;
+    for (int q = 0; q < num_quadrature_points; ++q) {
+      element_strain_measure(q) = element_strain[q].norm();
+    }
+    vertex_strain->setZero();
+    for (int a = 0; a < num_nodes; ++a) {
+      for (int q = 0; q < num_quadrature_points; ++q) {
+        (*vertex_strain)(a) +=
+            element_strain_measure(q) * S_mat(a, q) * reference_volume_[q];
+      }
+    }
+  }
+
   /* Implements FemElement::ComputeData(). */
   Data DoComputeData(const FemState<T>& state) const {
     Data data;
@@ -451,6 +478,11 @@ class VolumetricElement
                       &data.damping_matrix);
     CalcInverseDynamics(data.element_v, data.element_a, data.P,
                         data.damping_matrix, &data.inverse_dynamics_force);
+    CalcStrainMeasure(data.deformation_gradient_data.strain(), &data.strain_measure);
+    for (int v = 0; v < num_nodes; ++v) {
+        data.lumped_mass(v) = lumped_mass_(3*v);
+    }
+
     return data;
   }
 

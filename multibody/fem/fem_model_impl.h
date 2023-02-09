@@ -99,6 +99,32 @@ class FemModelImpl : public FemModel<typename Element::T> {
     }
   }
 
+  void DoCalcStrainMeasure(const FemState<T>& fem_state,
+                           EigenPtr<VectorX<T>> strain) const final {
+    /* The values are accumulated in the strain, so it is important to clear
+     the old data. */
+    strain->setZero();
+    const std::vector<Data>& element_data =
+        fem_state.template EvalElementData<Data>(element_data_index_);
+    VectorX<T> lumped_mass = VectorX<T>::Zero(strain->size());
+    for (int e = 0; e < num_elements(); ++e) {
+      const Vector<T, Element::num_nodes>& element_strain =
+          element_data[e].strain_measure;
+      const Vector<T, Element::num_nodes>& element_lumped_mass =
+          element_data[e].lumped_mass;
+      const std::array<FemNodeIndex, Element::num_nodes>& element_node_indices =
+          elements_[e].node_indices();
+      for (int a = 0; a < Element::num_nodes; ++a) {
+        const int global_node = element_node_indices[a];
+        (*strain)(global_node) += element_strain(a);
+        lumped_mass(global_node) += element_lumped_mass(a);
+      }
+    }
+    for (int v = 0; v < strain->size(); ++v) {
+        (*strain)(v) /= lumped_mass(v);
+    }
+  }
+
   void DoCalcTangentMatrix(
       const FemState<T>& fem_state, const Vector3<T>& weights,
       PetscSymmetricBlockSparseMatrix* tangent_matrix) const final {

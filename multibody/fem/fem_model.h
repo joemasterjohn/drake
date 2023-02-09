@@ -143,6 +143,10 @@ class FemModel {
   void CalcResidual(const FemState<T>& fem_state,
                     EigenPtr<VectorX<T>> residual) const;
 
+  /** Computes a per vertex strain measure. */
+  void CalcStrainMeasure(const FemState<T>& fem_state,
+                         EigenPtr<VectorX<T>> strain) const;
+
   /** Calculates an approximated tangent matrix evaluated at the given FEM state
    (or an approximation thereof). The tangent matrix is given by a weighted sum
    of stiffness matrix (∂G/∂x), damping matrix (∂G/∂v), and mass matrix (∂G/∂a).
@@ -233,6 +237,13 @@ class FemModel {
    be non-null and properly sized. */
   virtual void DoCalcResidual(const FemState<T>& fem_state,
                               EigenPtr<VectorX<T>> residual) const = 0;
+
+  /** FemModelImpl must override this method to provide an implementation
+   for the NVI CalcStrainMeasure(). The input `fem_state` is guaranteed to be
+   compatible with `this` FEM model, and the input `strain` is guaranteed to
+   be non-null and properly sized. */
+  virtual void DoCalcStrainMeasure(const FemState<T>& fem_state,
+                                   EigenPtr<VectorX<T>> strain) const = 0;
 
   /** FemModelImpl must override this method to provide an implementation for
    the NVI CalcTangentMatrix(). The input `fem_state` is guaranteed to be

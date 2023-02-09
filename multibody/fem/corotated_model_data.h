@@ -27,6 +27,10 @@ class CorotatedModelData
   /* Constructs a CorotatedModelData with no deformation. */
   CorotatedModelData();
 
+  const std::array<Matrix3<T>, num_locations>& strain() const {
+    return strain_;
+  }
+
   /* Returns the rotation matrices from the polar decomposition of F = R*S. */
   const std::array<Matrix3<T>, num_locations>& R() const { return R_; }
 
@@ -52,6 +56,7 @@ class CorotatedModelData
    is a rotation matrix and S is symmetric. */
   std::array<Matrix3<T>, num_locations> R_;
   std::array<Matrix3<T>, num_locations> S_;
+  std::array<Matrix3<T>, num_locations> strain_;
   /* The determinant of F minus 1, or J - 1. */
   std::array<T, num_locations> Jm1_;
   /* The cofactor matrix of F, or JF⁻ᵀ. */

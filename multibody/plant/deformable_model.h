@@ -154,6 +154,15 @@ class DeformableModel final : public multibody::PhysicalModel<T> {
     return plant_->get_output_port(vertex_positions_port_index_);
   }
 
+  /** Returns the output port of the per-vertex strain measure for all
+   registered deformable bodies.
+   @throws std::exception if MultibodyPlant::Finalize() has not been called yet.
+  */
+  const systems::OutputPort<T>& vertex_strains_port() const {
+    this->ThrowIfSystemResourcesNotDeclared(__func__);
+    return plant_->get_output_port(vertex_strains_port_index_);
+  }
+
   /** Returns the weld constraints registered for the body the given `id`.
    @throws std::exception if the given `id` does not correspond to a deformable
    body registered with this model. */
@@ -253,6 +262,11 @@ class DeformableModel final : public multibody::PhysicalModel<T> {
   void CopyVertexPositions(const systems::Context<T>& context,
                            AbstractValue* output) const;
 
+  /* Copies the vertex strains of all deformable bodies to the output port
+   value which is guaranteed to be of type GeometryConfigurationVector. */
+  void CopyVertexStrains(const systems::Context<T>& context,
+                         AbstractValue* output) const;
+
   /* Helper to throw a useful message if a deformable body with the given `id`
    doesn't exist. */
   void ThrowUnlessRegistered(const char* source_method,
@@ -275,6 +289,7 @@ class DeformableModel final : public multibody::PhysicalModel<T> {
   std::vector<DeformableBodyId> body_ids_;
   std::unordered_map<DeformableBodyId, DeformableBodyIndex> body_id_to_index_;
   systems::OutputPortIndex vertex_positions_port_index_;
+  systems::OutputPortIndex vertex_strains_port_index_;
   /* Vector of weld constraints specifications. */
   std::unordered_map<DeformableBodyId,
                      std::vector<internal::DeformableRigidWeldConstraintSpecs>>

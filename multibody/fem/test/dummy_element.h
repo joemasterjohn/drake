@@ -19,6 +19,7 @@ class DummyElement;
 struct DummyData {
   using T = double;
   static constexpr int num_dofs = 12;
+  static constexpr int num_nodes = 4;
   double value{0};
   Vector<T, num_dofs> element_q;
   Vector<T, num_dofs> element_v;
@@ -26,6 +27,8 @@ struct DummyData {
   Vector<T, num_dofs> inverse_dynamics_force;
   Eigen::Matrix<T, num_dofs, num_dofs> mass_matrix;
   Eigen::Matrix<T, num_dofs, num_dofs> stiffness_matrix;
+  Vector<T, num_nodes> strain_measure;
+  Vector<T, num_nodes> lumped_mass;
 };
 
 /* The traits for the DummyElement. In this case, all of the traits are unique
