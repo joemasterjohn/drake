@@ -294,6 +294,21 @@ void DeformableModel<T>::DoDeclareSystemResources(MultibodyPlant<T>* plant) {
               {systems::System<double>::xd_ticket()})
           .get_index();
 
+  /* Declare the vertex strains output port. */
+  vertex_strains_port_index_ =
+      this->DeclareAbstractOutputPort(
+              plant, "vertex_strains",
+              []() {
+                return AbstractValue::Make<
+                    geometry::GeometryConfigurationVector<T>>();
+              },
+              [this](const systems::Context<T>& context,
+                     AbstractValue* output) {
+                this->CopyVertexStrains(context, output);
+              },
+              {systems::System<double>::xd_ticket()})
+          .get_index();
+
   std::sort(body_ids_.begin(), body_ids_.end());
   for (DeformableBodyIndex i(0); i < static_cast<int>(body_ids_.size()); ++i) {
     DeformableBodyId id = body_ids_[i];
@@ -314,6 +329,36 @@ void DeformableModel<T>::CopyVertexPositions(const systems::Context<T>& context,
     VectorX<T> vertex_positions =
         context.get_discrete_state(discrete_state_index).value().head(num_dofs);
     output_value.set_value(geometry_id, std::move(vertex_positions));
+  }
+}
+
+template <typename T>
+void DeformableModel<T>::CopyVertexStrains(const systems::Context<T>& context,
+                                           AbstractValue* output) const {
+  auto& output_value =
+      output->get_mutable_value<geometry::GeometryConfigurationVector<T>>();
+  output_value.clear();
+  for (const auto& [body_id, geometry_id] : body_id_to_geometry_id_) {
+    const auto& fem_model = GetFemModel(body_id);
+    const int num_dofs = fem_model.num_dofs();
+    const auto& discrete_state_index = GetDiscreteStateIndex(body_id);
+    const VectorX<T> q =
+        context.get_discrete_state(discrete_state_index).value().head(num_dofs);
+    const VectorX<T> v = context.get_discrete_state(discrete_state_index)
+                             .value()
+                             .segment(num_dofs, num_dofs);
+    const VectorX<T> a =
+        context.get_discrete_state(discrete_state_index).value().tail(num_dofs);
+
+    std::unique_ptr<fem::FemState<T>> fem_state = fem_model.MakeFemState();
+    fem_state->SetPositions(q);
+    fem_state->SetTimeStepPositions(q);
+    fem_state->SetVelocities(v);
+    fem_state->SetAccelerations(a);
+
+    VectorX<T> strain_measure = VectorX<T>::Zero(fem_model.num_nodes());
+    fem_model.CalcStrainMeasure(*fem_state, &strain_measure);
+    output_value.set_value(geometry_id, std::move(strain_measure));
   }
 }
 

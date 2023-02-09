@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/common/test_utilities/expect_throws_message.h"
 #include "drake/systems/framework/diagram_builder.h"
 
@@ -255,6 +256,38 @@ TEST_F(DeformableModelTest, VertexPositionsOutputPort) {
    this case should be the reference positions. */
   EXPECT_EQ(configurations.value(geometry_id),
             deformable_model_ptr_->GetReferencePositions(body_id));
+}
+
+TEST_F(DeformableModelTest, VertexStrainsOutputPort) {
+  Sphere sphere(1.0);
+  auto geometry = make_unique<GeometryInstance>(
+      RigidTransformd(), make_unique<Sphere>(sphere), "sphere");
+  constexpr double kRezHint = 0.5;
+  DeformableBodyId body_id = deformable_model_ptr_->RegisterDeformableBody(
+      std::move(geometry), default_body_config_, kRezHint);
+  plant_->Finalize();
+
+  std::unique_ptr<systems::Context<double>> context =
+      plant_->CreateDefaultContext();
+  std::unique_ptr<AbstractValue> output_value =
+      deformable_model_ptr_->vertex_strains_port().Allocate();
+  /* Compute the configuration for each geometry in the model. */
+  deformable_model_ptr_->vertex_strains_port().Calc(*context,
+                                                    output_value.get());
+  const geometry::GeometryConfigurationVector<double>& strains =
+      output_value->get_value<geometry::GeometryConfigurationVector<double>>();
+
+  /* There's only one body and one geometry. */
+  EXPECT_EQ(strains.size(), 1);
+  const geometry::GeometryId geometry_id =
+      deformable_model_ptr_->GetGeometryId(body_id);
+  ASSERT_TRUE(strains.has_id(geometry_id));
+  /* Verify that the vertex strains port returns expected values, which in
+   this case should be all zeros. */
+  VectorX<double> expected_strain = VectorX<double>::Zero(
+      deformable_model_ptr_->GetFemModel(body_id).num_nodes());
+  EXPECT_TRUE(
+      CompareMatrices(strains.value(geometry_id), expected_strain, 1e-14));
 }
 
 }  // namespace

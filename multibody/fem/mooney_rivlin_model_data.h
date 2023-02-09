@@ -24,6 +24,10 @@ class MooneyRivlinModelData
   /* Constructs a MooneyRivlinModelData with no deformation. */
   MooneyRivlinModelData();
 
+  const std::array<Matrix3<T>, num_locations>& strain() const {
+    return strain_;
+  }
+
   /* I1 = tr(F^T * F). aka the trace of the cauchy green tensor. aka the sum of
    square of singular values of F. */
   const std::array<T, num_locations>& I1() const { return I1_; }
@@ -61,6 +65,7 @@ class MooneyRivlinModelData
   std::array<Matrix3<T>, num_locations> dI1_dF_;
   std::array<Matrix3<T>, num_locations> dI2_dF_;
   std::array<Matrix3<T>, num_locations> dI3_dF_;
+  std::array<Matrix3<T>, num_locations> strain_;
 
   std::array<Eigen::Matrix<T, 9, 9>, num_locations> d2I1_dF2_;
   std::array<Eigen::Matrix<T, 9, 9>, num_locations> d2I2_dF2_;

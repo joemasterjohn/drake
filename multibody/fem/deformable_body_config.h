@@ -110,7 +110,7 @@ class DeformableBodyConfig {
   T mass_damping_coefficient_{0};
   T stiffness_damping_coefficient_{0};
   T mass_density_{1.5e3};
-  MaterialModel material_model_{MaterialModel::kMooneyRivlin};
+  MaterialModel material_model_{MaterialModel::kLinearCorotated};
 };
 
 }  // namespace fem

@@ -25,6 +25,7 @@ void CorotatedModelData<T, num_locations>::UpdateFromDeformationGradient() {
     internal::PolarDecompose<T>(F[i], &local_R, &local_S);
     Jm1_[i] = F[i].determinant() - 1.0;
     internal::CalcCofactorMatrix<T>(F[i], &local_JFinvT);
+    strain_[i] = 0.5 * (local_S - Matrix3<T>::Identity());
   }
 }
 

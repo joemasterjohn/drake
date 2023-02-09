@@ -66,6 +66,10 @@ class DeformationGradientData<
     return deformation_gradient_;
   }
 
+  const std::array<Matrix3<T>, num_locations>& strain() const {
+    return static_cast<const Derived*>(this)->strain();
+  }
+
   const std::array<Matrix3<T>, num_locations>& time_step_deformation_gradient()
       const {
     return time_step_deformation_gradient_;

@@ -37,6 +37,16 @@ void FemModel<T>::CalcResidual(const FemState<T>& fem_state,
 }
 
 template <typename T>
+void FemModel<T>::CalcStrainMeasure(const FemState<T>& fem_state,
+                                    EigenPtr<VectorX<T>> strain) const {
+  DRAKE_DEMAND(strain != nullptr);
+  DRAKE_DEMAND(strain->size() == num_nodes());
+  ThrowIfModelStateIncompatible(__func__, fem_state);
+  DoCalcStrainMeasure(fem_state, strain);
+  dirichlet_bc_.ApplyHomogeneousBoundaryCondition(strain);
+}
+
+template <typename T>
 void FemModel<T>::CalcTangentMatrix(
     const FemState<T>& fem_state, const Vector3<T>& weights,
     internal::PetscSymmetricBlockSparseMatrix* tangent_matrix) const {

@@ -31,6 +31,7 @@ void MooneyRivlinModelData<T, num_locations>::UpdateFromDeformationGradient() {
   for (int i = 0; i < num_locations; ++i) {
     const Matrix3<T> FTF = F[i].transpose() * F[i];
     const Matrix3<T> FFT = F[i] * F[i].transpose();
+    strain_[i] = 0.5 * (FTF - Matrix3<T>::Identity());
 
     I1_[i] = F[i].squaredNorm();
     I2_[i] = FTF.squaredNorm();
