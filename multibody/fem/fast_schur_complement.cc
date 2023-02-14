@@ -24,6 +24,12 @@ VectorX<T> FastSchurComplement<T>::SolveForX(
     const Eigen::Ref<const VectorX<T>>& a) const {
   DRAKE_DEMAND(static_cast<int>(a.size()) ==
                3 * static_cast<int>(A_indices_.size()));
+  if (D_indices_.size() == 0) {
+    return VectorX<T>::Zero(0);
+  }
+  if (A_indices_.size() == 0) {
+    return VectorX<T>::Zero(D_indices_.size());
+  }
   const int block_cols = A_indices_.size() + D_indices_.size();
   VectorX<T> rhs(VectorX<T>::Zero(3 * block_cols));
   for (int i = 0; i < static_cast<int>(A_indices_.size()); ++i) {
