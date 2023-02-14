@@ -4,7 +4,9 @@
  the analysis in the sap paper, the penetration is on the order of
  β²*g*dt²/(4π²). With dt = 1e-2s and beta = 10, this is approximately 2.5e-3m,
  small compared to the 20m arch. Since the beta parameter is currently not
- exposed, we need to manually change this in sap_driver.cc. */
+ exposed, we need to manually change this in sap_driver.cc. 
+
+ The stable structure forms with mu=1.0 and falls apart with mu=0.5. */
 
 #include <iomanip>
 #include <memory>
@@ -37,7 +39,7 @@ DEFINE_double(nu, 0.2, "Poisson's ratio of the deformable body, unitless.");
 DEFINE_double(density, 2300, "Mass density of the deformable body [kg/m³].");
 DEFINE_double(stiffness_damping, 0.005,
               "Stiffness damping coefficient for the deformable body [1/s].");
-DEFINE_double(mu, 0.5, "Friction coefficient");
+DEFINE_double(mu, 1.0, "Friction coefficient");
 DEFINE_bool(with_gap, false,
             "Whether to leave a small gap among blocks of the arch at "
             "initialization. When run without gap, we lose the initial "
@@ -73,7 +75,7 @@ namespace {
 
 void AddArch(DeformableModel<double>* model,
              DeformableBodyConfig<double> config, std::string source,
-             std::vector<DeformableBodyId>* body_ids) {
+             std::vector<DeformableBodyId>* body_ids, Vector4d rgba) {
   const std::string vtk = FindResourceOrThrow(source);
   auto mesh = std::make_unique<Mesh>(vtk, 1.0);
   auto instance = std::make_unique<GeometryInstance>(
@@ -84,6 +86,9 @@ void AddArch(DeformableModel<double>* model,
   const CoulombFriction<double> surface_friction(FLAGS_mu, FLAGS_mu);
   AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
   instance->set_proximity_properties(deformable_proximity_props);
+  IllustrationProperties illustration_props;
+  illustration_props.AddProperty("phong", "diffuse", rgba);
+  instance->set_illustration_properties(illustration_props);
   const auto body_id = model->RegisterDeformableBody(
       std::move(instance), config, /* unused resolution hint*/ 1.0);
   body_ids->emplace_back(body_id);
@@ -147,8 +152,10 @@ int do_main() {
     } else {
       filename = "arch_without_gap_" + ss.str() + ".vtk";
     }
+    Vector4d rgba =
+        (i % 2) ? Vector4d(0.333, 0.333, 0.333, 0.9) : Vector4d(1, 0, 0, 0.9);
     AddArch(owned_deformable_model.get(), deformable_config, dir + filename,
-            &body_ids);
+            &body_ids, rgba);
   }
 
   const DeformableModel<double>* deformable_model =

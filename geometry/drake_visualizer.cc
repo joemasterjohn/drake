@@ -164,7 +164,7 @@ lcmt_viewer_geometry_data MakeHydroMesh(GeometryId geometry_id,
 template <typename T>
 lcmt_viewer_geometry_data MakeDeformableSurfaceMesh(
     const VectorX<T>& volume_vertex_positions,
-    const internal::DeformableMeshData& deformable_data, const Rgba& in_color) {
+    const internal::DeformableMeshData& deformable_data) {
   lcmt_viewer_geometry_data geometry_data;
   // The pose is unused and set to identity.
   geometry_data.quaternion[0] = 1;
@@ -178,9 +178,9 @@ lcmt_viewer_geometry_data MakeDeformableSurfaceMesh(
   geometry_data.string_data = deformable_data.name;
 
   Eigen::Map<Eigen::Vector4f> color(geometry_data.color);
-  Eigen::Vector4d color_vec(in_color.r(), in_color.g(), in_color.b(),
-                            in_color.a());
-  color_vec = Eigen::Vector4d(0.7, 0.7, 0.7, 1.0);
+  Eigen::Vector4d color_vec(deformable_data.color.r(), deformable_data.color.g(),
+                            deformable_data.color.b(),
+                            deformable_data.color.a());
   color = color_vec.cast<float>();
 
   // We can define the mesh in the float data as:
@@ -241,7 +241,7 @@ lcmt_viewer_geometry_data MakeDeformableSurfaceMesh(
  @pre g_id corresponds to a deformable geometry. */
 template <typename T>
 internal::DeformableMeshData MakeDeformableMeshData(
-    GeometryId g_id, const SceneGraphInspector<T>& inspector) {
+    GeometryId g_id, const SceneGraphInspector<T>& inspector, Rgba default_color) {
   /* For each tet mesh, extract all the border triangles. Those are the
    triangles that are only referenced by a single tet. So, for every tet, we
    examine its four constituent triangle and determine if any other tet
@@ -341,9 +341,22 @@ internal::DeformableMeshData MakeDeformableMeshData(
                                    volume_to_surface[face[2]]);
   }
 
-  // TODO(xuchenhan-tri): Read the color of the mesh from properties.
-  return {g_id, inspector.GetName(g_id), move(surface_to_volume_vertices),
-          move(surface_triangles), volume_vertex_count};
+  Rgba color = default_color;
+  const IllustrationProperties* illustration_props =
+      inspector.GetIllustrationProperties(g_id);
+  if (illustration_props != nullptr) {
+    if (illustration_props) {
+      color =
+          illustration_props->GetPropertyOrDefault("phong", "diffuse", color);
+    }
+  }
+
+  return {g_id,
+          inspector.GetName(g_id),
+          move(surface_to_volume_vertices),
+          move(surface_triangles),
+          volume_vertex_count,
+          color};
 }
 
 // Simple class for converting shape specifications into LCM-compatible shapes.
@@ -776,7 +789,7 @@ void DrakeVisualizer<T>::SendDeformableGeometriesMessage(
     // TODO(xuchenhan-tri): We should use the color from the property of the
     // geometry when available.
     message.geom[i] =
-        MakeDeformableSurfaceMesh(vertex_positions, data, params.default_color);
+        MakeDeformableSurfaceMesh(vertex_positions, data);
   }
   std::string channel = MakeLcmChannelNameForRole("DRAKE_VIEWER_DEFORMABLE",
                                                   params);
@@ -846,7 +859,7 @@ void DrakeVisualizer<T>::CalcDeformableMeshData(
   const std::vector<GeometryId> deformable_geometries =
       inspector.GetAllDeformableGeometryIds();
   for (const auto g_id : deformable_geometries) {
-    deformable_data->emplace_back(MakeDeformableMeshData(g_id, inspector));
+    deformable_data->emplace_back(MakeDeformableMeshData(g_id, inspector, params_.default_color));
   }
 }
 
