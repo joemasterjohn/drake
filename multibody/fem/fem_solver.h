@@ -96,7 +96,7 @@ class FemSolver {
    @pre integrator != nullptr.*/
   FemSolver(const FemModel<T>* model,
             const DiscreteTimeIntegrator<T>* integrator,
-            FemSolverOption option = FemSolverOption::kUsePetsc);
+            FemSolverOption option = FemSolverOption::kUseBlockSparseCholesky);
 
   /* Advances the state of the FEM model by one time step with the integrator
    prescribed at construction.
