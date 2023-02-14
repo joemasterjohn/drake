@@ -25,12 +25,16 @@ DEFINE_double(simulation_time, 8.0, "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 0.0, "Desired real time rate.");
 DEFINE_double(time_step, 5.0e-3,
               "Discrete time step for the system [s]. Must be positive.");
-DEFINE_double(E, 2e3, "Young's modulus of the deformable body [Pa].");
-DEFINE_double(nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
-DEFINE_double(density, 100, "Mass density of the deformable body [kg/m³].");
-DEFINE_double(beta, 0.005,
+DEFINE_double(teddy_E, 5e2, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(teddy_nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
+DEFINE_double(teddy_density, 100, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(teddy_beta, 0.01,
               "Stiffness damping coefficient for the deformable body [1/s].");
-DEFINE_double(resolution_hint, 0.05, "rezhint");
+DEFINE_double(bubble_E, 3e2, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(bubble_nu, 0.2, "Poisson's ratio of the deformable body, unitless.");
+DEFINE_double(bubble_density, 100, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(bubble_beta, 0.01,
+              "Stiffness damping coefficient for the deformable body [1/s].");
 
 using drake::geometry::AddContactMaterial;
 using drake::geometry::Box;
@@ -145,7 +149,7 @@ class GripperPositionControl : public systems::LeafSystem<double> {
   Vector2d closed_state_;
   Vector2d lifted_state_;
   Vector2d open_state_;
-  const double kp_{2000};
+  const double kp_{1000};
   const double kd_{60.0};
 };
 
@@ -178,7 +182,7 @@ int do_main() {
                                   "ground_collision", rigid_proximity_props);
   IllustrationProperties illustration_props;
   illustration_props.AddProperty("phong", "diffuse",
-                                 Vector4d(0.7, 0.5, 0.4, 0.8));
+                                 Vector4d(0.3, 0.3, 0.3, 0.9));
   plant.RegisterVisualGeometry(plant.world_body(), X_WG, ground,
                                "ground_visual", std::move(illustration_props));
 
@@ -200,11 +204,17 @@ int do_main() {
       std::make_unique<DeformableModel<double>>(&plant);
   DeformableModel<double>* deformable_model = owned_deformable_model.get();
 
-  DeformableBodyConfig<double> deformable_config;
-  deformable_config.set_youngs_modulus(FLAGS_E);
-  deformable_config.set_poissons_ratio(FLAGS_nu);
-  deformable_config.set_mass_density(FLAGS_density);
-  deformable_config.set_stiffness_damping_coefficient(FLAGS_beta);
+  DeformableBodyConfig<double> teddy_config;
+  teddy_config.set_youngs_modulus(FLAGS_teddy_E);
+  teddy_config.set_poissons_ratio(FLAGS_teddy_nu);
+  teddy_config.set_mass_density(FLAGS_teddy_density);
+  teddy_config.set_stiffness_damping_coefficient(FLAGS_teddy_beta);
+
+  DeformableBodyConfig<double> bubble_config;
+  bubble_config.set_youngs_modulus(FLAGS_bubble_E);
+  bubble_config.set_poissons_ratio(FLAGS_bubble_nu);
+  bubble_config.set_mass_density(FLAGS_bubble_density);
+  bubble_config.set_stiffness_damping_coefficient(FLAGS_bubble_beta);
 
   const std::string teddy_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/teddy.vtk");
@@ -217,9 +227,17 @@ int do_main() {
   ProximityProperties deformable_proximity_props;
   AddContactMaterial({}, {}, surface_friction, &deformable_proximity_props);
   teddy_instance->set_proximity_properties(deformable_proximity_props);
+  IllustrationProperties deformable_illustration_props;
+  deformable_illustration_props.AddProperty("phong", "diffuse",
+                                            Vector4d(0.53, 0.42, 0.34, 1.0));
+  teddy_instance->set_illustration_properties(deformable_illustration_props);
 
-    deformable_model->RegisterDeformableBody(std::move(teddy_instance),
-                                             deformable_config, 1.0);
+  deformable_model->RegisterDeformableBody(std::move(teddy_instance),
+                                           teddy_config, 1.0);
+
+  IllustrationProperties bubble_illustration_props;
+  bubble_illustration_props.AddProperty("phong", "diffuse",
+                                            Vector4d(0.9, 0.9, 0.9, 1.0));
 
   const std::string bubble_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/bubble.vtk");
@@ -230,8 +248,9 @@ int do_main() {
   auto left_bubble_instance = std::make_unique<GeometryInstance>(
       X_WB1, std::move(left_bubble_mesh), "left bubble");
   left_bubble_instance->set_proximity_properties(deformable_proximity_props);
+  left_bubble_instance->set_illustration_properties(bubble_illustration_props);
   DeformableBodyId left_bubble_id = deformable_model->RegisterDeformableBody(
-      std::move(left_bubble_instance), deformable_config, 1.0);
+      std::move(left_bubble_instance), bubble_config, 1.0);
   const Body<double>& left_finger = plant.GetBodyByName("left_finger_bubble");
   deformable_model->Weld(left_bubble_id, left_finger, X_WB1,
                          RigidTransformd(RollPitchYawd(0, 1.57, 0),
@@ -244,8 +263,9 @@ int do_main() {
   auto right_bubble_instance = std::make_unique<GeometryInstance>(
       X_WB2, std::move(right_bubble_mesh), "right bubble");
   right_bubble_instance->set_proximity_properties(deformable_proximity_props);
+  right_bubble_instance->set_illustration_properties(bubble_illustration_props);
   DeformableBodyId right_bubble_id = deformable_model->RegisterDeformableBody(
-      std::move(right_bubble_instance), deformable_config, 1.0);
+      std::move(right_bubble_instance), bubble_config, 1.0);
   const Body<double>& right_finger = plant.GetBodyByName("right_finger_bubble");
   deformable_model->Weld(right_bubble_id, right_finger, X_WB2,
                          RigidTransformd(RollPitchYawd(0, 1.57, 0),
@@ -275,7 +295,7 @@ int do_main() {
    height to which the gripper lifts the deformable torus. */
   const double kL = 0.08;
   const double open_width = kL * 1.5;
-  const double closed_width = kL * 0.4;
+  const double closed_width = kL * 0.2;
   const double lifted_height = 0.18;
 
   const auto& control = *builder.AddSystem<GripperPositionControl>(
