@@ -46,6 +46,8 @@ struct MeshcatVisualizerParams {
    simulation. See @ref declare_initialization_events "Declare initialization
    events" for more information. */
   bool delete_on_initialization_event{true};
+
+  bool enable_alpha_slider{false};
 };
 
 }  // namespace geometry

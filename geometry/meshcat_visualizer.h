@@ -35,6 +35,8 @@ struct MeshcatDeformableMeshData {
   std::vector<Vector3<int>> surface_triangles;
   /* The total number of vertices implied by the tetrahedra definitions.  */
   int volume_vertex_count{};
+  /* The diffuse color of the mesh. */
+  Rgba color;
 };
 
 }

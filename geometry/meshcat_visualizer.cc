@@ -127,12 +127,22 @@ internal::MeshcatDeformableMeshData MakeMeshcatDeformableMeshData(
                                    volume_to_surface[face[2]]);
   }
 
-  // TODO(xuchenhan-tri): Read the color of the mesh from properties.
+  Rgba color(0.9, 0.9, 0.9, 1.0);
+  const IllustrationProperties* illustration_props =
+      inspector.GetIllustrationProperties(g_id);
+  if (illustration_props != nullptr) {
+    if (illustration_props) {
+      color =
+          illustration_props->GetPropertyOrDefault("phong", "diffuse", color);
+    }
+  }
+
   return {g_id,
           inspector.GetName(g_id),
           move(surface_to_volume_vertices),
           move(surface_triangles),
-          volume_vertex_count};
+          volume_vertex_count,
+          color};
 }
 
 }  // namespace
@@ -339,19 +349,6 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
   std::map<GeometryId, std::string> deformable_geometries_to_delete{};
   deformable_geometries_.swap(deformable_geometries_to_delete);
 
-  auto color = [](int index) {
-    switch(index) {
-      case 0:
-        return Rgba(1, 0, 0, 1);
-      case 1:
-        return Rgba(0, 1, 0, 1);
-      case 2:
-        return Rgba(0, 0, 1, 1);
-      default:
-        return Rgba(0.5, 0.3, 0.6, 1);
-    }
-  };
-
   for (int idx = 0; idx < static_cast<int>(deformable_data.size()); ++idx) {
     const internal::MeshcatDeformableMeshData& data = deformable_data[idx];
     const GeometryId g_id = data.geometry_id;
@@ -383,7 +380,7 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
     const std::string mesh_path = fmt::format("{}_{}", path, "mesh");
     const std::string wireframe_path = fmt::format("{}_{}", path, "wireframe");
 
-    meshcat_->SetTriangleMesh(mesh_path, vertices, faces, color(idx));
+    meshcat_->SetTriangleMesh(mesh_path, vertices, faces, data.color);
     meshcat_->SetTriangleMesh(wireframe_path, vertices, faces,
                               params_.default_color, true);
 

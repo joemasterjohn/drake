@@ -40,8 +40,7 @@ drake_cc_binary(
         "-realtime_rate=0.0",
     ],
     deps = [
-        "//geometry:drake_visualizer",
-        "//geometry:scene_graph",
+        "//geometry",
         "//multibody/parsing",
         "//multibody/plant",
         "//systems/analysis:simulator",

@@ -6,6 +6,8 @@
 #include "drake/common/find_resource.h"
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/geometry/proximity_properties.h"
+#include "drake/geometry/meshcat.h"
+#include "drake/geometry/meshcat_visualizer.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/fem/deformable_body_config.h"
@@ -308,6 +310,9 @@ int do_main() {
   params.role = geometry::Role::kIllustration;
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, nullptr,
                                            params);
+  auto meshcat = std::make_shared<drake::geometry::Meshcat>();
+  drake::geometry::MeshcatVisualizerd::AddToBuilder(&builder, scene_graph,
+                                                    meshcat);
 
   auto diagram = builder.Build();
   std::unique_ptr<Context<double>> diagram_context =
