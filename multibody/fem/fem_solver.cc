@@ -100,7 +100,9 @@ int FemSolver<T>::SolveWithInitialGuess(
       scratch->mutable_petsc_tangent_matrix();
   internal::SymmetricBlockSparseMatrix<T>& tangent_matrix =
       scratch->mutable_tangent_matrix();
-  internal::BlockSparseCholeskySolver& solver = scratch->mutable_linear_solver();
+  internal::FastSchurComplement<T>& schur_complement =
+      scratch->mutable_schur_complement();
+  const double dt = scratch->dt();
 
   model_->ApplyBoundaryCondition(state);
   model_->CalcResidual(*state, &b);
@@ -134,11 +136,14 @@ int FemSolver<T>::SolveWithInitialGuess(
         return -1;
       }
     } else {
-      model_->CalcTangentMatrix(*state, integrator_->GetWeights(),
+      /* We scale the entire system by dt so that we can reuse the Schur
+       complement later on. */
+      model_->CalcTangentMatrix(*state, integrator_->GetWeights() * dt,
                                 &tangent_matrix);
-      solver.UpdateMatrix(tangent_matrix);
-      solver.Factor();
-      dz = solver.Solve(-b);
+      schur_complement = FastSchurComplement<T>(
+          tangent_matrix, scratch->nonparticipating_vertices(),
+          scratch->participating_vertices());
+      dz = schur_complement.Solve(-b * dt);
     }
     integrator_->UpdateStateFromChangeInUnknowns(dz, state);
     model_->CalcResidual(*state, &b);

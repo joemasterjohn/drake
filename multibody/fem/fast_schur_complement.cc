@@ -47,6 +47,16 @@ VectorX<T> FastSchurComplement<T>::SolveForX(
   return x;
 }
 
+template <class T>
+VectorX<T> FastSchurComplement<T>::Solve(
+    const Eigen::Ref<const VectorX<T>>& rhs) const {
+  DRAKE_DEMAND(3 * static_cast<int>(A_indices_.size() + D_indices_.size()) ==
+               rhs.size());
+  VectorX<T> x(rhs);
+  solver_.SolveInPlace(&x);
+  return x;
+}
+
 template class FastSchurComplement<double>;
 
 }  // namespace internal

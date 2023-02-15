@@ -364,12 +364,12 @@ MatrixX<double> BlockSparseCholeskySolver::CalcSchurComplementAndFactor(
     const SymmetricBlockSparseMatrix<double>& M,
     const std::vector<int>& eliminated_block_indices) {
   const int D_size = eliminated_block_indices.size();
-  if (D_size == 0) return M.MakeDenseMatrix();
+  // if (D_size == 0) return M.MakeDenseMatrix();
   /* The number of block columns in M. */
   const int N = M.cols() / 3;
   const int A_size = N - D_size;
   DRAKE_DEMAND(A_size >= 0);
-  if (A_size == 0) return MatrixX<double>::Zero(0, 0);
+  // if (A_size == 0) return MatrixX<double>::Zero(0, 0);
 
   const std::vector<std::set<int>> adjacency_graph = M.CalcAdjacencyGraph();
   /* Ensure that the eliminated blocks appear first in the elimination order. */

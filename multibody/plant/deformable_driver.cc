@@ -27,8 +27,6 @@ using drake::multibody::fem::internal::DirichletBoundaryCondition;
 using drake::multibody::fem::internal::FastSchurComplement;
 using drake::multibody::fem::internal::FemSolver;
 using drake::multibody::fem::internal::FemSolverScratchData;
-using drake::multibody::fem::internal::PetscSymmetricBlockSparseMatrix;
-using drake::multibody::fem::internal::SchurComplement;
 using drake::multibody::fem::internal::SymmetricBlockSparseMatrix;
 using drake::systems::Context;
 
@@ -87,132 +85,6 @@ void DeformableDriver<T>::DeclareCacheEntries(
     contact_participation_tickets.emplace(
         contact_participation_cache_entry.ticket());
 
-    const DeformableBodyId id = deformable_model_->GetBodyId(i);
-    const fem::FemModel<T>& fem_model = deformable_model_->GetFemModel(id);
-    std::unique_ptr<fem::FemState<T>> model_state = fem_model.MakeFemState();
-    /* Cache entry for current FEM state. */
-    const auto& fem_state_cache_entry = manager->DeclareCacheEntry(
-        fmt::format("FEM state for body with index {}", i),
-        systems::ValueProducer(
-            *model_state,
-            std::function<void(const Context<T>&, fem::FemState<T>*)>{
-                [this, i](const Context<T>& context, fem::FemState<T>* state) {
-                  this->CalcFemState(context, i, state);
-                }}),
-        {systems::System<T>::xd_ticket()});
-    cache_indexes_.fem_states.emplace_back(fem_state_cache_entry.cache_index());
-
-    /* Cache entry for free motion FEM state. */
-    const auto& free_motion_fem_state_cache_entry = manager->DeclareCacheEntry(
-        fmt::format("free motion FEM state for body with index {}", i),
-        systems::ValueProducer(
-            *model_state,
-            std::function<void(const systems::Context<T>&, fem::FemState<T>*)>{
-                [this, i](const systems::Context<T>& context,
-                          fem::FemState<T>* free_motion_state) {
-                  this->CalcFreeMotionFemState(context, i, free_motion_state);
-                }}),
-        {fem_state_cache_entry.ticket()});
-    cache_indexes_.free_motion_fem_states.emplace_back(
-        free_motion_fem_state_cache_entry.cache_index());
-
-    /* Cache entry for FEM state at next time step. */
-    const auto& next_fem_state_cache_entry = manager->DeclareCacheEntry(
-        fmt::format("FEM state for body with index {} at next time step", i),
-        systems::ValueProducer(
-            *model_state,
-            std::function<void(const systems::Context<T>&, fem::FemState<T>*)>{
-                [this, i](const systems::Context<T>& context,
-                          fem::FemState<T>* next_fem_state) {
-                  this->CalcNextFemState(context, i, next_fem_state);
-                }}),
-        {systems::SystemBase::all_sources_ticket()});
-    cache_indexes_.next_fem_states.emplace_back(
-        next_fem_state_cache_entry.cache_index());
-
-    /* Scatch data for FEM solver. */
-    FemSolverScratchData scratch(fem_model);
-    const auto& scratch_entry = manager->DeclareCacheEntry(
-        fmt::format("FEM solver scratch workspace for body with index {}", i),
-        systems::ValueProducer(scratch, &systems::ValueProducer::NoopCalc),
-        {systems::SystemBase::nothing_ticket()});
-    cache_indexes_.fem_solver_scratches.emplace_back(
-        scratch_entry.cache_index());
-
-    /* Cache entry for the tangent matrix at free motion state stored in
-     PetscSymmetricBlockSparseMatrix form. */
-    std::unique_ptr<PetscSymmetricBlockSparseMatrix> model_tangent_matrix =
-        fem_model.MakePetscSymmetricBlockSparseTangentMatrix();
-    model_tangent_matrix->AssembleIfNecessary();
-    const auto& petsc_free_motion_tangent_matrix_cache_entry =
-        manager->DeclareCacheEntry(
-            fmt::format("free motion tangent matrix for body with index {}", i),
-            systems::ValueProducer(
-                *model_tangent_matrix,
-                std::function<void(const systems::Context<T>&,
-                                   PetscSymmetricBlockSparseMatrix*)>{
-                    [this, i](const systems::Context<T>& context,
-                              PetscSymmetricBlockSparseMatrix* tangent_matrix) {
-                      this->CalcPetscFreeMotionTangentMatrix(context, i,
-                                                             tangent_matrix);
-                    }}),
-            {free_motion_fem_state_cache_entry.ticket()});
-    cache_indexes_.petsc_free_motion_tangent_matrices.emplace_back(
-        petsc_free_motion_tangent_matrix_cache_entry.cache_index());
-
-    const auto& schur_complement_cache_entry = manager->DeclareCacheEntry(
-        fmt::format("free motion tangent matrix Schur complement for body "
-                    "with index {}",
-                    i),
-        systems::ValueProducer(std::function<void(const systems::Context<T>&,
-                                                  SchurComplement<T>*)>{
-            [this, i](const systems::Context<T>& context,
-                      SchurComplement<T>* schur_complement) {
-              this->CalcFreeMotionTangentMatrixSchurComplement(
-                  context, i, schur_complement);
-            }}),
-        {petsc_free_motion_tangent_matrix_cache_entry.ticket(),
-         deformable_contact_cache_entry.ticket()});
-    cache_indexes_.free_motion_tangent_matrix_schur_complements.emplace_back(
-        schur_complement_cache_entry.cache_index());
-
-    /* Cache entry for the tangent matrix at free motion state stored in
-     SymmetricBlockSparseMatrix form. */
-    std::unique_ptr<SymmetricBlockSparseMatrix<T>> model_tangent_matrix2 =
-        fem_model.MakeSymmetricBlockSparseTangentMatrix();
-    const auto& free_motion_tangent_matrix_cache_entry =
-        manager->DeclareCacheEntry(
-            fmt::format("free motion tangent matrix2 for body with index {}",
-                        i),
-            systems::ValueProducer(
-                *model_tangent_matrix2,
-                std::function<void(const systems::Context<T>&,
-                                   SymmetricBlockSparseMatrix<T>*)>{
-                    [this, i](const systems::Context<T>& context,
-                              SymmetricBlockSparseMatrix<T>* tangent_matrix) {
-                      this->CalcFreeMotionTangentMatrix(context, i,
-                                                        tangent_matrix);
-                    }}),
-            {free_motion_fem_state_cache_entry.ticket()});
-    cache_indexes_.free_motion_tangent_matrices.emplace_back(
-        free_motion_tangent_matrix_cache_entry.cache_index());
-
-    const auto& fast_schur_complement_cache_entry = manager->DeclareCacheEntry(
-        fmt::format("free motion tangent matrix fast Schur complement for body "
-                    "with index {}",
-                    i),
-        systems::ValueProducer(std::function<void(const systems::Context<T>&,
-                                                  FastSchurComplement<T>*)>{
-            [this, i](const systems::Context<T>& context,
-                      FastSchurComplement<T>* schur_complement) {
-              this->CalcFreeMotionTangentMatrixFastSchurComplement(
-                  context, i, schur_complement);
-            }}),
-        {free_motion_tangent_matrix_cache_entry.ticket(),
-         contact_participation_cache_entry.ticket()});
-    cache_indexes_.free_motion_tangent_matrix_fast_schur_complements
-        .emplace_back(fast_schur_complement_cache_entry.cache_index());
-
     /* Permutation for participating dofs for each body. */
     const auto& dof_permutation_cache_entry = manager->DeclareCacheEntry(
         fmt::format("partial permutation for dofs of body {} based on "
@@ -244,6 +116,62 @@ void DeformableDriver<T>::DeclareCacheEntries(
         {contact_participation_cache_entry.ticket()});
     cache_indexes_.vertex_permutations.emplace(
         g_id, vertex_permutation_cache_entry.cache_index());
+
+    const DeformableBodyId id = deformable_model_->GetBodyId(i);
+    const fem::FemModel<T>& fem_model = deformable_model_->GetFemModel(id);
+    std::unique_ptr<fem::FemState<T>> model_state = fem_model.MakeFemState();
+    /* Cache entry for current FEM state. */
+    const auto& fem_state_cache_entry = manager->DeclareCacheEntry(
+        fmt::format("FEM state for body with index {}", i),
+        systems::ValueProducer(
+            *model_state,
+            std::function<void(const Context<T>&, fem::FemState<T>*)>{
+                [this, i](const Context<T>& context, fem::FemState<T>* state) {
+                  this->CalcFemState(context, i, state);
+                }}),
+        {systems::System<T>::xd_ticket()});
+    cache_indexes_.fem_states.emplace_back(fem_state_cache_entry.cache_index());
+
+    FreeMotionState<T> model_free_motion_state;
+    model_free_motion_state.fem_state_star = fem_model.MakeFemState();
+    /* Cache entry for free motion state. */
+    const auto& free_motion_state_cache_entry = manager->DeclareCacheEntry(
+        fmt::format("free motion FEM state for body with index {}", i),
+        systems::ValueProducer(
+            model_free_motion_state,
+            std::function<void(const systems::Context<T>&,
+                               FreeMotionState<T>*)>{
+                [this, i](const systems::Context<T>& context,
+                          FreeMotionState<T>* free_motion_state) {
+                  this->CalcFreeMotionState(context, i, free_motion_state);
+                }}),
+        {fem_state_cache_entry.ticket(),
+         vertex_permutation_cache_entry.ticket()});
+    cache_indexes_.free_motion_states.emplace_back(
+        free_motion_state_cache_entry.cache_index());
+
+    /* Cache entry for FEM state at next time step. */
+    const auto& next_fem_state_cache_entry = manager->DeclareCacheEntry(
+        fmt::format("FEM state for body with index {} at next time step", i),
+        systems::ValueProducer(
+            *model_state,
+            std::function<void(const systems::Context<T>&, fem::FemState<T>*)>{
+                [this, i](const systems::Context<T>& context,
+                          fem::FemState<T>* next_fem_state) {
+                  this->CalcNextFemState(context, i, next_fem_state);
+                }}),
+        {systems::SystemBase::all_sources_ticket()});
+    cache_indexes_.next_fem_states.emplace_back(
+        next_fem_state_cache_entry.cache_index());
+
+    /* Scatch data for FEM solver. */
+    FemSolverScratchData scratch(fem_model);
+    const auto& scratch_entry = manager->DeclareCacheEntry(
+        fmt::format("FEM solver scratch workspace for body with index {}", i),
+        systems::ValueProducer(scratch, &systems::ValueProducer::NoopCalc),
+        {systems::SystemBase::nothing_ticket()});
+    cache_indexes_.fem_solver_scratches.emplace_back(
+        scratch_entry.cache_index());
   }
 
   const auto& participating_velocity_mux_cache_entry =
@@ -280,8 +208,7 @@ void DeformableDriver<T>::AppendLinearDynamicsMatrix(
   DRAKE_DEMAND(A != nullptr);
   const int num_bodies = deformable_model_->num_bodies();
   for (DeformableBodyIndex index(0); index < num_bodies; ++index) {
-    const FastSchurComplement<T>& schur_complement =
-        EvalFreeMotionTangentMatrixFastSchurComplement(context, index);
+    const FastSchurComplement<T>& schur_complement = EvalFreeMotionState(context, index).schur_complement;
     A->emplace_back(schur_complement.get_D_complement());
   }
 }
@@ -772,12 +699,26 @@ const FemState<T>& DeformableDriver<T>::EvalFemState(
 }
 
 template <typename T>
-void DeformableDriver<T>::CalcFreeMotionFemState(
+void DeformableDriver<T>::CalcFreeMotionState(
     const systems::Context<T>& context, DeformableBodyIndex index,
-    FemState<T>* fem_state_star) const {
+    FreeMotionState<T>* free_motion_state) const {
   const FemState<T>& fem_state = EvalFemState(context, index);
-  const DeformableBodyId id = deformable_model_->GetBodyId(index);
-  const FemModel<T>& model = deformable_model_->GetFemModel(id);
+  const DeformableBodyId body_id = deformable_model_->GetBodyId(index);
+  const GeometryId geometry_id = deformable_model_->GetGeometryId(body_id);
+  const PartialPermutation& permutation =
+      EvalVertexPermutation(context, geometry_id);
+  std::vector<int> participating_vertices;
+  std::vector<int> non_participating_vertices;
+  DRAKE_DEMAND(3 * permutation.domain_size() == fem_state.num_dofs());
+  for (int v = 0; v < permutation.domain_size(); ++v) {
+    if (permutation.participates(v)) {
+      participating_vertices.emplace_back(v);
+    } else {
+      non_participating_vertices.emplace_back(v);
+    }
+  }
+
+  const FemModel<T>& model = deformable_model_->GetFemModel(body_id);
   // TODO(xuchenhan-tri): We should expose an API to set the solver tolerance
   // here.
   const FemSolver<T> solver(&model, integrator_.get());
@@ -786,15 +727,20 @@ void DeformableDriver<T>::CalcFreeMotionFemState(
           .get_cache_entry(cache_indexes_.fem_solver_scratches.at(index))
           .get_mutable_cache_entry_value(context)
           .template GetMutableValueOrThrow<FemSolverScratchData<T>>();
+  scratch.set_dt(manager_->plant().time_step());
+  scratch.set_schur_complement(&free_motion_state->schur_complement);
+  scratch.set_participating_vertices(participating_vertices);
+  scratch.set_nonparticipating_vertices(non_participating_vertices);
+  FemState<T>* fem_state_star = free_motion_state->fem_state_star.get_mutable();
   solver.AdvanceOneTimeStep(fem_state, fem_state_star, &scratch);
 }
 
 template <typename T>
-const FemState<T>& DeformableDriver<T>::EvalFreeMotionFemState(
+const FreeMotionState<T>& DeformableDriver<T>::EvalFreeMotionState(
     const systems::Context<T>& context, DeformableBodyIndex index) const {
   return manager_->plant()
-      .get_cache_entry(cache_indexes_.free_motion_fem_states.at(index))
-      .template Eval<FemState<T>>(context);
+      .get_cache_entry(cache_indexes_.free_motion_states.at(index))
+      .template Eval<FreeMotionState<T>>(context);
 }
 
 template <typename T>
@@ -808,7 +754,7 @@ void DeformableDriver<T>::CalcNextFemState(const systems::Context<T>& context,
     /* The next states are the free motion states if no vertex of the
      deformable body participates in contact. */
     const FemState<T>& free_motion_state =
-        EvalFreeMotionFemState(context, index);
+        *(EvalFreeMotionState(context, index).fem_state_star);
     next_fem_state->SetPositions(free_motion_state.GetPositions());
     next_fem_state->SetVelocities(free_motion_state.GetVelocities());
     next_fem_state->SetAccelerations(free_motion_state.GetAccelerations());
@@ -838,8 +784,7 @@ void DeformableDriver<T>::CalcNextFemState(const systems::Context<T>& context,
         body_participating_v_next - body_participating_v_star;
     /* Compute the value of the post-constraint non-participating
      velocities using Schur complement. */
-    const FastSchurComplement<T>& schur_complement =
-        EvalFreeMotionTangentMatrixFastSchurComplement(context, index);
+    const FastSchurComplement<T>& schur_complement = EvalFreeMotionState(context, index).schur_complement;
     const VectorX<T> body_nonparticipating_dv = schur_complement.SolveForX(
         body_participating_tau_contact * manager_->plant().time_step());
     /* Concatenate the participating and non-participating velocities and
@@ -854,7 +799,8 @@ void DeformableDriver<T>::CalcNextFemState(const systems::Context<T>& context,
     full_velocity_permutation.ApplyInverse(permuted_dv, &dv);
     /* v_next = v_star + dv */
     VectorX<T>& v_next = dv;
-    v_next += EvalFreeMotionFemState(context, index).GetVelocities();
+    v_next +=
+        EvalFreeMotionState(context, index).fem_state_star->GetVelocities();
     const FemState<T>& fem_state = EvalFemState(context, index);
     integrator_->AdvanceOneTimeStep(fem_state, v_next, next_fem_state);
   }
@@ -998,7 +944,7 @@ void DeformableDriver<T>::CalcParticipatingFreeMotionVelocities(
   for (DeformableBodyIndex i(0); i < num_bodies; ++i) {
     const PartialPermutation& permutation = EvalDofPermutation(context, i);
     const VectorX<T>& v_star =
-        EvalFreeMotionFemState(context, i).GetVelocities();
+        EvalFreeMotionState(context, i).fem_state_star->GetVelocities();
     participating_v_star[i].resize(permutation.permuted_domain_size());
     permutation.Apply(v_star, &participating_v_star[i]);
   }
@@ -1013,143 +959,6 @@ const VectorX<T>& DeformableDriver<T>::EvalParticipatingFreeMotionVelocities(
   return manager_->plant()
       .get_cache_entry(cache_indexes_.participating_free_motion_velocities)
       .template Eval<VectorX<T>>(context);
-}
-
-template <typename T>
-void DeformableDriver<T>::CalcPetscFreeMotionTangentMatrix(
-    const systems::Context<T>& context, DeformableBodyIndex index,
-    PetscSymmetricBlockSparseMatrix* tangent_matrix) const {
-  DRAKE_DEMAND(tangent_matrix != nullptr);
-  const DeformableBodyId id = deformable_model_->GetBodyId(index);
-  const FemModel<T>& fem_model = deformable_model_->GetFemModel(id);
-  const FemState<T>& fem_state_star = EvalFreeMotionFemState(context, index);
-  /* Multiply by dt because we need the tangent matrix of the momentum balance
-   instead of the force balance. */
-  fem_model.CalcTangentMatrix(
-      fem_state_star, manager_->plant().time_step() * integrator_->GetWeights(),
-      tangent_matrix);
-  tangent_matrix->AssembleIfNecessary();
-}
-
-template <typename T>
-const PetscSymmetricBlockSparseMatrix&
-DeformableDriver<T>::EvalPetscFreeMotionTangentMatrix(
-    const systems::Context<T>& context, DeformableBodyIndex index) const {
-  return manager_->plant()
-      .get_cache_entry(
-          cache_indexes_.petsc_free_motion_tangent_matrices.at(index))
-      .template Eval<PetscSymmetricBlockSparseMatrix>(context);
-}
-
-template <typename T>
-void DeformableDriver<T>::CalcFreeMotionTangentMatrix(
-    const systems::Context<T>& context, DeformableBodyIndex index,
-    SymmetricBlockSparseMatrix<T>* tangent_matrix) const {
-  DRAKE_DEMAND(tangent_matrix != nullptr);
-  const DeformableBodyId id = deformable_model_->GetBodyId(index);
-  const FemModel<T>& fem_model = deformable_model_->GetFemModel(id);
-  const FemState<T>& fem_state_star = EvalFreeMotionFemState(context, index);
-  /* Multiply by dt because we need the tangent matrix of the momentum balance
-   instead of the force balance. */
-  fem_model.CalcTangentMatrix(
-      fem_state_star, manager_->plant().time_step() * integrator_->GetWeights(),
-      tangent_matrix);
-}
-
-template <typename T>
-const SymmetricBlockSparseMatrix<T>&
-DeformableDriver<T>::EvalFreeMotionTangentMatrix(
-    const systems::Context<T>& context, DeformableBodyIndex index) const {
-  return manager_->plant()
-      .get_cache_entry(cache_indexes_.free_motion_tangent_matrices.at(index))
-      .template Eval<SymmetricBlockSparseMatrix<T>>(context);
-}
-
-template <typename T>
-void DeformableDriver<T>::CalcFreeMotionTangentMatrixSchurComplement(
-    const systems::Context<T>& context, DeformableBodyIndex index,
-    SchurComplement<T>* result) const {
-  DRAKE_DEMAND(result != nullptr);
-  const DeformableBodyId body_id = deformable_model_->GetBodyId(index);
-  const GeometryId geometry_id = deformable_model_->GetGeometryId(body_id);
-  /* Avoid the expensive tangent matrix and Schur complement calculation if
-   there's no contact at all. */
-  const ContactParticipation& body_contact_participation =
-      EvalContactParticipation(context, index);
-  if (body_contact_participation.num_vertices_in_contact() == 0) {
-    *result = SchurComplement<T>();
-    return;
-  }
-  const PetscSymmetricBlockSparseMatrix& tangent_matrix =
-      EvalPetscFreeMotionTangentMatrix(context, index);
-  std::vector<int> participating_vertices;
-  std::vector<int> non_participating_vertices;
-  const PartialPermutation& permutation =
-      EvalVertexPermutation(context, geometry_id);
-  DRAKE_DEMAND(3 * permutation.domain_size() == tangent_matrix.cols());
-  for (int v = 0; v < permutation.domain_size(); ++v) {
-    if (permutation.participates(v)) {
-      participating_vertices.emplace_back(v);
-    } else {
-      non_participating_vertices.emplace_back(v);
-    }
-  }
-  *result = tangent_matrix.CalcSchurComplement(non_participating_vertices,
-                                               participating_vertices);
-}
-
-template <typename T>
-const SchurComplement<T>&
-DeformableDriver<T>::EvalFreeMotionTangentMatrixSchurComplement(
-    const systems::Context<T>& context, DeformableBodyIndex index) const {
-  return manager_->plant()
-      .get_cache_entry(
-          cache_indexes_.free_motion_tangent_matrix_schur_complements.at(index))
-      .template Eval<SchurComplement<T>>(context);
-}
-
-template <typename T>
-void DeformableDriver<T>::CalcFreeMotionTangentMatrixFastSchurComplement(
-    const systems::Context<T>& context, DeformableBodyIndex index,
-    FastSchurComplement<T>* result) const {
-  DRAKE_DEMAND(result != nullptr);
-  const DeformableBodyId body_id = deformable_model_->GetBodyId(index);
-  const GeometryId geometry_id = deformable_model_->GetGeometryId(body_id);
-  /* Avoid the expensive tangent matrix and Schur complement calculation if
-   there's no contact at all. */
-  const ContactParticipation& body_contact_participation =
-      EvalContactParticipation(context, index);
-  if (body_contact_participation.num_vertices_in_contact() == 0) {
-    *result = FastSchurComplement<T>();
-    return;
-  }
-  const SymmetricBlockSparseMatrix<T>& tangent_matrix =
-      EvalFreeMotionTangentMatrix(context, index);
-  std::vector<int> participating_vertices;
-  std::vector<int> non_participating_vertices;
-  const PartialPermutation& permutation =
-      EvalVertexPermutation(context, geometry_id);
-  DRAKE_DEMAND(3 * permutation.domain_size() == tangent_matrix.cols());
-  for (int v = 0; v < permutation.domain_size(); ++v) {
-    if (permutation.participates(v)) {
-      participating_vertices.emplace_back(v);
-    } else {
-      non_participating_vertices.emplace_back(v);
-    }
-  }
-  *result = FastSchurComplement<T>(tangent_matrix, non_participating_vertices,
-                                   participating_vertices);
-}
-
-template <typename T>
-const FastSchurComplement<T>&
-DeformableDriver<T>::EvalFreeMotionTangentMatrixFastSchurComplement(
-    const systems::Context<T>& context, DeformableBodyIndex index) const {
-  return manager_->plant()
-      .get_cache_entry(
-          cache_indexes_.free_motion_tangent_matrix_fast_schur_complements.at(
-              index))
-      .template Eval<FastSchurComplement<T>>(context);
 }
 
 template class DeformableDriver<double>;

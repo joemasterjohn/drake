@@ -53,6 +53,10 @@ class FastSchurComplement {
   /* Given a value of y, solves for x in the equation Dx + By = 0. */
   VectorX<T> SolveForX(const Eigen::Ref<const VectorX<T>>& y) const;
 
+  /* Given a right hand side vector with the same dimension and ordering as the
+   input matrix M, solve solves for M*x = rhs. */
+  VectorX<T> Solve(const Eigen::Ref<const VectorX<T>>& rhs) const;
+
  private:
   std::vector<int> D_indices_;
   std::vector<int> A_indices_;

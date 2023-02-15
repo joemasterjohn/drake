@@ -255,6 +255,7 @@ drake_cc_library(
     deps = [
         ":block_sparse_cholesky_solver",
         ":discrete_time_integrator",
+        ":fast_schur_complement",
         ":fem_model",
         "//common:essential",
     ],

@@ -5,6 +5,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/multibody/fem/block_sparse_cholesky_solver.h"
 #include "drake/multibody/fem/discrete_time_integrator.h"
+#include "drake/multibody/fem/fast_schur_complement.h"
 #include "drake/multibody/fem/fem_model.h"
 #include "drake/multibody/fem/fem_state.h"
 
@@ -31,6 +32,8 @@ class FemSolverScratchData {
 
   int num_dofs() const { return b_.size(); }
 
+  double dt() const { return dt_; }
+
   /* Returns the residual of the model. */
   const VectorX<T>& b() const { return b_; }
   /* Returns the solution to A * dz = -b, where A is the tangent matrix. */
@@ -45,6 +48,9 @@ class FemSolverScratchData {
   const internal::BlockSparseCholeskySolver& linear_solver() const {
     return linear_solver_;
   }
+  const internal::FastSchurComplement<T>& schur_complement() const {
+    return *schur_complement_;
+  }
 
   VectorX<T>& mutable_b() { return b_; }
   VectorX<T>& mutable_dz() { return dz_; }
@@ -57,6 +63,28 @@ class FemSolverScratchData {
   internal::BlockSparseCholeskySolver& mutable_linear_solver() {
     return linear_solver_;
   }
+  internal::FastSchurComplement<T>& mutable_schur_complement() {
+    return *schur_complement_;
+  }
+
+  void set_dt(double dt) { dt_ = dt; }
+  void set_schur_complement(
+      internal::FastSchurComplement<T>* schur_complement) {
+    schur_complement_ = schur_complement;
+  }
+  void set_participating_vertices(const std::vector<int>& v) {
+    participating_vertices_ = v;
+  }
+  void set_nonparticipating_vertices(const std::vector<int>& v) {
+    nonparticipating_vertices_ = v;
+  }
+
+  const std::vector<int>& participating_vertices() const {
+    return participating_vertices_;
+  }
+  const std::vector<int>& nonparticipating_vertices() const {
+    return nonparticipating_vertices_;
+  }
 
  private:
   /* Private default constructor to facilitate cloning. */
@@ -68,6 +96,10 @@ class FemSolverScratchData {
   internal::BlockSparseCholeskySolver linear_solver_;
   VectorX<T> b_;
   VectorX<T> dz_;
+  double dt_;
+  internal::FastSchurComplement<T>* schur_complement_;
+  std::vector<int> participating_vertices_;
+  std::vector<int> nonparticipating_vertices_;
 };
 
 enum class FemSolverOption {
@@ -178,7 +210,7 @@ class FemSolver {
   double absolute_tolerance_{1e-6};  // unit N.
   /* Max number of Newton-Raphson iterations the solver takes before it gives
    up. */
-  int kMaxIterations_{1};
+  int kMaxIterations_{100};
   FemSolverOption option_;
 };
 
