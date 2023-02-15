@@ -221,7 +221,7 @@ class DeformableModel final : public multibody::internal::PhysicalModel<T> {
             const math::RigidTransform<T>& X_WB) {
     const VectorX<T>& reference_positions = GetReferencePositions(body_A_id);
     const int num_verts = reference_positions.size() / 3;
-    const double tol = 5e-4;
+    const double tol = 1e-3;
     for (int i = 0; i < num_verts; ++i) {
       const Vector3<T>& p_WV = reference_positions.template segment<3>(3 * i);
       const Vector3<T> p_AV = X_WA.inverse() * p_WV;
