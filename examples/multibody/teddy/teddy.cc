@@ -23,18 +23,18 @@
 #include "drake/systems/primitives/adder.h"
 #include "drake/systems/primitives/constant_vector_source.h"
 
-DEFINE_double(simulation_time, 8.0, "Desired duration of the simulation [s].");
+DEFINE_double(simulation_time, 10.0, "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 0.0, "Desired real time rate.");
 DEFINE_double(time_step, 5.0e-3,
               "Discrete time step for the system [s]. Must be positive.");
-DEFINE_double(teddy_E, 5e2, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(teddy_E, 5e3, "Young's modulus of the deformable body [Pa].");
 DEFINE_double(teddy_nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
-DEFINE_double(teddy_density, 100, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(teddy_density, 1000, "Mass density of the deformable body [kg/m³].");
 DEFINE_double(teddy_beta, 0.01,
               "Stiffness damping coefficient for the deformable body [1/s].");
-DEFINE_double(bubble_E, 3e2, "Young's modulus of the deformable body [Pa].");
-DEFINE_double(bubble_nu, 0.2, "Poisson's ratio of the deformable body, unitless.");
-DEFINE_double(bubble_density, 100, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(bubble_E, 5e3, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(bubble_nu, 0.3, "Poisson's ratio of the deformable body, unitless.");
+DEFINE_double(bubble_density, 1000, "Mass density of the deformable body [kg/m³].");
 DEFINE_double(bubble_beta, 0.01,
               "Stiffness damping coefficient for the deformable body [1/s].");
 
@@ -117,7 +117,11 @@ class GripperPositionControl : public systems::LeafSystem<double> {
     const Vector2d desired_velocities(0, 0);
     Vector2d desired_positions;
     const double t = context.get_time();
-    if (t < fingers_closed_time_) {
+    if (t < wait_time_) {
+      desired_positions =
+         initial_state_;
+    }
+    else if (t < fingers_closed_time_) {
       const double end_time = fingers_closed_time_;
       const double theta = t / end_time;
       desired_positions =
@@ -141,12 +145,13 @@ class GripperPositionControl : public systems::LeafSystem<double> {
   }
 
   /* The time at which the fingers reach the desired closed state. */
-  const double fingers_closed_time_{1.5};
+  const double wait_time_{2.0};
+  const double fingers_closed_time_{3.5};
   /* The time at which the gripper reaches the desired "lifted" state. */
-  const double gripper_lifted_time_{3.0};
-  const double hold_time_{5.5};
+  const double gripper_lifted_time_{5.0};
+  const double hold_time_{7};
   /* The time at which the fingers reach the desired open state. */
-  const double fingers_open_time_{7.0};
+  const double fingers_open_time_{8.5};
   Vector2d initial_state_;
   Vector2d closed_state_;
   Vector2d lifted_state_;
@@ -179,12 +184,12 @@ int do_main() {
                                     geometry::internal::kRezHint, 1.0);
   /* Set up a ground. */
   Box ground{4, 4, 4};
-  const RigidTransformd X_WG(Eigen::Vector3d{0, 0, -2.0});
+  const RigidTransformd X_WG(Eigen::Vector3d{0, 0, -2.005});
   plant.RegisterCollisionGeometry(plant.world_body(), X_WG, ground,
                                   "ground_collision", rigid_proximity_props);
   IllustrationProperties illustration_props;
   illustration_props.AddProperty("phong", "diffuse",
-                                 Vector4d(0.3, 0.3, 0.3, 0.9));
+                                 Vector4d(0.95, 0.80, 0.65, 0.9));
   plant.RegisterVisualGeometry(plant.world_body(), X_WG, ground,
                                "ground_visual", std::move(illustration_props));
 
@@ -221,7 +226,7 @@ int do_main() {
   const std::string teddy_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/teddy.vtk");
   auto teddy_mesh = std::make_unique<Mesh>(teddy_vtk, 0.1);
-  const RigidTransformd X_WB(RollPitchYawd(1.57, 0, -1.57), Vector3d(-0.21, 0.0, 0));
+  const RigidTransformd X_WB(RollPitchYawd(1.57, 0, -1.57), Vector3d(-0.2, 0.0, 0));
   auto teddy_instance =
       std::make_unique<GeometryInstance>(X_WB, std::move(teddy_mesh), "teddy");
   /* Minimumly required proximity properties for deformable bodies: A valid
@@ -239,7 +244,7 @@ int do_main() {
 
   IllustrationProperties bubble_illustration_props;
   bubble_illustration_props.AddProperty("phong", "diffuse",
-                                            Vector4d(0.9, 0.9, 0.9, 1.0));
+                                            Vector4d(0.3, 0.3, 0.3, 1.0));
 
   const std::string bubble_vtk =
       FindResourceOrThrow("drake/examples/multibody/teddy/bubble.vtk");
@@ -297,7 +302,7 @@ int do_main() {
    height to which the gripper lifts the deformable torus. */
   const double kL = 0.08;
   const double open_width = kL * 1.5;
-  const double closed_width = kL * 0.2;
+  const double closed_width = kL * 0.25;
   const double lifted_height = 0.18;
 
   const auto& control = *builder.AddSystem<GripperPositionControl>(
