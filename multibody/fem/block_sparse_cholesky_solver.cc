@@ -538,6 +538,20 @@ void BlockSparseCholeskySolver::RightLookingSymmetricRank1Update(int j) {
      }
    }
   */
+// const int M = N - 1;
+// const int size = N * M / 2;
+// #if defined(_OPENMP)
+// #pragma omp parallel for num_threads(12)
+// #endif
+//   for (int x = 0; x < size; ++x) {
+//     int f2 = int((std::sqrt(8*x + 1) - 1) / 2) + 1;
+//     int f1 = x - (f2*(f2-1)/2) + 1;
+//     const int col = blocks_in_col_j[f1];
+//     const int row = blocks_in_col_j[f2];
+//     const Matrix3<double>& A = L_.get_block_flat(f2, j);
+//     const Matrix3<double>& B = L_.get_block_flat(f1, j);
+//     L_.SubtractProductFromBlock(row, col, A, B);
+//   }
 #if defined(_OPENMP)
 #pragma omp parallel for num_threads(12)
 #endif
