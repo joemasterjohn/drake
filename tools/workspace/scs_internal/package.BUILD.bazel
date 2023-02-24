@@ -52,7 +52,8 @@ cc_library(
         "@blas",
         "@lapack",
         "@qdldl_internal//:qdldl",
-        "@suitesparse_internal//:amd",
+        # "@suitesparse_internal//:amd",
+        "@cholmod",
     ],
 )
 
