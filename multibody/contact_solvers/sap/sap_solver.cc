@@ -11,7 +11,7 @@
 #include "drake/common/extract_double.h"
 #include "drake/math/linear_solve.h"
 #include "drake/multibody/contact_solvers/newton_with_bisection.h"
-#include "drake/multibody/contact_solvers/supernodal_solver.h"
+#include "drake/multibody/contact_solvers/supernodal_solver2.h"
 
 namespace drake {
 namespace multibody {
@@ -128,7 +128,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   stats_ = SolverStats();
   // The supernodal solver is expensive to instantiate and therefore we only
   // instantiate when needed.
-  std::unique_ptr<SuperNodalSolver> supernodal_solver;
+  std::unique_ptr<SuperNodalSolver2> supernodal_solver;
 
   {
     // We limit the lifetime of this reference, v, to within this scope where we
@@ -610,10 +610,10 @@ MatrixX<T> SapSolver<T>::CalcDenseHessian(const Context<T>& context) const {
 }
 
 template <typename T>
-std::unique_ptr<SuperNodalSolver> SapSolver<T>::MakeSuperNodalSolver() const {
+std::unique_ptr<SuperNodalSolver2> SapSolver<T>::MakeSuperNodalSolver() const {
   if constexpr (std::is_same_v<T, double>) {
     const BlockSparseMatrix<T>& J = model_->constraints_bundle().J();
-    return std::make_unique<SuperNodalSolver>(J.block_rows(), J.get_blocks(),
+    return std::make_unique<SuperNodalSolver2>(J.block_rows(), J.get_blocks(),
                                               model_->dynamics_matrix());
   } else {
     throw std::logic_error(
@@ -648,7 +648,7 @@ void SapSolver<T>::CallDenseSolver(const Context<T>& context,
 
 template <typename T>
 void SapSolver<T>::UpdateSuperNodalSolver(
-    const Context<T>& context, SuperNodalSolver* supernodal_solver) const {
+    const Context<T>& context, SuperNodalSolver2* supernodal_solver) const {
   if constexpr (std::is_same_v<T, double>) {
     const std::vector<MatrixX<double>>& G =
         model_->EvalConstraintsHessian(context);
@@ -664,7 +664,7 @@ void SapSolver<T>::UpdateSuperNodalSolver(
 
 template <typename T>
 void SapSolver<T>::CallSuperNodalSolver(const Context<T>& context,
-                                        SuperNodalSolver* supernodal_solver,
+                                        SuperNodalSolver2* supernodal_solver,
                                         VectorX<T>* dv) const {
   if constexpr (std::is_same_v<T, double>) {
     UpdateSuperNodalSolver(context, supernodal_solver);
@@ -687,7 +687,7 @@ void SapSolver<T>::CallSuperNodalSolver(const Context<T>& context,
 
 template <typename T>
 void SapSolver<T>::CalcSearchDirectionData(
-    const systems::Context<T>& context, SuperNodalSolver* supernodal_solver,
+    const systems::Context<T>& context, SuperNodalSolver2* supernodal_solver,
     SapSolver<T>::SearchDirectionData* data) const {
   DRAKE_DEMAND(parameters_.use_dense_algebra || (supernodal_solver != nullptr));
   // Update search direction dv.

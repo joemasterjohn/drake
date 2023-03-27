@@ -8,6 +8,7 @@
 #include "drake/multibody/contact_solvers/sap/sap_model.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver_results.h"
 #include "drake/multibody/contact_solvers/supernodal_solver.h"
+#include "drake/multibody/contact_solvers/supernodal_solver2.h"
 #include "drake/systems/framework/context.h"
 
 namespace drake {
@@ -375,20 +376,20 @@ class SapSolver {
   MatrixX<T> CalcDenseHessian(const systems::Context<T>& context) const;
 
   // Makes a new SuperNodalSolver compatible with the underlying SapModel.
-  std::unique_ptr<SuperNodalSolver> MakeSuperNodalSolver() const;
+  std::unique_ptr<SuperNodalSolver2> MakeSuperNodalSolver() const;
 
   // Evaluates the constraint's Hessian G(v) and updates `supernodal_solver`'s
   // weight matrix so that we can later on solve the Newton system with Hessian
   // H(v) = A + Jᵀ⋅G(v)⋅J.
   void UpdateSuperNodalSolver(const systems::Context<T>& context,
-                              SuperNodalSolver* supernodal_solver) const;
+                              SuperNodalSolver2* supernodal_solver) const;
 
   // Updates the supernodal solver with the constraint's Hessian G(v),
   // factorizes it, and solves for the search direction `dv`.
   // @pre supernodal_solver and dv are not nullptr.
   // @pre supernodal_solver was created with a call to MakeSuperNodalSolver().
   void CallSuperNodalSolver(const systems::Context<T>& context,
-                            SuperNodalSolver* supernodal_solver,
+                            SuperNodalSolver2* supernodal_solver,
                             VectorX<T>* dv) const;
 
   // Solves for dv using dense algebra, for debugging.
@@ -408,7 +409,7 @@ class SapSolver {
   // @pre supernodal_solver must be a valid supernodal solver created with
   // MakeSuperNodalSolver() when parameters_.use_dense_algebra = false.
   void CalcSearchDirectionData(const systems::Context<T>& context,
-                               SuperNodalSolver* supernodal_solver,
+                               SuperNodalSolver2* supernodal_solver,
                                SearchDirectionData* data) const;
 
   std::unique_ptr<SapModel<T>> model_;

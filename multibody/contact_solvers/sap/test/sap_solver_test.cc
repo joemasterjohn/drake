@@ -30,14 +30,14 @@ namespace internal {
 // Friend struct to grant access to SapSolver's private functions for testing.
 class SapSolverTester {
  public:
-  static std::unique_ptr<SuperNodalSolver> MakeSuperNodalSolver(
+  static std::unique_ptr<SuperNodalSolver2> MakeSuperNodalSolver(
       const SapSolver<double>& sap) {
     return sap.MakeSuperNodalSolver();
   }
 
   static void UpdateSuperNodalSolver(const SapSolver<double>& sap,
                                      const Context<double>& context,
-                                     SuperNodalSolver* supernodal_solver) {
+                                     SuperNodalSolver2* supernodal_solver) {
     sap.UpdateSuperNodalSolver(context, supernodal_solver);
   }
 
@@ -819,7 +819,7 @@ class SapNewtonIterationTest
   void VerifySupernodalHessian(const SapSolver<double>& sap,
                                const VectorXd& v_guess) const {
     // Verify Hessian obtained with sparse supernodal algebra.
-    std::unique_ptr<SuperNodalSolver> supernodal_solver =
+    std::unique_ptr<SuperNodalSolver2> supernodal_solver =
         SapSolverTester::MakeSuperNodalSolver(sap);
     const SapModel<double>& model = SapSolverTester::model(sap);
     const auto context = model.MakeContext();

@@ -27,6 +27,7 @@ drake_cc_package_library(
         ":point_contact_data",
         ":sparse_linear_operator",
         ":supernodal_solver",
+        ":supernodal_solver2",
         ":system_dynamics_data",
     ],
 )
@@ -159,6 +160,17 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "supernodal_solver2",
+    srcs = ["supernodal_solver2.cc"],
+    hdrs = ["supernodal_solver2.h"],
+    deps = [
+        ":matrix_block",
+        "//common:essential",
+        "//multibody/fem:block_sparse_cholesky_solver",
+    ],
+)
+
+drake_cc_library(
     name = "system_dynamics_data",
     srcs = ["system_dynamics_data.cc"],
     hdrs = ["system_dynamics_data.h"],
@@ -215,6 +227,15 @@ drake_cc_googletest(
     name = "supernodal_solver_test",
     deps = [
         ":supernodal_solver",
+        "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "supernodal_solver2_test",
+    deps = [
+        ":supernodal_solver2",
+        "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
     ],
 )
