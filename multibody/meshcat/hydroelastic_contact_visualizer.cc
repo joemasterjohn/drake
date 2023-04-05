@@ -88,6 +88,9 @@ void HydroelasticContactVisualizer::Update(
           RigidTransformd(RotationMatrixd::MakeXRotation(M_PI),
                           Vector3d{0, 0, height + arrowhead_height}),
           time);
+      meshcat_->SetProperty(path + "/force_C_W", "visible", true, time);
+    } else {
+      meshcat_->SetProperty(path + "/force_C_W", "visible", false, time);
     }
     // Moment vector.
     if (moment_norm >= params_.moment_threshold) {
@@ -112,6 +115,9 @@ void HydroelasticContactVisualizer::Update(
           RigidTransformd(RotationMatrixd::MakeXRotation(M_PI),
                           Vector3d{0, 0, height + arrowhead_height}),
           time);
+      meshcat_->SetProperty(path + "/moment_C_W", "visible", true, time);
+    } else {
+      meshcat_->SetProperty(path + "/moment_C_W", "visible", false, time);
     }
 
     // Contact surface
