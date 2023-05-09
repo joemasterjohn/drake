@@ -65,11 +65,7 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
   }
 
   if (max_value <= T(0)) {
-    throw std::runtime_error(
-        "MakeVolumeMeshPressureField(): "
-        "the computed max distance to boundary among "
-        "all mesh vertices is non-positive. Perhaps "
-        "the mesh lacks interior vertices.");
+    max_value = 1.0;
   }
   for (T& p : pressure_values) {
     p = hydroelastic_modulus * p / max_value;

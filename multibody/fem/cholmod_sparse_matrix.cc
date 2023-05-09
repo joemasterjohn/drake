@@ -123,9 +123,6 @@ class CholmodSparseMatrix::Impl {
     DRAKE_DEMAND(B.cols() == C.cols());
 
     MatrixXd AinvB(B.rows(), B.cols());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
     for (int i = 0; i < B.cols(); ++i) {
       /* Columns of B. */
       cholmod_dense* b;

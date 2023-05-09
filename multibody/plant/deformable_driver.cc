@@ -1,5 +1,9 @@
 #include "drake/multibody/plant/deformable_driver.h"
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 #include <array>
 #include <iostream>
 #include <memory>
@@ -207,8 +211,19 @@ void DeformableDriver<T>::AppendLinearDynamicsMatrix(
     const systems::Context<T>& context, std::vector<MatrixX<T>>* A) const {
   DRAKE_DEMAND(A != nullptr);
   const int num_bodies = deformable_model_->num_bodies();
-  for (DeformableBodyIndex index(0); index < num_bodies; ++index) {
-    const FastSchurComplement<T>& schur_complement = EvalFreeMotionState(context, index).schur_complement;
+  for (int index = 0; index < num_bodies; ++index) {
+    const DeformableBodyId body_id = deformable_model_->GetBodyId(DeformableBodyIndex(index));
+    const GeometryId geometry_id = deformable_model_->GetGeometryId(body_id);
+    EvalVertexPermutation(context, geometry_id);
+  }
+#pragma omp parallel for
+  for (int index = 0; index < num_bodies; ++index) {
+    EvalFreeMotionState(context, DeformableBodyIndex(index));
+  }
+  for (int index = 0; index < num_bodies; ++index) {
+    const FastSchurComplement<T>& schur_complement =
+        EvalFreeMotionState(context, DeformableBodyIndex(index))
+            .schur_complement;
     A->emplace_back(schur_complement.get_D_complement());
   }
 }

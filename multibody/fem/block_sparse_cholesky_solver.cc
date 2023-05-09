@@ -552,9 +552,9 @@ void BlockSparseCholeskySolver::RightLookingSymmetricRank1Update(int j) {
 //     const Matrix3<double>& B = L_.get_block_flat(f1, j);
 //     L_.SubtractProductFromBlock(row, col, A, B);
 //   }
-#if defined(_OPENMP)
-#pragma omp parallel for num_threads(12)
-#endif
+// #if defined(_OPENMP)
+// #pragma omp parallel for num_threads(12)
+// #endif
   for (int a = 0; a < N - 1; ++a) {
     const int f1 = a + 1;
     const int col = blocks_in_col_j[f1];
