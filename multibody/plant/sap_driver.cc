@@ -166,6 +166,8 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
 
   std::vector<RotationMatrix<T>> R_WC;
   R_WC.reserve(num_contacts);
+  max_ = std::max(max_, num_contacts);
+  total_ += num_contacts;
   for (int icontact = 0; icontact < num_contacts; ++icontact) {
     const auto& discrete_pair = contact_pairs[icontact];
 

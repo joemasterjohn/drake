@@ -12,11 +12,13 @@ drake_cc_binary(
         "rings.cc",
     ],
     tags = [
-        "cpu:12",
+        "cpu:8",
     ],
     data = [
 	    "ring.vtk",
 	    "ring.obj",
+	    "torus.vtk",
+	    "torus.obj",
     ],
     test_rule_args = [
         "-simulation_time=0.1",

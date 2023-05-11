@@ -66,6 +66,13 @@ class DeformableGeometry {
    instead of kept around. */
   const VolumeMeshFieldLinear<double, double>& CalcSignedDistanceField() const;
 
+  std::unique_ptr<VolumeMeshFieldLinear<double, double>>
+  GetSignedDistanceField() const {
+    std::vector<double> values = signed_distance_field_->values();
+    return std::make_unique<VolumeMeshFieldLinear<double, double>>(
+        std::move(values), &deformable_mesh_->mesh());
+  }
+
  private:
   std::unique_ptr<DeformableVolumeMesh<double>> deformable_mesh_;
   /* Note: we don't provide an accessor to `signed_distance_field_` as it may be

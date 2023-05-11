@@ -66,6 +66,16 @@ DeformableContact<double> Geometries::ComputeDeformableContact() const {
                                       deformable_mesh.num_vertices());
   }
 
+  std::unordered_map<GeometryId, std::unique_ptr<VolumeMeshFieldLinear<double, double>>>
+      field_map;
+
+  for (auto it = deformable_geometries_.begin();
+       it != deformable_geometries_.end(); ++it) {
+    const GeometryId deformable_id = it->first;
+    const DeformableGeometry& deformable_geometry = it->second;
+    field_map[deformable_id] = deformable_geometry.GetSignedDistanceField();
+  }
+
   for (auto it = deformable_geometries_.begin();
        it != deformable_geometries_.end(); ++it) {
     const GeometryId deformable_id = it->first;
@@ -79,17 +89,16 @@ DeformableContact<double> Geometries::ComputeDeformableContact() const {
                                        rigid_id, rigid_tri_mesh, rigid_bvh,
                                        X_WR, &result);
     }
-    
 
     const VolumeMeshFieldLinear<double, double>& field1 =
-        deformable_geometry.CalcSignedDistanceField();
+        *(field_map[deformable_id]);
     const auto& bvh1 = deformable_geometry.deformable_mesh().bvh();
     for (auto it2 = std::next(it, 1); it2 != deformable_geometries_.end();
          ++it2) {
       const GeometryId deformable_id2 = it2->first;
       const DeformableGeometry& deformable_geometry2 = it2->second;
       const VolumeMeshFieldLinear<double, double>& field2 =
-          deformable_geometry2.CalcSignedDistanceField();
+          *(field_map[deformable_id2]);
       const auto& bvh2 = deformable_geometry2.deformable_mesh().bvh();
       IntersectDeformableVolumes(
           deformable_id, field1, bvh1, math::RigidTransform<double>::Identity(),

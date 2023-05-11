@@ -6,9 +6,8 @@
 
 using Eigen::MatrixXd;
 using std::vector;
-using MatrixBlock = std::pair<Eigen::MatrixXd, std::vector<int>>;
-using MatrixBlocks = std::vector<MatrixBlock>;
-using drake::multibody::fem::internal::BlockSparseCholeskySolver;
+using drake::multibody::fem::internal::BlockSparseCholeskySolver2;
+using drake::multibody::internal::JacobianBlock;
 using drake::multibody::fem::internal::BlockSparsityPattern;
 using drake::multibody::fem::internal::TriangularBlockSparseMatrix;
 
@@ -143,7 +142,7 @@ SuperNodalSolver2::SuperNodalSolver2(
     const std::vector<BlockMatrixTriplet>& jacobian_blocks,
     const std::vector<Eigen::MatrixXd>& mass_matrices)
     : mass_matrices_(mass_matrices), jacobian_blocks_(jacobian_blocks) {
-  solver_ = std::make_unique<BlockSparseCholeskySolver>();
+  solver_ = std::make_unique<BlockSparseCholeskySolver2>();
   std::vector<int> jacobian_column_block_size =
       GetJacobianBlockSizesVerifyTriplets(jacobian_blocks);
   // Will throw an exception if verification fails.
@@ -210,11 +209,11 @@ void SuperNodalSolver2::SetWeightMatrix(
     DRAKE_DEMAND(G_rows == num_constraint_equations);
 
     if (triplets.size() == 1) {
-      const MatrixBlock<double>& J = std::get<2>(jacobian_blocks_[triplets[0]]);
-      MatrixBlock<double> GJ = J.LeftMultiplyByBlockDiagonal(
+      const JacobianBlock<double>& J = std::get<2>(jacobian_blocks_[triplets[0]]);
+      JacobianBlock<double> GJ = J.LeftMultiplyByBlockDiagonal(
           weight_matrix, weight_start, weight_end - 1);
       MatrixXd JTGJ = MatrixXd::Zero(J.cols(), J.cols());
-      J.TransposeAndMultiplyAndAddTo(GJ, &JTGJ);
+      J.TransposeMultiplyAndAddTo(GJ, &JTGJ);
       int c = std::get<1>(jacobian_blocks_[triplets[0]]);
       A_->AddToBlock(c, c, std::move(JTGJ));
     } else {
@@ -222,23 +221,23 @@ void SuperNodalSolver2::SetWeightMatrix(
       const int j = std::get<1>(jacobian_blocks_[triplets[0]]);
       const int i = std::get<1>(jacobian_blocks_[triplets[1]]);
       DRAKE_DEMAND(j < i);
-      const MatrixBlock<double>& Jj =
+      const JacobianBlock<double>& Jj =
           std::get<2>(jacobian_blocks_[triplets[0]]);
-      const MatrixBlock<double>& Ji =
+      const JacobianBlock<double>& Ji =
           std::get<2>(jacobian_blocks_[triplets[1]]);
 
-      MatrixBlock<double> GJj = Jj.LeftMultiplyByBlockDiagonal(
+      JacobianBlock<double> GJj = Jj.LeftMultiplyByBlockDiagonal(
           weight_matrix, weight_start, weight_end - 1);
-      MatrixBlock<double> GJi = Ji.LeftMultiplyByBlockDiagonal(
+      JacobianBlock<double> GJi = Ji.LeftMultiplyByBlockDiagonal(
           weight_matrix, weight_start, weight_end - 1);
 
       MatrixXd JiTGJi = MatrixXd::Zero(Ji.cols(), Ji.cols());
       MatrixXd JiTGJj = MatrixXd::Zero(Ji.cols(), Jj.cols());
       MatrixXd JjTGJj = MatrixXd::Zero(Jj.cols(), Jj.cols());
 
-      Ji.TransposeAndMultiplyAndAddTo(GJi, &JiTGJi);
-      Ji.TransposeAndMultiplyAndAddTo(GJj, &JiTGJj);
-      Jj.TransposeAndMultiplyAndAddTo(GJj, &JjTGJj);
+      Ji.TransposeMultiplyAndAddTo(GJi, &JiTGJi);
+      Ji.TransposeMultiplyAndAddTo(GJj, &JiTGJj);
+      Jj.TransposeMultiplyAndAddTo(GJj, &JjTGJj);
 
       A_->AddToBlock(i, i, JiTGJi);
       A_->AddToBlock(i, j, JiTGJj);

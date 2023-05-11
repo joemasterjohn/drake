@@ -3,6 +3,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "drake/common/copyable_unique_ptr.h"
 #include "drake/common/default_scalars.h"
@@ -63,6 +64,10 @@ class SapDriver {
   // kinematics. The given `manager` must outlive this driver.
   // @pre manager != nullptr.
   explicit SapDriver(const CompliantContactManager<T>* manager);
+  ~SapDriver() {
+      std::cout << "Max = " << max_ << std::endl;
+      std::cout << "Total = " << total_ << std::endl;
+  }
 
   void set_sap_solver_parameters(
       const contact_solvers::internal::SapSolverParameters& parameters);
@@ -213,6 +218,8 @@ class SapDriver {
   VectorX<T> joint_damping_;
   // Parameters for SAP.
   contact_solvers::internal::SapSolverParameters sap_parameters_;
+  mutable int max_{0};
+  mutable int total_{0};
 };
 
 }  // namespace internal

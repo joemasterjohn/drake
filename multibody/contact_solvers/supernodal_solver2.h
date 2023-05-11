@@ -8,15 +8,15 @@
 #include <Eigen/Dense>
 
 #include "drake/common/drake_copyable.h"
-#include "drake/multibody/contact_solvers/matrix_block.h"
-#include "drake/multibody/fem/block_sparse_cholesky_solver.h"
+#include "drake/multibody/plant/jacobian_matrix.h"
+#include "drake/multibody/fem/block_sparse_cholesky_solver2.h"
 
 namespace drake {
 namespace multibody {
 namespace contact_solvers {
 namespace internal {
 
-using BlockMatrixTriplet = std::tuple<int, int, MatrixBlock<double>>;
+using BlockMatrixTriplet = std::tuple<int, int, multibody::internal::JacobianBlock<double>>;
 
 // A supernodal Cholesky solver for solving the symmetric positive definite
 // system
@@ -113,7 +113,7 @@ class SuperNodalSolver2 {
   std::vector<std::vector<int>> row_to_triplet_list_;
   std::vector<Eigen::MatrixXd> mass_matrices_;
   std::vector<BlockMatrixTriplet> jacobian_blocks_;
-  std::unique_ptr<multibody::fem::internal::BlockSparseCholeskySolver> solver_;
+  std::unique_ptr<multibody::fem::internal::BlockSparseCholeskySolver2> solver_;
 };
 
 }  // namespace internal

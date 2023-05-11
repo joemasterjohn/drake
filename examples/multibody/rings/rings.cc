@@ -20,16 +20,16 @@
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 
-DEFINE_int32(num_rings, 1, "Number of deformable rings.");
-DEFINE_double(simulation_time, 10.0,
+DEFINE_int32(num_rings, 10, "Number of deformable rings.");
+DEFINE_double(simulation_time, 60.0,
               "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 1.0, "Desired real time rate.");
-DEFINE_double(time_step, 1.0e-2,
+DEFINE_double(time_step, 2.0e-2,
               "Discrete time step for the system [s]. Must be positive.");
-DEFINE_double(E, 1000, "Young's modulus of the deformable body [Pa].");
-DEFINE_double(nu, 0.3, "Poisson's ratio of the deformable body, unitless.");
-DEFINE_double(density, 0.022, "Mass density of the deformable body [kg/m³].");
-DEFINE_double(stiffness_damping, 0.005,
+DEFINE_double(E, 1e7, "Young's modulus of the deformable body [Pa].");
+DEFINE_double(nu, 0.4, "Poisson's ratio of the deformable body, unitless.");
+DEFINE_double(density, 500, "Mass density of the deformable body [kg/m³].");
+DEFINE_double(stiffness_damping, 0.05,
               "Stiffness damping coefficient for the deformable body [1/s].");
 DEFINE_double(mu, 0.0, "Friction coefficient");
 
@@ -66,7 +66,7 @@ void AddRing(DeformableModel<double>* model, const RigidTransformd& X_WR,
              std::string name, std::vector<DeformableBodyId>* body_ids,
              Vector4d rgba) {
   const std::string vtk = FindResourceOrThrow(source);
-  auto mesh = std::make_unique<Mesh>(vtk, 1.0);
+  auto mesh = std::make_unique<Mesh>(vtk, 1);
   auto instance =
       std::make_unique<GeometryInstance>(X_WR, std::move(mesh), name);
   /* Minimumly required proximity properties for deformable bodies: A valid
@@ -101,12 +101,12 @@ int do_main() {
   illustration_props.AddProperty("phong", "diffuse",
                                  Vector4d(1.0, 1.0, 1.0, 1.0));
   /* Set up the bases. */
-  std::string dir = "drake/examples/multibody/rings/ring.vtk";
-  std::string dir_visual = "drake/examples/multibody/rings/ring.obj";
+  std::string dir = "drake/examples/multibody/rings/torus.vtk";
+  std::string dir_visual = "drake/examples/multibody/rings/torus.obj";
   const std::string vtk = FindResourceOrThrow(dir);
   const std::string obj = FindResourceOrThrow(dir_visual);
-  Mesh base(vtk, 1.0);
-  Mesh base_visual(obj, 1.0);
+  Mesh base(vtk, 1.);
+  Mesh base_visual(obj, 1.);
   const RigidTransformd X_WG(RollPitchYawd(M_PI_2, M_PI_2, 0),
                              Eigen::Vector3d{0, 0, 0});
   plant.RegisterCollisionGeometry(plant.world_body(), X_WG, base, "base",
@@ -125,7 +125,7 @@ int do_main() {
   deformable_config.set_stiffness_damping_coefficient(FLAGS_stiffness_damping);
 
   std::vector<DeformableBodyId> body_ids;
-  const double kGap = -0.65;
+  const double kGap = -0.62;
   for (int i = 0; i < FLAGS_num_rings; ++i) {
     Vector4d rgba =
         (i % 2) ? Vector4d(0.333, 0.333, 0.333, 0.9) : Vector4d(1, 0, 0, 0.9);

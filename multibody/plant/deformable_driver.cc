@@ -216,7 +216,9 @@ void DeformableDriver<T>::AppendLinearDynamicsMatrix(
     const GeometryId geometry_id = deformable_model_->GetGeometryId(body_id);
     EvalVertexPermutation(context, geometry_id);
   }
+#if defined(_OPENMP)
 #pragma omp parallel for
+#endif
   for (int index = 0; index < num_bodies; ++index) {
     EvalFreeMotionState(context, DeformableBodyIndex(index));
   }
