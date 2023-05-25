@@ -1195,7 +1195,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Returns the total number of constraints specified by the user.
   int num_constraints() const {
     return num_coupler_constraints() + num_distance_constraints() +
-           num_ball_constraints();
+           num_ball_constraints() + num_weld_constraints();
   }
 
   /// Returns the total number of coupler constraints specified by the user.
@@ -1211,6 +1211,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Returns the total number of ball constraints specified by the user.
   int num_ball_constraints() const {
     return ssize(ball_constraints_specs_);
+  }
+
+  /// Returns the total number of weld constraints specified by the user.
+  int num_weld_constraints() const {
+    return ssize(weld_constraints_specs_);
   }
 
   /// Returns the coupler constraint specification corresponding to `id`
@@ -1235,6 +1240,14 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
       MultibodyConstraintId id) const {
     DRAKE_THROW_UNLESS(ball_constraints_specs_.count(id) > 0);
     return ball_constraints_specs_.at(id);
+  }
+
+  /// Returns the weld constraint specification corresponding to `id`
+  /// @throws if `id` is not a valid identifier for a weld constraint.
+  const internal::WeldConstraintSpec& get_weld_constraint_specs(
+      MultibodyConstraintId id) const {
+    DRAKE_THROW_UNLESS(weld_constraints_specs_.count(id) > 0);
+    return weld_constraints_specs_.at(id);
   }
 
   /// Defines a holonomic constraint between two single-dof joints `joint0`
@@ -1321,6 +1334,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                     const Vector3<double>& p_AP,
                                     const Body<T>& body_B,
                                     const Vector3<double>& p_BQ);
+
+  MultibodyConstraintId AddWeldConstraint(
+      const Body<T>& body_A, const math::RigidTransform<double>& X_AP,
+      const Body<T>& body_B, const math::RigidTransform<double>& X_BQ);
 
   /// <!-- TODO(#18732): Add getters to interrogate existing constraints.
   /// -->
@@ -5416,6 +5433,10 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   // Map of ball constraint specifications.
   std::map<MultibodyConstraintId, internal::BallConstraintSpec>
       ball_constraints_specs_;
+
+  // Vector of weld constraint specifications.
+  std::map<MultibodyConstraintId, internal::WeldConstraintSpec>
+      weld_constraints_specs_;
 
   // All MultibodyPlant cache indexes are stored in cache_indexes_.
   CacheIndexes cache_indexes_;
