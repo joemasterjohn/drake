@@ -2,11 +2,13 @@
 
 #include <memory>
 #include <sstream>
+#include <iostream>
 
 #include <gflags/gflags.h>
 
 #include "drake/common/find_resource.h"
 #include "drake/geometry/drake_visualizer.h"
+#include "drake/geometry/meshcat_visualizer.h"
 #include "drake/geometry/proximity/mesh_to_vtk.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/scene_graph.h"
@@ -20,7 +22,7 @@
 #include "drake/systems/framework/diagram.h"
 #include "drake/systems/framework/diagram_builder.h"
 
-DEFINE_int32(num_rings, 10, "Number of deformable rings.");
+DEFINE_int32(num_rings, 20, "Number of deformable rings.");
 DEFINE_double(simulation_time, 60.0,
               "Desired duration of the simulation [s].");
 DEFINE_double(realtime_rate, 1.0, "Desired real time rate.");
@@ -41,6 +43,7 @@ using drake::geometry::Mesh;
 using drake::geometry::ProximityProperties;
 using drake::geometry::VolumeElement;
 using drake::geometry::VolumeMesh;
+using drake::math::RotationMatrixd;
 using drake::math::RigidTransformd;
 using drake::math::RollPitchYawd;
 using drake::multibody::AddMultibodyPlant;
@@ -107,8 +110,9 @@ int do_main() {
   const std::string obj = FindResourceOrThrow(dir_visual);
   Mesh base(vtk, 1.);
   Mesh base_visual(obj, 1.);
+  const double offset = 0.75 * FLAGS_num_rings;
   const RigidTransformd X_WG(RollPitchYawd(M_PI_2, M_PI_2, 0),
-                             Eigen::Vector3d{0, 0, 0});
+                             Eigen::Vector3d{0, 0, offset});
   plant.RegisterCollisionGeometry(plant.world_body(), X_WG, base, "base",
                                   rigid_proximity_props);
   plant.RegisterVisualGeometry(plant.world_body(), X_WG, base_visual, "base",
@@ -125,12 +129,12 @@ int do_main() {
   deformable_config.set_stiffness_damping_coefficient(FLAGS_stiffness_damping);
 
   std::vector<DeformableBodyId> body_ids;
-  const double kGap = -0.62;
+  const double kGap = -0.58;
   for (int i = 0; i < FLAGS_num_rings; ++i) {
     Vector4d rgba =
         (i % 2) ? Vector4d(0.333, 0.333, 0.333, 0.9) : Vector4d(1, 0, 0, 0.9);
     RigidTransformd X_WR(RollPitchYawd((i % 2) * M_PI_2, M_PI_2, 0),
-                         Vector3d(0, 0, kGap * (i + 1)));
+                         Vector3d(0, 0, offset + kGap * (i + 1)));
     AddRing(owned_deformable_model.get(), X_WR, deformable_config, dir,
             "ring_" + std::to_string(i), &body_ids, rgba);
   }
@@ -150,7 +154,10 @@ int do_main() {
       scene_graph.get_source_configuration_port(plant.get_source_id().value()));
 
   /* Add a visualizer that emits LCM messages for visualization. */
-  geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
+  //geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
+  std::shared_ptr<geometry::Meshcat> meshcat = std::make_shared<geometry::Meshcat>();
+  auto& visualizer = geometry::MeshcatVisualizerd::AddToBuilder(
+      &builder, scene_graph, meshcat);
 
   auto diagram = builder.Build();
   std::unique_ptr<Context<double>> diagram_context =
@@ -161,7 +168,16 @@ int do_main() {
 
   simulator.Initialize();
   simulator.set_target_realtime_rate(FLAGS_realtime_rate);
+
+  std::cout << "Press ENTER to continue...";
+  std::cin.get();
+
+  visualizer.StartRecording();
   simulator.AdvanceTo(FLAGS_simulation_time);
+  visualizer.PublishRecording();
+
+  std::cout << "Press ENTER to end...";
+  std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
   return 0;
 }

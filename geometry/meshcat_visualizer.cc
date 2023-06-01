@@ -378,11 +378,11 @@ void MeshcatVisualizer<T>::SetDeformableMeshes(
     const std::string path =
         fmt::format("{}/{}", params_.prefix, g_id.get_value());
     const std::string mesh_path = fmt::format("{}_{}", path, "mesh");
-    const std::string wireframe_path = fmt::format("{}_{}", path, "wireframe");
+    // const std::string wireframe_path = fmt::format("{}_{}", path, "wireframe");
 
     meshcat_->SetTriangleMesh(mesh_path, vertices, faces, data.color);
-    meshcat_->SetTriangleMesh(wireframe_path, vertices, faces,
-                              params_.default_color, true);
+    // meshcat_->SetTriangleMesh(wireframe_path, vertices, faces,
+    //                           params_.default_color, true);
 
     deformable_geometries_[g_id] = path;
     deformable_geometries_to_delete.erase(g_id);
