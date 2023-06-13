@@ -27,116 +27,16 @@ from pydrake.systems.framework import (
     LeafSystem,
     DiagramBuilder,
 )
-from pydrake.systems.primitives import ConstantVectorSource
-from pydrake.systems.primitives import Multiplexer
+from pydrake.systems.primitives import (
+    ConstantVectorSource,
+    TrajectorySource,
+    Multiplexer,
+)
+from pydrake.trajectories import PiecewisePolynomial
 from pydrake.visualization import (
     ApplyVisualizationConfig,
     VisualizationConfig,
 )
-
-# Define the gamepad button to motion command mappings.
-Command = {
-    "N_YAW": 1,  # negative yaw
-    "P_YAW": 2,  # positive yaw
-    "N_X": 15,  # negative x
-    "P_X": 14,  # positive x
-    "N_Y": 12,  # negative y
-    "P_Y": 13,  # positive y
-}
-
-
-class GamepadControl(LeafSystem):
-    def __init__(self, meshcat, plant):
-        """
-        A Drake LeafSystem that monitors the gamepad button presses via the Meshcat
-        visualizer, and keeps an internal discrete state of the paddle's commanded
-        positions. It has no input ports, an declares a single vector valued output
-        port that contains the current commanded positions of the paddle.
-        """
-        LeafSystem.__init__(self)
-
-        paddle_model_index = plant.GetModelInstanceByName("paddle")
-
-        # Declare the vector valued output port of commanded positions.
-        assert(plant.num_positions(paddle_model_index) == 3)
-        self.DeclareVectorOutputPort(
-            "paddle_position",
-            plant.num_positions(paddle_model_index),
-            self.OutputPaddlePosition)
-
-        # Declare a discrete state that stores the current commanded positions.
-        self._paddle_state_index = self.DeclareDiscreteState(
-            plant.num_positions(paddle_model_index))  # paddle position
-
-        # Declare an update period for this system, and the update callback
-        # function.
-        self._time_step = 0.05
-        self.DeclarePeriodicDiscreteUpdateEvent(
-            self._time_step, 0, self.UpdatePaddlePosition
-        )
-
-        # Store a reference to the Meshcat visualizer (for gamepad interface) as well as
-        # a reference to the MultibodyPlant.
-        self._meshcat = meshcat
-        self._plant = plant
-        self._paddle_model_index = paddle_model_index
-
-        # Callback to set the initial value of the discrete state.
-        self.DeclareInitializationDiscreteUpdateEvent(self.Initialize)
-
-    def Initialize(self, context, discrete_state):
-        """Sets values to zero (default pose).
-        """
-        zero_vector = np.zeros(self._plant.num_positions(self._paddle_model_index))
-        discrete_state.set_value(self._paddle_state_index, zero_vector)
-
-    def UpdatePaddlePosition(self, context, output):
-        """
-        Queries the gamepad button presses from the Meshcat visualizer, and sets the commanded
-        positions of the paddle.
-        """
-        x_y_theta_offset = [0, 0, 0]
-        gamepad = self._meshcat.GetGamepad()
-
-        if (gamepad.index is not None):
-            motion_scale_factor = 1e-2
-            # Set the x-y motion
-            x_y_theta_offset[0] = (gamepad.button_values[Command["P_X"]] -
-                                   gamepad.button_values[Command["N_X"]]) * motion_scale_factor
-            x_y_theta_offset[1] = (gamepad.button_values[Command["P_Y"]] -
-                                   gamepad.button_values[Command["N_Y"]]) * motion_scale_factor
-            x_y_theta_offset[2] = (gamepad.button_values[Command["P_YAW"]] -
-                                   gamepad.button_values[Command["N_YAW"]]) * motion_scale_factor * 10
-
-        x_y_theta_current = output.get_value(self._paddle_state_index)
-        x_y_theta_new = x_y_theta_current + x_y_theta_offset
-
-        # Check against joint limits.
-        plant_joint_pos_low_limits = self._plant.GetPositionLowerLimits()
-        plant_joint_pos_up_limits = self._plant.GetPositionUpperLimits()
-
-        # Extract the limits for the paddle only (joints are ordered x, y, theta).
-        paddle_joint_pos_low_limits = self._plant.GetPositionsFromArray(
-            self._paddle_model_index, plant_joint_pos_low_limits)
-        paddle_joint_pos_up_limits = self._plant.GetPositionsFromArray(
-            self._paddle_model_index, plant_joint_pos_up_limits)
-
-        # Clip the commanded positions.
-        x_y_theta_limited = np.clip(
-            x_y_theta_new,
-            paddle_joint_pos_low_limits,
-            paddle_joint_pos_up_limits)
-
-        output.set_value(self._paddle_state_index, x_y_theta_limited)
-
-        self._meshcat.Flush()
-
-    def OutputPaddlePosition(self, context, output):
-        """Actually sets the output port of this system to hold the current commanded positions.
-        """
-        output.set_value(
-            context.get_discrete_state(
-                self._paddle_state_index).value())
 
 def run(*, local_dir):
     """Runs a simulation from the given model directives.
@@ -179,18 +79,19 @@ def run(*, local_dir):
 
     # Add and connect the paddle's controller.
     paddle_pid_controller = builder.AddSystem(
-        PidController(kp=[20, 20, 0.5], ki=[0, 0, 0], kd=[2.5, 2.5, 0.075]))
+        PidController(kp=[20, 20, 20], ki=[0, 0, 0], kd=[2.5, 2.5, 0.075]))
 
-    # Add gamepad teleop to the builder, and connect to the controller.
-    gamepad_control = builder.AddSystem(GamepadControl(meshcat, sim_plant))
-    mux = builder.AddSystem(Multiplexer([sim_plant.num_positions(
-        paddle_model_index), sim_plant.num_velocities(paddle_model_index)]))
-    zero_vel_src = builder.AddSystem(ConstantVectorSource([0, 0, 0]))
-    builder.Connect(gamepad_control.get_output_port(), mux.get_input_port(0))
-    builder.Connect(zero_vel_src.get_output_port(), mux.get_input_port(1))
-    builder.Connect(
-        mux.get_output_port(),
-        paddle_pid_controller.get_input_port_desired_state())
+    # Add trajectory source to the builder, and connect to the controller.
+    path = PiecewisePolynomial.FirstOrderHold(
+        breaks=np.array([5, 15, 25, 35]),   # time points
+        samples=np.array(([[0,  0,  0, 0],  # paddle x values
+                           [0, -1, -1, 1],  # paddle y values
+                           [0, -1,  1, 1]   # paddle theta values
+                           ])))
+    trajectory_source = builder.AddSystem(TrajectorySource(
+        trajectory=path, output_derivative_order=1))
+    builder.Connect(trajectory_source.get_output_port(),
+                    paddle_pid_controller.get_input_port_desired_state())
 
     sim_paddle_instance = sim_plant.GetModelInstanceByName("paddle")
     builder.Connect(
