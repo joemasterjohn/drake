@@ -115,6 +115,12 @@ class MultibodyPlantDiscreteUpdateManagerAttorney {
     return plant.weld_constraints_specs_;
   }
 
+  static const std::map<MultibodyConstraintId, bool>&
+  get_constraint_active_status(const systems::Context<T>& context,
+                               const MultibodyPlant<T>& plant) {
+    return plant.get_constraint_active_status(context);
+  }
+
   static BodyIndex FindBodyByGeometryId(const MultibodyPlant<T>& plant,
                                         geometry::GeometryId geometry_id) {
     return plant.FindBodyByGeometryId(geometry_id);
