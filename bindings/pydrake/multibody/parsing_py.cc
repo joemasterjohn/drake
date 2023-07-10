@@ -123,7 +123,15 @@ PYBIND11_MODULE(parsing, m) {
         .def("SetAutoRenaming", &Class::SetAutoRenaming, py::arg("value"),
             cls_doc.SetAutoRenaming.doc)
         .def("GetAutoRenaming", &Class::GetAutoRenaming,
-            cls_doc.GetAutoRenaming.doc);
+            cls_doc.GetAutoRenaming.doc)
+        .def("SetConvexMeshes", &Class::SetConvexMeshes, py::arg("value"),
+            cls_doc.SetConvexMeshes.doc)
+        .def("GetConvexMeshes", &Class::GetConvexMeshes,
+            cls_doc.GetConvexMeshes.doc)
+        .def("SetDefaultHydroelastic", &Class::SetDefaultHydroelastic,
+            py::arg("value"), cls_doc.SetDefaultHydroelastic.doc)
+        .def("GetDefaultHydroelastic", &Class::GetDefaultHydroelastic,
+            cls_doc.GetDefaultHydroelastic.doc);
   }
 
   // Model Directives

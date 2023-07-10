@@ -191,6 +191,23 @@ class Parser final {
   /// @see the Parser class documentation for more detail.
   bool GetAutoRenaming() const { return enable_auto_rename_; }
 
+  /// Enable or disable convex mesh parsing. When set to true all mesh types are
+  /// parsed into a geometry::Convex type otherwise they are parsed into a more
+  /// general geometry::Mesh type.
+  void SetConvexMeshes(bool value) { enable_convex_meshes_ = value; }
+
+  /// Get the current state of convex mesh processing.
+  bool GetConvexMeshes() const { return enable_convex_meshes_; }
+
+  /// Enable or disable default hydroelastic representations for models that do
+  /// not specify hydroelastic properties on their own.
+  void SetDefaultHydroelastic(bool value) {
+    enable_default_hydroelastic_ = value;
+  }
+
+  /// Get the current state of default hydroelastic representations.
+  bool GetDefaultHydroelastic() const { return enable_default_hydroelastic_; }
+
   /// Parses the input file named in @p file_name and adds all of its model(s)
   /// to @p plant.
   ///
@@ -253,6 +270,8 @@ class Parser final {
 
   bool is_strict_{false};
   bool enable_auto_rename_{false};
+  bool enable_convex_meshes_{false};
+  bool enable_default_hydroelastic_{false};
   PackageMap package_map_;
   drake::internal::DiagnosticPolicy diagnostic_policy_;
   MultibodyPlant<double>* const plant_;

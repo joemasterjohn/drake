@@ -94,6 +94,8 @@ using ParserSelector = std::function<ParserInterface&(
 
 struct ParsingOptions {
   bool enable_auto_renaming{false};
+  bool enable_convex_meshes{false};
+  bool enable_default_hydroelastic{false};
 };
 
 // ParsingWorkspace bundles the commonly-needed elements for parsing routines.

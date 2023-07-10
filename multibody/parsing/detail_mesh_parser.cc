@@ -140,12 +140,34 @@ std::optional<ModelInstanceIndex> AddModelFromMesh(
     // assign all three roles to it. This would require access to the SceneGraph
     // and some shenanigans to placate MbP.
     const auto X_BG = math::RigidTransformd::Identity();
-    const geometry::Mesh mesh(filename);
-    plant.RegisterCollisionGeometry(body, X_BG, mesh, "collision",
-                                    CoulombFriction<double>());
-    // TODO(SeanCurtis-TRI): If there's a material applied to the object, use
-    // the specified color.
-    plant.RegisterVisualGeometry(body, X_BG, mesh, "visual");
+    geometry::ProximityProperties props;
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kFriction, CoulombFriction<double>());
+
+    if (workspace.options.enable_default_hydroelastic) {
+      props.AddProperty(geometry::internal::kHydroGroup,
+                        geometry::internal::kComplianceType,
+                        geometry::internal::HydroelasticType::kSoft);
+      props.AddProperty(geometry::internal::kHydroGroup,
+                        geometry::internal::kElastic, 1e5);
+    }
+
+    if (workspace.options.enable_convex_meshes) {
+      const geometry::Convex convex(filename);
+
+      plant.RegisterCollisionGeometry(body, X_BG, convex, "collision",
+                                      std::move(props));
+      // TODO(SeanCurtis-TRI): If there's a material applied to
+      // the object, use the specified color.
+      plant.RegisterVisualGeometry(body, X_BG, convex, "visual");
+    } else {
+      const geometry::Mesh mesh(filename);
+      plant.RegisterCollisionGeometry(body, X_BG, mesh, "collision",
+                                      std::move(props));
+      // TODO(SeanCurtis-TRI): If there's a material applied to
+      // the object, use the specified color.
+      plant.RegisterVisualGeometry(body, X_BG, mesh, "visual");
+    }
   }
 
   return model_instance;
