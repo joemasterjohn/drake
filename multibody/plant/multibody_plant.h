@@ -1356,6 +1356,13 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
                                     const Body<T>& body_B,
                                     const Vector3<double>& p_BQ);
 
+  /// Defines a weld constraint
+  ///
+  /// @param body_A
+  /// @param X_AP
+  /// @param body_B
+  /// @param X_BQ
+  /// @return
   MultibodyConstraintId AddWeldConstraint(
       const Body<T>& body_A, const math::RigidTransform<double>& X_AP,
       const Body<T>& body_B, const math::RigidTransform<double>& X_BQ);
