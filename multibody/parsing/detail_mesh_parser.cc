@@ -142,14 +142,15 @@ std::optional<ModelInstanceIndex> AddModelFromMesh(
     const auto X_BG = math::RigidTransformd::Identity();
     geometry::ProximityProperties props;
     props.AddProperty(geometry::internal::kMaterialGroup,
-                      geometry::internal::kFriction, CoulombFriction<double>());
+                      geometry::internal::kFriction,
+                      CoulombFriction<double>(0.5, 0.5));
 
     if (workspace.options.enable_default_hydroelastic) {
       props.AddProperty(geometry::internal::kHydroGroup,
                         geometry::internal::kComplianceType,
                         geometry::internal::HydroelasticType::kSoft);
       props.AddProperty(geometry::internal::kHydroGroup,
-                        geometry::internal::kElastic, 1e5);
+                        geometry::internal::kElastic, 1e7);
     }
 
     if (workspace.options.enable_convex_meshes) {
