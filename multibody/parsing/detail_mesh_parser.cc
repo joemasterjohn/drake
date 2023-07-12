@@ -140,17 +140,27 @@ std::optional<ModelInstanceIndex> AddModelFromMesh(
     // assign all three roles to it. This would require access to the SceneGraph
     // and some shenanigans to placate MbP.
     const auto X_BG = math::RigidTransformd::Identity();
+
+    // TODO(joemasterjohn): These default parameters come from the SAP clutter
+    // examples. Find a good way to expose these pyhiscal parameters through the
+    // parser interface.
     geometry::ProximityProperties props;
     props.AddProperty(geometry::internal::kMaterialGroup,
                       geometry::internal::kFriction,
-                      CoulombFriction<double>(0.5, 0.5));
+                      CoulombFriction<double>(0.3, 0.3));
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kPointStiffness, 1.0e4);
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kRelaxationTime, 0.01);
+    props.AddProperty(geometry::internal::kMaterialGroup,
+                      geometry::internal::kHcDissipation, 10.0);
 
     if (workspace.options.enable_default_hydroelastic) {
       props.AddProperty(geometry::internal::kHydroGroup,
                         geometry::internal::kComplianceType,
                         geometry::internal::HydroelasticType::kSoft);
       props.AddProperty(geometry::internal::kHydroGroup,
-                        geometry::internal::kElastic, 1e7);
+                        geometry::internal::kElastic, 1e4);
     }
 
     if (workspace.options.enable_convex_meshes) {
