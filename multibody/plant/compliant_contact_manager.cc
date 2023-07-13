@@ -420,7 +420,7 @@ void CompliantContactManager<T>::AppendDiscreteContactPairsForPointContact(
       const Vector3<T> p_WC = wA * pair.p_WCa + wB * pair.p_WCb;
 
       const T phi0 = -pair.depth;
-      const T fn0 = k * pair.depth;  // Used by TAMSI, ignored by SAP.
+      const T fn0 = k * pair.depth;
 
       contact_pairs.push_back({pair.id_A, pair.id_B, p_WC, pair.nhat_BA_W, phi0,
                               fn0, k, d, tau, mu, {} /* no surface index */,

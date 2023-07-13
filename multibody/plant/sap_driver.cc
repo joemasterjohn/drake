@@ -13,6 +13,7 @@
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_contact_problem.h"
 #include "drake/multibody/contact_solvers/sap/sap_friction_cone_constraint.h"
+#include "drake/multibody/contact_solvers/sap/sap_hunt_crossley.h"
 #include "drake/multibody/contact_solvers/sap/sap_holonomic_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_limit_constraint.h"
 #include "drake/multibody/contact_solvers/sap/sap_solver.h"
@@ -33,6 +34,7 @@ using drake::multibody::contact_solvers::internal::SapConstraintJacobian;
 using drake::multibody::contact_solvers::internal::SapContactProblem;
 using drake::multibody::contact_solvers::internal::SapFrictionConeConstraint;
 using drake::multibody::contact_solvers::internal::SapHolonomicConstraint;
+using drake::multibody::contact_solvers::internal::SapHuntCrossley;
 using drake::multibody::contact_solvers::internal::SapLimitConstraint;
 using drake::multibody::contact_solvers::internal::SapSolver;
 using drake::multibody::contact_solvers::internal::SapSolverResults;
@@ -170,7 +172,8 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
   // Parameters used by SAP to estimate regularization, see [Castro et al.,
   // 2021].
   // TODO(amcastro-tri): consider exposing these parameters.
-  constexpr double sigma = 1.0e-3;
+  constexpr double beta = 0.01;  // 0.2 leads to R = 1e-3 * wi.
+  const double vs = plant().stiction_tolerance();
 
   const std::vector<DiscreteContactPair<T>>& contact_pairs =
       manager().EvalDiscreteContactPairs(context);
@@ -188,38 +191,33 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const auto& discrete_pair = contact_pairs[icontact];
 
     const T stiffness = discrete_pair.stiffness;
-    const T dissipation_time_scale = discrete_pair.dissipation_time_scale;
+    // const T dissipation_time_scale = discrete_pair.dissipation_time_scale;
+    const T damping = discrete_pair.damping;
     const T friction = discrete_pair.friction_coefficient;
     ContactConfiguration<T>& configuration =
         contact_kinematics[icontact].configuration;
     const auto& jacobian_blocks = contact_kinematics[icontact].jacobian;
 
-    // Stiffness equal to infinity is used to indicate a rigid contact. Since
-    // SAP is inherently compliant, we must use the "near rigid regime"
-    // approximation, with near rigid parameter equal to 1.0.
-    // TODO(amcastrot-tri): This is mostly for deformables, consider exposing
-    // this parameter.
-    const double beta = (stiffness == std::numeric_limits<double>::infinity())
-                            ? 1.0
-                            : near_rigid_threshold_;
-    typename SapFrictionConeConstraint<T>::Parameters parameters{
-        friction, stiffness, dissipation_time_scale, beta, sigma};
+    const typename SapHuntCrossley<T>::Parameters parameters{
+        friction, stiffness, damping, beta, vs};
 
-    // TODO(amcastro-tri): remove this extra copy of R_WC. Contact constraints
-    // store R_WC in their ContactConfiguration.
-    R_WC.push_back(configuration.R_WC);
+    // const typename SapFrictionConeConstraint<T>::Parameters parameters{
+    //     friction, stiffness, dissipation_time_scale, beta, sigma};
+
+    const T fe0 = discrete_pair.fn0;
     if (jacobian_blocks.size() == 1) {
       SapConstraintJacobian<T> J(jacobian_blocks[0].tree,
                                  std::move(jacobian_blocks[0].J));
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
-          std::move(configuration), std::move(J), std::move(parameters)));
+      problem->AddConstraint(
+          std::make_unique<SapHuntCrossley<T>>(fe0, std::move(J), parameters));
     } else {
       SapConstraintJacobian<T> J(
           jacobian_blocks[0].tree, std::move(jacobian_blocks[0].J),
           jacobian_blocks[1].tree, std::move(jacobian_blocks[1].J));
-      problem->AddConstraint(std::make_unique<SapFrictionConeConstraint<T>>(
-          std::move(configuration), std::move(J), std::move(parameters)));
+      problem->AddConstraint(
+          std::make_unique<SapHuntCrossley<T>>(fe0, std::move(J), parameters));
     }
+    R_WC.emplace_back(std::move(configuration.R_WC));
   }
   return R_WC;
 }
