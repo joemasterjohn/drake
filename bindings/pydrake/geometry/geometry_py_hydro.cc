@@ -268,6 +268,16 @@ void DoScalarIndependentDefinitions(py::module m) {
     DefCopyAndDeepCopy(&cls);
   }
 
+  {
+    using Class = geometry::internal::HydroelasticType;
+    // constexpr auto& cls_doc = doc.HydroelasticType;
+    py::enum_<Class>(m, "HydroelasticType", "NO DOC")
+        .value("kUndefined", Class::kUndefined, "NO DOC")
+        .value("kRigid", Class::kRigid, "NO DOC")
+        .value("kSoft", Class::kSoft, "NO DOC");
+    AddValueInstantiation<geometry::internal::HydroelasticType>(m);
+  }
+
   m.def(
       "ReadObjToTriangleSurfaceMesh",
       [](const std::string& filename, double scale) {

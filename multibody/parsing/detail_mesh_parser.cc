@@ -164,7 +164,7 @@ std::optional<ModelInstanceIndex> AddModelFromMesh(
     }
 
     if (workspace.options.enable_convex_meshes) {
-      const geometry::Convex convex(filename);
+      const geometry::Convex convex(filename, 10.0);
 
       plant.RegisterCollisionGeometry(body, X_BG, convex, "collision",
                                       std::move(props));
