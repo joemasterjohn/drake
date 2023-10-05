@@ -363,42 +363,79 @@ class Joint : public MultibodyElement<T> {
   /// generalized velocity's. A limit with value +/- ∞ implies no upper or
   /// lower limit.
   /// @{
-  /// Returns the position lower limits.
+  /// Returns the default position lower limits.
   const VectorX<double>& position_lower_limits() const {
-    return pos_lower_limits_;
+    return default_pos_lower_limits_;
   }
 
-  /// Returns the position upper limits.
+  /// Returns the default position upper limits.
   const VectorX<double>& position_upper_limits() const {
-    return pos_upper_limits_;
+    return default_pos_upper_limits_;
   }
 
-  /// Returns the velocity lower limits.
+  /// Returns the default velocity lower limits.
   const VectorX<double>& velocity_lower_limits() const {
-    return vel_lower_limits_;
+    return default_vel_lower_limits_;
   }
 
-  /// Returns the velocity upper limits.
+  /// Returns the default velocity upper limits.
   const VectorX<double>& velocity_upper_limits() const {
-    return vel_upper_limits_;
+    return default_vel_upper_limits_;
   }
 
-  /// Returns the acceleration lower limits.
+  /// Returns the default acceleration lower limits.
   const VectorX<double>& acceleration_lower_limits() const {
-    return acc_lower_limits_;
+    return default_acc_lower_limits_;
   }
 
-  /// Returns the acceleration upper limits.
+  /// Returns the default acceleration upper limits.
   const VectorX<double>& acceleration_upper_limits() const {
-    return acc_upper_limits_;
+    return default_acc_upper_limits_;
   }
 
-  /// Returns the default positions.
-  const VectorX<double>& default_positions() const {
-    return default_positions_;
+  /// Returns the position lower limits.
+  const VectorX<double>& position_lower_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(pos_lower_limits_parameter_index_)
+        .value();
   }
 
-  /// Sets the position limits to @p lower_limits and @p upper_limits.
+  /// Returns the position upper limits stored in `context`.
+  const VectorX<double>& position_upper_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(pos_upper_limits_parameter_index_)
+        .value();
+  }
+
+  /// Returns the velocity lower limits stored in `context`.
+  const VectorX<double>& velocity_lower_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(vel_lower_limits_parameter_index_)
+        .value();
+  }
+
+  /// Returns the velocity upper limits stored in `context`.
+  const VectorX<double>& velocity_upper_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(vel_upper_limits_parameter_index_)
+        .value();
+  }
+
+  /// Returns the acceleration lower limits stored in `context`.
+  const VectorX<double>& acceleration_lower_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(acc_lower_limits_parameter_index_)
+        .value();
+  }
+
+  /// Returns the acceleration upper limits stored in `context`.
+  const VectorX<double>& acceleration_upper_limits(
+      systems::Context<T>& context) const {
+    return context.get_numeric_parameter(acc_upper_limits_parameter_index_)
+        .value();
+  }
+
+  /// Sets the default position limits to @p lower_limits and @p upper_limits.
   /// @throws std::exception if the dimension of @p lower_limits or
   /// @p upper_limits does not match num_positions().
   /// @throws std::exception if any of @p lower_limits is larger than the
@@ -411,11 +448,11 @@ class Joint : public MultibodyElement<T> {
     DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
     DRAKE_THROW_UNLESS(lower_limits.size() == num_positions());
     DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
-    pos_lower_limits_ = lower_limits;
-    pos_upper_limits_ = upper_limits;
+    default_pos_lower_limits_ = lower_limits;
+    default_pos_upper_limits_ = upper_limits;
   }
 
-  /// Sets the velocity limits to @p lower_limits and @p upper_limits.
+  /// Sets the default velocity limits to @p lower_limits and @p upper_limits.
   /// @throws std::exception if the dimension of @p lower_limits or
   /// @p upper_limits does not match num_velocities().
   /// @throws std::exception if any of @p lower_limits is larger than the
@@ -425,11 +462,12 @@ class Joint : public MultibodyElement<T> {
     DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
     DRAKE_THROW_UNLESS(lower_limits.size() == num_velocities());
     DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
-    vel_lower_limits_ = lower_limits;
-    vel_upper_limits_ = upper_limits;
+    default_vel_lower_limits_ = lower_limits;
+    default_vel_upper_limits_ = upper_limits;
   }
 
-  /// Sets the acceleration limits to @p lower_limits and @p upper_limits.
+  /// Sets the default acceleration limits to @p lower_limits and @p
+  /// upper_limits.
   /// @throws std::exception if the dimension of @p lower_limits or
   /// @p upper_limits does not match num_velocities().
   /// @throws std::exception if any of @p lower_limits is larger than the
@@ -439,8 +477,70 @@ class Joint : public MultibodyElement<T> {
     DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
     DRAKE_THROW_UNLESS(lower_limits.size() == num_velocities());
     DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
-    acc_lower_limits_ = lower_limits;
-    acc_upper_limits_ = upper_limits;
+    default_acc_lower_limits_ = lower_limits;
+    default_acc_upper_limits_ = upper_limits;
+  }
+
+  /// Sets the position limits in @p context to @p lower_limits and @p
+  /// upper_limits.
+  /// @throws std::exception if the dimension of @p lower_limits or
+  /// @p upper_limits does not match num_positions().
+  /// @throws std::exception if any of @p lower_limits is larger than the
+  /// corresponding term in @p upper_limits.
+  /// @note Setting the position limits does not affect the
+  /// `default_positions()`, regardless of whether the current
+  /// `default_positions()` satisfy the new position limits.
+  void SetPositionLimits(systems::Context<T>* context,
+                         const VectorX<double>& lower_limits,
+                         const VectorX<double>& upper_limits) {
+    DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
+    DRAKE_THROW_UNLESS(lower_limits.size() == num_positions());
+    DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
+    context.get_mutable_numeric_parameter(pos_lower_limits_parameter_index_)
+        .set_value(lower_limits);
+    context.get_mutable_numeric_parameter(pos_upper_limits_parameter_index_)
+        .set_value(upper_limits);
+  }
+
+  /// Sets the velocity limits in @p context to @p lower_limits and @p
+  /// upper_limits.
+  /// @throws std::exception if the dimension of @p lower_limits or
+  /// @p upper_limits does not match num_velocities().
+  /// @throws std::exception if any of @p lower_limits is larger than the
+  /// corresponding term in @p upper_limits.
+  void SetVelocityLimits(systems::Context<T>* context,
+                         const VectorX<double>& lower_limits,
+                         const VectorX<double>& upper_limits) {
+    DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
+    DRAKE_THROW_UNLESS(lower_limits.size() == num_velocities());
+    DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
+    context.get_mutable_numeric_parameter(vel_lower_limits_parameter_index_)
+        .set_value(lower_limits);
+    context.get_mutable_numeric_parameter(vel_upper_limits_parameter_index_)
+        .set_value(upper_limits);
+  }
+
+  /// Sets the acceleration limits in @p context to @p lower_limits and @p
+  /// upper_limits.
+  /// @throws std::exception if the dimension of @p lower_limits or
+  /// @p upper_limits does not match num_velocities().
+  /// @throws std::exception if any of @p lower_limits is larger than the
+  /// corresponding term in @p upper_limits.
+  void SetAccelerationLimits(systems::Context<T>* context,
+                               const VectorX<double>& lower_limits,
+                               const VectorX<double>& upper_limits) {
+    DRAKE_THROW_UNLESS(lower_limits.size() == upper_limits.size());
+    DRAKE_THROW_UNLESS(lower_limits.size() == num_velocities());
+    DRAKE_THROW_UNLESS((lower_limits.array() <= upper_limits.array()).all());
+    context.get_mutable_numeric_parameter(acc_lower_limits_parameter_index_)
+        .set_value(lower_limits);
+    context.get_mutable_numeric_parameter(acc_upper_limits_parameter_index_)
+        .set_value(upper_limits);
+  }
+
+  /// Returns the default positions.
+  const VectorX<double>& default_positions() const {
+    return default_positions_;
   }
 
   /// Sets the default positions to @p default_positions. Joint subclasses are
@@ -710,26 +810,94 @@ class Joint : public MultibodyElement<T> {
     implementation_ = std::move(implementation);
   }
 
+  // Implementation for MultibodyElement::DoDeclareParameters().
+  void DoDeclareParameters(
+      internal::MultibodyTreeSystem<T>* tree_system) final {
+    // Sets model values to dummy values to indicate that the model values are
+    // not used. This class stores the the default values of the parameters.
+    default_pos_lower_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_positions()));
+    default_pos_upper_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_positions()));
+    default_vel_lower_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_velocities()));
+    default_vel_upper_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_velocities()));
+    default_acc_lower_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_velocities()));
+    default_acc_upper_limits_parameter_index_ = this->DeclareNumericParameter(
+        tree_system, systems::BasicVector<T>(num_velocities()));
+  }
+
+  // Implementation for MultibodyElement::DoSetDefaultParameters().
+  void DoSetDefaultParameters(systems::Parameters<T>* parameters) const final {
+    // Set the default position, velocity, and acceleration limits.
+    systems::BasicVector<T>& pos_lower_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            pos_lower_limits_parameter_index_);
+    pos_lower_limits_parameter.set_value(default_pos_lower_limits_);
+
+    systems::BasicVector<T>& pos_upper_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            pos_upper_limits_parameter_index_);
+    pos_upper_limits_parameter.set_value(default_pos_upper_limits_);
+
+    systems::BasicVector<T>& vel_lower_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            vel_lower_limits_parameter_index_);
+    vel_lower_limits_parameter.set_value(default_vel_lower_limits_);
+
+    systems::BasicVector<T>& vel_upper_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            vel_upper_limits_parameter_index_);
+    vel_upper_limits_parameter.set_value(default_vel_upper_limits_);
+
+    systems::BasicVector<T>& acc_lower_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            acc_lower_limits_parameter_index_);
+    acc_lower_limits_parameter.set_value(default_acc_lower_limits_);
+
+    systems::BasicVector<T>& acc_upper_limits_parameter =
+        parameters->get_mutable_numeric_parameter(
+            acc_upper_limits_parameter_index_);
+    acc_upper_limits_parameter.set_value(default_acc_upper_limits_);
+  }
+
   std::string name_;
   const Frame<T>& frame_on_parent_;
   const Frame<T>& frame_on_child_;
 
   VectorX<double> damping_;
 
-  // Joint position limits. These vectors have zero size for joints with no
-  // such limits.
-  VectorX<double> pos_lower_limits_;
-  VectorX<double> pos_upper_limits_;
+  // Default joint position limits. These vectors have zero size for joints with
+  // no such limits.
+  VectorX<double> default_pos_lower_limits_;
+  VectorX<double> default_pos_upper_limits_;
 
-  // Joint velocity limits. These vectors have zero size for joints with no
-  // such limits.
-  VectorX<double> vel_lower_limits_;
-  VectorX<double> vel_upper_limits_;
+  // System parameter indices for `this` joint's position limits stored in a
+  // context.
+  systems::NumericParameterIndex pos_lower_limits_parameter_index_;
+  systems::NumericParameterIndex pos_upper_limits_parameter_index_;
 
-  // Joint acceleration limits. These vectors have zero size for joints with no
-  // such limits.
-  VectorX<double> acc_lower_limits_;
-  VectorX<double> acc_upper_limits_;
+  // Default joint velocity limits. These vectors have zero size for joints with
+  // no such limits.
+  VectorX<double> default_vel_lower_limits_;
+  VectorX<double> default_vel_upper_limits_;
+
+  // System parameter indices for `this` joint's velocity limits stored in a
+  // context.
+  systems::NumericParameterIndex vel_lower_limits_parameter_index_;
+  systems::NumericParameterIndex vel_upper_limits_parameter_index_;
+
+  // Default joint acceleration limits. These vectors have zero size for joints
+  // with no such limits.
+  VectorX<double> default_acc_lower_limits_;
+  VectorX<double> default_acc_upper_limits_;
+
+  // System parameter indices for `this` joint's acceleration limits stored in a
+  // context.
+  systems::NumericParameterIndex acc_lower_limits_parameter_index_;
+  systems::NumericParameterIndex acc_upper_limits_parameter_index_;
 
   // Joint default position. This vector has zero size for joints with no state.
   VectorX<double> default_positions_;
