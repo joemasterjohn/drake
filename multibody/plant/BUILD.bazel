@@ -576,6 +576,23 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "sap_driver_gradients_test",
+    data = [
+        "//manipulation/models/iiwa_description:models",
+    ],
+    deps = [
+        ":compliant_contact_manager_tester",
+        ":plant",
+        "//multibody/contact_solvers/sap:sap_solver_results",
+        "//multibody/contact_solvers:contact_solver_results",
+        "//multibody/parsing",
+        "//common/test_utilities:eigen_matrix_compare",
+        "//common/test_utilities:expect_throws_message",
+        "//multibody/plant/test_utilities:rigid_body_on_compliant_ground",
+    ],
+)
+
+drake_cc_googletest(
     name = "tamsi_driver_test",
     deps = [
         "//multibody/plant/test_utilities:rigid_body_on_compliant_ground",

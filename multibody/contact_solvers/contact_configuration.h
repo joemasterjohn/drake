@@ -38,6 +38,16 @@ struct ContactConfiguration {
   // Orientation of contact frame C in the world frame W.
   // Rz_WC = R_WC.col(2) corresponds to the normal from object A into object B.
   math::RotationMatrix<T> R_WC;
+
+  ContactConfiguration<double> CloneToDouble() const {
+    return {.objectA = objectA,
+            .p_ApC_W = ExtractDoubleOrThrow(p_ApC_W),
+            .objectB = objectB,
+            .p_BqC_W = ExtractDoubleOrThrow(p_BqC_W),
+            .phi = ExtractDoubleOrThrow(phi),
+            .R_WC = math::RotationMatrix<double>(
+                ExtractDoubleOrThrow(R_WC.matrix()))};
+  }
 };
 
 }  // namespace internal

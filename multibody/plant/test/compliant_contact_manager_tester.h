@@ -54,8 +54,9 @@ class CompliantContactManagerTester {
     return manager.EvalContactKinematics(context);
   }
 
-  static const SapDriver<double>& sap_driver(
-      const CompliantContactManager<double>& manager) {
+  template <typename T>
+  static const SapDriver<T>& sap_driver(
+      const CompliantContactManager<T>& manager) {
     DRAKE_DEMAND(manager.sap_driver_ != nullptr);
     return *manager.sap_driver_;
   }

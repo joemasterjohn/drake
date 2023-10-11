@@ -93,6 +93,9 @@ class SapContactProblem {
   /* Returns a deep-copy of `this` instance. */
   std::unique_ptr<SapContactProblem<T>> Clone() const;
 
+  /* Resturns a double scalar-converted deep-copy of `this` instance. */
+  std::unique_ptr<SapContactProblem<double>> CloneToDouble() const;
+
   /* Makes a "reduced" contact problem given the DOFs specified in
     `known_free_motion_dofs` are known to equal the free-motion velocities.
     That is, for an i-th DOF in `known_free_motion_dofs`, we know that vᵢ = vᵢ*.
@@ -290,6 +293,12 @@ class SapContactProblem {
   void CalcConstraintGeneralizedForces(const VectorX<T>& gamma,
                                        int constraint_start, int constraint_end,
                                        VectorX<T>* generalized_forces) const;
+
+  void CalcConstraintVelocity(const VectorX<T>& v, VectorX<T>* vc) const;
+  void CalcConstraintVelocityAndImpulse(const VectorX<T>& v,
+                                        const VectorX<T>& delassus_diagonal,
+                                        VectorX<T>* vc,
+                                        VectorX<T>* gamma) const;
 
  private:
   int nv_{0};           // Total number of generalized velocities.

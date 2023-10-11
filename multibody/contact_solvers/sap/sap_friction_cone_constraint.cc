@@ -231,6 +231,28 @@ void SapFrictionConeConstraint<T>::DoAccumulateSpatialImpulses(
   }
 }
 
+template <typename T>
+std::unique_ptr<SapConstraint<double>>
+SapFrictionConeConstraint<T>::DoCloneToDouble() const {
+  if constexpr (std::is_same_v<T, double>) {
+    return DoClone();
+  }
+
+  ContactConfiguration<double> configuration = configuration_.CloneToDouble();
+  SapFrictionConeConstraint<double>::Parameters parameters{
+      .mu = ExtractDoubleOrThrow(parameters_.mu),
+      .stiffness = ExtractDoubleOrThrow(parameters_.stiffness),
+      .dissipation_time_scale =
+          ExtractDoubleOrThrow(parameters_.dissipation_time_scale),
+      .beta = parameters_.beta,
+      .sigma = parameters_.sigma};
+
+  SapConstraintJacobian<double> J = this->jacobian().CloneToDouble();
+
+  return std::make_unique<SapFrictionConeConstraint<double>>(configuration, J,
+                                                             parameters);
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

@@ -174,6 +174,25 @@ void SapLimitConstraint<T>::DoAccumulateGeneralizedImpulses(
   if (qu < kInf) (*tau)(clique_dof_) -= gamma(i);     // Upper.
 }
 
+template <typename T>
+std::unique_ptr<SapConstraint<double>> SapLimitConstraint<T>::DoCloneToDouble()
+    const {
+  if constexpr (std::is_same_v<T, double>) {
+    return DoClone();
+  }
+
+  SapLimitConstraint<double>::Parameters parameters(
+      ExtractDoubleOrThrow(parameters_.lower_limit()),
+      ExtractDoubleOrThrow(parameters_.upper_limit()),
+      ExtractDoubleOrThrow(parameters_.stiffness()),
+      ExtractDoubleOrThrow(parameters_.dissipation_time_scale()),
+      parameters_.beta());
+
+  return std::make_unique<SapLimitConstraint<double>>(
+      this->clique(0), clique_dof_, this->num_velocities(0),
+      ExtractDoubleOrThrow(q0_), parameters);
+}
+
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

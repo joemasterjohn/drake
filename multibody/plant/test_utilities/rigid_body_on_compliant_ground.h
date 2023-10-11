@@ -23,6 +23,26 @@
 
 namespace drake {
 namespace multibody {
+
+class MultibodyPlantTester {
+ public:
+  template <typename T>
+  static void CalcDiscreteStep(const MultibodyPlant<T>& plant,
+                               const systems::Context<T>& context,
+                               systems::DiscreteValues<T>* values) {
+    plant.CalcDiscreteStep(context, values);
+  }
+
+  template <typename T>
+  static internal::CompliantContactManager<T>& manager(
+      const MultibodyPlant<T>& plant) {
+    auto* manager = dynamic_cast<internal::CompliantContactManager<T>*>(
+        plant.discrete_update_manager_.get());
+    DRAKE_DEMAND(manager != nullptr);
+    return *manager;
+  }
+};
+
 namespace internal {
 
 using Eigen::MatrixXd;
@@ -76,6 +96,7 @@ class RigidBodyOnCompliantGround
     DiagramBuilder<double> builder;
     auto items = AddMultibodyPlantSceneGraph(&builder, kTimeStep_);
     plant_ = &items.plant;
+    scene_graph_ = &items.scene_graph;
     plant_->set_discrete_contact_solver(config.contact_solver);
 
     // We change the default gravity magnitude so that numbers are simpler to
@@ -99,10 +120,11 @@ class RigidBodyOnCompliantGround
         "intermediate_body",
         SpatialInertia<double>(0.0, Vector3d::Zero(),
                                UnitInertia<double>(1.0, 1.0, 1.0)));
-
     z_axis_ = &plant_->AddJoint<PrismaticJoint>("z_axis", plant_->world_body(),
                                                 {}, intermediate_body, {},
                                                 Vector3d::UnitZ());
+    // N.B. We flip the sign here for sap_driver_gradients_test so that the
+    // Jacobian for the single contact is identity.
     x_axis_ = &plant_->AddJoint<PrismaticJoint>("x_axis", intermediate_body, {},
                                                 *body_, {}, Vector3d::UnitX());
 
@@ -112,7 +134,8 @@ class RigidBodyOnCompliantGround
     geometry::ProximityProperties body_props;
     geometry::AddContactMaterial(0.0, 1e40, CoulombFriction<double>(kMu_, kMu_),
                                  &body_props);
-
+    body_props.AddProperty(geometry::internal::kMaterialGroup,
+                           geometry::internal::kRelaxationTime, kRelaxationTime_/2);
     if (config.point_contact) {
       plant_->RegisterCollisionGeometry(
           *body_, RigidTransformd::Identity(),
@@ -132,6 +155,8 @@ class RigidBodyOnCompliantGround
     geometry::AddContactMaterial(kHcDissipation_, kStiffness_,
                                  CoulombFriction<double>(kMu_, kMu_),
                                  &ground_props);
+    ground_props.AddProperty(geometry::internal::kMaterialGroup,
+                             geometry::internal::kRelaxationTime, kRelaxationTime_/2);
     geometry::AddCompliantHydroelasticPropertiesForHalfSpace(
         kGroundThickness_, kHydroelasticModulus_, &ground_props);
     plant_->RegisterCollisionGeometry(
@@ -140,6 +165,9 @@ class RigidBodyOnCompliantGround
         geometry::HalfSpace(), "ground_collision", ground_props);
 
     plant_->set_contact_model(config.contact_model);
+    // Set beta = 0 for these test cases because the current gradient
+    // implementation assumes beta = 0.
+    plant_->set_sap_near_rigid_threshold(0.0);
 
     plant_->Finalize();
 
@@ -160,9 +188,32 @@ class RigidBodyOnCompliantGround
 
     // Set a known configuration.
     z_axis_->set_translation(plant_context_, CalcEquilibriumZPosition());
+
+    SetUpAutoDiff();
   }
 
  protected:
+  void SetUpAutoDiff() {
+    diagram_ad_ =
+        dynamic_pointer_cast<Diagram<AutoDiffXd>>(diagram_->ToAutoDiffXd());
+    plant_ad_ = static_cast<const MultibodyPlant<AutoDiffXd>*>(
+        &(diagram_ad_->GetSubsystemByName(plant_->get_name())));
+    scene_graph_ad_ = static_cast<const geometry::SceneGraph<AutoDiffXd>*>(
+        &(diagram_ad_->GetSubsystemByName(scene_graph_->get_name())));
+    const CompliantContactManager<AutoDiffXd>& manager_ad =
+        MultibodyPlantTester::manager(*plant_ad_);
+    sap_driver_ad_ = &CompliantContactManagerTester::sap_driver(manager_ad);
+
+    context_ad_ = diagram_ad_->CreateDefaultContext();
+    SetAutoDiffContextFromDoubleContext();
+    plant_context_ad_ =
+        &diagram_ad_->GetMutableSubsystemContext(*plant_ad_, context_ad_.get());
+  }
+
+  void SetAutoDiffContextFromDoubleContext() {
+    context_ad_->SetTimeStateAndParametersFrom(*context_);
+  }
+
   // Weight in Newtons of the rigid body.
   double CalcBodyWeight() const {
     return kMass_ * plant_->gravity_field().gravity_vector().norm();
@@ -199,6 +250,14 @@ class RigidBodyOnCompliantGround
         SpatialForce<double>(Vector3d::Zero(), kTangentialStictionForce_);
     plant_->get_applied_spatial_force_input_port().FixValue(plant_context_,
                                                             forces);
+    std::vector<ExternallyAppliedSpatialForce<AutoDiffXd>> forces_ad(1);
+    forces_ad[0].body_index = forces[0].body_index;
+    forces_ad[0].p_BoBq_B = forces[0].p_BoBq_B;
+    forces_ad[0].F_Bq_W = SpatialForce<AutoDiffXd>(
+        Vector3<AutoDiffXd>::Zero(),
+        Vector3<AutoDiffXd>(kTangentialStictionForce_));
+    plant_ad_->get_applied_spatial_force_input_port().FixValue(
+        plant_context_ad_, forces_ad);
   }
 
   // Normal force exactly opposes weight for the body in equilibrium.
@@ -220,16 +279,28 @@ class RigidBodyOnCompliantGround
         Vector3d::Zero(), kTangentialSlipForce_ + kTangentialExtraForce_);
     plant_->get_applied_spatial_force_input_port().FixValue(plant_context_,
                                                             forces);
+    std::vector<ExternallyAppliedSpatialForce<AutoDiffXd>> forces_ad(1);
+    forces_ad[0].body_index = forces[0].body_index;
+    forces_ad[0].p_BoBq_B = forces[0].p_BoBq_B;
+    forces_ad[0].F_Bq_W = SpatialForce<AutoDiffXd>(
+        Vector3<AutoDiffXd>::Zero(),
+        Vector3<AutoDiffXd>(kTangentialSlipForce_ + kTangentialExtraForce_));
+    plant_ad_->get_applied_spatial_force_input_port().FixValue(
+        plant_context_ad_, forces_ad);
   }
 
   void Simulate(int num_time_steps) {
     simulator_.reset(new Simulator<double>(*diagram_, std::move(context_)));
+    simulator_ad_.reset(new Simulator<AutoDiffXd>(*diagram_ad_, std::move(context_ad_)));
     simulator_->Initialize();
+    simulator_ad_->Initialize();
     simulator_->AdvanceTo(num_time_steps * kTimeStep_);
+    simulator_ad_->AdvanceTo(num_time_steps * kTimeStep_);
   }
 
   std::unique_ptr<Diagram<double>> diagram_;
   MultibodyPlant<double>* plant_{nullptr};
+  geometry::SceneGraph<double>* scene_graph_{nullptr};
   const RigidBody<double>* body_{nullptr};
   const PrismaticJoint<double>* z_axis_{nullptr};
   const PrismaticJoint<double>* x_axis_{nullptr};
@@ -240,16 +311,25 @@ class RigidBodyOnCompliantGround
   std::unique_ptr<SapDriver<double>> sap_driver_;
   std::unique_ptr<Simulator<double>> simulator_;
 
+  std::unique_ptr<Diagram<AutoDiffXd>> diagram_ad_;
+  const MultibodyPlant<AutoDiffXd>* plant_ad_{nullptr};
+  const geometry::SceneGraph<AutoDiffXd>* scene_graph_ad_{nullptr};
+  std::unique_ptr<Context<AutoDiffXd>> context_ad_{nullptr};
+  Context<AutoDiffXd>* plant_context_ad_{nullptr};
+  const SapDriver<AutoDiffXd>* sap_driver_ad_{nullptr};
+  std::unique_ptr<Simulator<AutoDiffXd>> simulator_ad_;
+
   // Parameters of the problem.
   const double kTimeStep_{0.001};  // Discrete time step of the plant.
   const double kGravity_{10.0};    // Acceleration of gravity, in m/s².
-  const double kMass_{10.0};       // Mass of the rigid body, in kg.
+  const double kMass_{10.0};        // Mass of the rigid body, in kg.
   const double kPointContactSphereRadius_{0.02};  // In m.
   const double kStiffness_{1.0e4};                // In N/m.
   const double kHydroelasticModulus_{250.0};      // In Pa.
   const double kHcDissipation_{0.2};              // In s/m.
   const double kGroundThickness_{0.1};            // In m.
   const double kMu_{0.5};                         // Coefficient of friction.
+  const double kRelaxationTime_{0.1};             // In s.
   const double kScale_{0.1};  // Scale factor for tangential force.
   // Horizontal force on the body that should be completely opposed by stiction.
   const Vector3d kTangentialStictionForce_{kScale_ * kMu_ * kMass_ * kGravity_,

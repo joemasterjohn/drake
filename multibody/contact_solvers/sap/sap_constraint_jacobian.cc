@@ -62,6 +62,22 @@ SapConstraintJacobian<T> SapConstraintJacobian<T>::LeftMultiplyByTranspose(
   MatrixX<T> ATJ_second_clique = A.transpose() * J_second_clique;
   return SapConstraintJacobian<T>(clique(0), std::move(ATJ_first_clique),
                                   clique(1), std::move(ATJ_second_clique));
+
+}
+
+template <typename T>
+SapConstraintJacobian<double> SapConstraintJacobian<T>::CloneToDouble() const {
+  DRAKE_DEMAND(blocks_are_dense());
+
+  if (num_cliques() == 1) {
+    return SapConstraintJacobian<double>(
+        clique(0),
+        ExtractDoubleOrThrow(clique_jacobian(0).MakeDenseMatrix()));
+  } else {
+    return SapConstraintJacobian<double>(
+        clique(0), ExtractDoubleOrThrow(clique_jacobian(0).MakeDenseMatrix()),
+        clique(1), ExtractDoubleOrThrow(clique_jacobian(1).MakeDenseMatrix()));
+  }
 }
 
 }  // namespace internal

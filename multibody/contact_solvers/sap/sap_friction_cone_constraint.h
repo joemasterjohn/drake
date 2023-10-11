@@ -229,6 +229,7 @@ class SapFrictionConeConstraint final : public SapConstraint<T> {
     return std::unique_ptr<SapFrictionConeConstraint<T>>(
         new SapFrictionConeConstraint<T>(*this));
   }
+  std::unique_ptr<SapConstraint<double>> DoCloneToDouble() const final;
 
   // no-op for this constraint.
   void DoAccumulateGeneralizedImpulses(int, const Eigen::Ref<const VectorX<T>>&,

@@ -109,6 +109,8 @@ class SapConstraintJacobian {
   SapConstraintJacobian<T> LeftMultiplyByTranspose(
       const Eigen::Ref<const MatrixX<T>>& A) const;
 
+  SapConstraintJacobian<double> CloneToDouble() const;
+
  private:
   // Blocks for each block. Up to two entries only.
   std::vector<CliqueJacobian<T>> clique_jacobians_;

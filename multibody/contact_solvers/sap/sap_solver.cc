@@ -122,25 +122,25 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
   const int nk = model_->num_constraint_equations();
 
   // Allocate the necessary memory to work with.
-  auto context = model_->MakeContext();
-  auto scratch = model_->MakeContext();
+  context_ = model_->MakeContext();
+  scratch_ = model_->MakeContext();
   SearchDirectionData search_direction_data(nv, nk);
   stats_ = SolverStats();
   // The supernodal solver is expensive to instantiate and therefore we only
   // instantiate when needed.
-  std::unique_ptr<SuperNodalSolver> supernodal_solver;
+  //std::unique_ptr<SuperNodalSolver> supernodal_solver;
 
   {
     // We limit the lifetime of this reference, v, to within this scope where we
     // immediately need it.
     Eigen::VectorBlock<VectorX<double>> v =
-        model_->GetMutableVelocities(context.get());
+        model_->GetMutableVelocities(context_.get());
     model_->velocities_permutation().Apply(v_guess, &v);
   }
 
   // Start Newton iterations.
   int k = 0;
-  double ell = model_->EvalCost(*context);
+  double ell = model_->EvalCost(*context_);
   double ell_previous = ell;
   bool converged = false;
   double alpha = 1.0;
@@ -149,7 +149,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     // We first verify the stopping criteria. If satisfied, we skip expensive
     // factorizations.
     double momentum_residual, momentum_scale;
-    CalcStoppingCriteriaResidual(*context, &momentum_residual, &momentum_scale);
+    CalcStoppingCriteriaResidual(*context_, &momentum_residual, &momentum_scale);
     stats_.optimality_criterion_reached =
         momentum_residual <=
         parameters_.abs_tolerance + parameters_.rel_tolerance * momentum_scale;
@@ -183,11 +183,11 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
       }
       if (parameters_.linear_solver_type !=
               SapSolverParameters::LinearSolverType::kDense &&
-          supernodal_solver == nullptr) {
+          supernodal_solver_ == nullptr) {
         // Instantiate supernodal solver on the first iteration when needed. If
         // the stopping criteria is satisfied at k = 0 (good guess), then we
         // skip the expensive instantiation of the solver.
-        supernodal_solver = MakeSuperNodalSolver();
+        supernodal_solver_ = MakeSuperNodalSolver();
       }
     }
 
@@ -198,7 +198,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
     // This is the most expensive update: it performs the factorization of H to
     // solve for the search direction dv.
-    CalcSearchDirectionData(*context, supernodal_solver.get(),
+    CalcSearchDirectionData(*context_, supernodal_solver_.get(),
                             &search_direction_data);
     const VectorX<double>& dv = search_direction_data.dv;
 
@@ -206,20 +206,20 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
     switch (parameters_.line_search_type) {
       case SapSolverParameters::LineSearchType::kBackTracking:
         std::tie(alpha, num_line_search_iters) = PerformBackTrackingLineSearch(
-            *context, search_direction_data, scratch.get());
+            *context_, search_direction_data, scratch_.get());
         break;
       case SapSolverParameters::LineSearchType::kExact:
         std::tie(alpha, num_line_search_iters) = PerformExactLineSearch(
-            *context, search_direction_data, scratch.get());
+            *context_, search_direction_data, scratch_.get());
         break;
     }
     stats_.num_line_search_iters += num_line_search_iters;
 
     // Update state.
-    model_->GetMutableVelocities(context.get()) += alpha * dv;
+    model_->GetMutableVelocities(context_.get()) += alpha * dv;
 
     ell_previous = ell;
-    ell = model_->EvalCost(*context);
+    ell = model_->EvalCost(*context_);
 
     const double ell_scale = (ell + ell_previous) / 2.0;
     // N.B. Even though theoretically we expect ell < ell_previous, round-off
@@ -239,7 +239,7 @@ SapSolverStatus SapSolver<double>::SolveWithGuess(
 
   if (!converged) return SapSolverStatus::kFailure;
 
-  PackSapSolverResults(*context, results);
+  PackSapSolverResults(*context_, results);
 
   // N.B. If the stopping criteria is satisfied for k = 0, the solver is not
   // even instantiated and no factorizations are performed (the expensive part
@@ -571,6 +571,39 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
       parameters_.exact_line_search.max_iterations);
 
   return std::make_pair(alpha, iters);
+}
+
+template <typename T>
+void SapSolver<T>::PropagateGradients(const MatrixX<double>&,
+                                      MatrixX<double>*) {
+  throw std::logic_error(
+      "SapSolver::PropagateGradients() only supports T = double.");
+}
+
+template <>
+void SapSolver<double>::PropagateGradients(const MatrixX<double>& dr_dtheta,
+                                           MatrixX<double>* dv_dtheta) {
+  // // Dense Hessian implementation.
+  // const MatrixX<double> H = CalcDenseHessian(*this->context_);
+
+  // const math::LinearSolver<Eigen::LDLT, MatrixX<double>> H_ldlt(H);
+  // if (H_ldlt.eigen_linear_solver().info() != Eigen::Success) {
+  //   throw std::runtime_error("Dense LDLT factorization of the Hessian failed.");
+  // }
+
+  // *dv_dtheta = H_ldlt.Solve(-dr_dtheta);
+
+  if (supernodal_solver_ == nullptr) {
+    supernodal_solver_ = MakeSuperNodalSolver();
+    UpdateSuperNodalSolver(*context_, supernodal_solver_.get());
+    if (!supernodal_solver_->Factor()) {
+      throw std::logic_error("SapSolver: Supernodal factorization failed.");
+    }
+  }
+
+  for (int i = 0; i < dr_dtheta.cols(); ++i) {
+    dv_dtheta->col(i) = supernodal_solver_->Solve(-dr_dtheta.col(i));
+  }
 }
 
 template <typename T>

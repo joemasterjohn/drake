@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "drake/common/unused.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
 #include "drake/multibody/contact_solvers/sap/sap_ball_constraint.h"
@@ -764,6 +765,7 @@ void SapDriver<T>::CalcContactProblemCache(
   CalcLinearDynamicsMatrix(context, &A);
   VectorX<T> v_star;
   CalcFreeMotionVelocities(context, &v_star);
+
   const int num_rigid_bodies = plant().num_bodies();
   const int num_deformable_bodies =
       (manager().deformable_driver() == nullptr)
@@ -792,6 +794,14 @@ void SapDriver<T>::CalcContactProblemCache(
   AddWeldConstraints(context, &problem);
   AddFixedConstraints(context, &problem);
 
+  // Construct a double version of the problem for solving when the underlying
+  // type is AutoDiffXd.
+  if constexpr (std::is_same_v<T, AutoDiffXd>) {
+    cache->sap_problem_double = std::move(cache->sap_problem->CloneToDouble());
+  } else {
+    cache->sap_problem_double = nullptr;
+  }
+
   // Make a reduced version of the original contact problem using joint locking
   // data.
   const internal::JointLockingCacheData<T>& joint_locking_data =
@@ -811,8 +821,14 @@ void SapDriver<T>::CalcContactProblemCache(
                   });
 
   if (has_locked_dofs) {
-    cache->sap_problem_locked = std::move(problem.MakeReduced(
-        locked_indices, locked_indices_per_tree, &cache->mapping));
+    if constexpr (std::is_same_v<T, double>) {
+      cache->sap_problem_locked = std::move(cache->sap_problem->MakeReduced(
+          locked_indices, locked_indices_per_tree, &cache->mapping));
+    } else {
+      cache->sap_problem_locked =
+          std::move(cache->sap_problem_double->MakeReduced(
+              locked_indices, locked_indices_per_tree, &cache->mapping));
+    }
   } else {
     cache->sap_problem_locked = nullptr;
   }
@@ -884,6 +900,7 @@ void SapDriver<T>::AddCliqueContribution(
     } else {
       /* For non-double scalars, we can't have `deformable_driver != nullptr`,
        so we won't reach here. */
+      unused(context);
       DRAKE_UNREACHABLE();
     }
   } else {
@@ -898,16 +915,31 @@ template <typename T>
 void SapDriver<T>::CalcSapSolverResults(
     const systems::Context<T>& context,
     SapSolverResults<T>* sap_results) const {
-  const ContactProblemCache<T>& contact_problem_cache =
+  throw std::logic_error(
+      "SapDriver::CalcSapSolverResults(): Only T = double or T = AutoDiffXd is "
+      "supported.");
+}
+
+template <>
+void SapDriver<AutoDiffXd>::CalcSapSolverResults(
+    const systems::Context<AutoDiffXd>& context,
+    SapSolverResults<AutoDiffXd>* sap_results) const {
+  const ContactProblemCache<AutoDiffXd>& contact_problem_cache =
       EvalContactProblemCache(context);
-  const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
+
+  const SapContactProblem<AutoDiffXd>& sap_problem =
+      *contact_problem_cache.sap_problem;
+  DRAKE_ASSERT(contact_problem_cache.sap_problem_double != nullptr);
+  const SapContactProblem<double>& sap_problem_double =
+      *contact_problem_cache.sap_problem_double;
 
   bool has_locked_dofs = (contact_problem_cache.sap_problem_locked != nullptr);
 
   // We use the velocity stored in the current context as initial guess.
-  const VectorX<T>& x0 =
+  const VectorX<AutoDiffXd>& x0 =
       context.get_discrete_state(manager().multibody_state_index()).value();
-  VectorX<T> v0 = x0.bottomRows(this->plant().num_velocities());
+  VectorX<AutoDiffXd> v0_ad = x0.bottomRows(this->plant().num_velocities());
+  VectorX<double> v0 = math::ExtractValue(v0_ad);
 
   // Eliminate known DoFs.
   if (has_locked_dofs) {
@@ -916,24 +948,156 @@ void SapDriver<T>::CalcSapSolverResults(
     v0 = SelectRows(v0, unlocked_indices);
   }
 
-  if constexpr (std::is_same_v<T, double>) {
-    if (manager().deformable_driver() != nullptr) {
-      const VectorX<double> deformable_v0 =
-          manager().deformable_driver()->EvalParticipatingVelocities(context);
-      const int rigid_dofs = v0.size();
-      const int deformable_dofs = deformable_v0.size();
-      v0.conservativeResize(rigid_dofs + deformable_dofs);
-      v0.tail(deformable_dofs) = deformable_v0;
+  // TODO(joemasterjohn): consider deformable DoFs
+
+  // Solve the reduced DOF locked problem.
+  SapSolver<double> sap;
+  sap.set_parameters(sap_parameters_);
+  SapSolverStatus status;
+  SapSolverResults<double> sap_results_double;
+
+  if (has_locked_dofs) {
+    SapSolverResults<double> locked_sap_results;
+    status = sap.SolveWithGuess(*contact_problem_cache.sap_problem_locked,
+                                v0, &locked_sap_results);
+    if (status == SapSolverStatus::kSuccess) {
+      sap_problem_double.ExpandContactSolverResults(
+          contact_problem_cache.mapping, locked_sap_results,
+          &sap_results_double);
     }
+  } else {
+    status =
+        sap.SolveWithGuess(sap_problem_double, v0, &sap_results_double);
+  }
+
+  if (status != SapSolverStatus::kSuccess) {
+    const std::string msg = fmt::format(
+        "The SAP solver failed to converge at simulation time = {}. "
+        "Reasons for divergence and possible solutions include:\n"
+        "  1. Externally applied actuation values diverged due to external "
+        "     reasons to the solver. Revise your control logic.\n"
+        "  2. External force elements such as spring or bushing elements can "
+        "     lead to unstable temporal dynamics if too stiff. Revise your "
+        "     model and consider whether these forces can be better modeled "
+        "     using one of SAP's compliant constraints. E.g., use a distance "
+        "     constraint instead of a spring element.\n"
+        "  3. Numerical ill conditioning of the model caused by, for instance, "
+        "     extremely large mass ratios. Revise your model and consider "
+        "     whether very small objects can be removed or welded to larger "
+        "     objects in the model."
+        "  4. Ill-conditioning could be alleviated via SAP's near rigid "
+        "     parameter. Refer to "
+        "     MultibodyPlant::set_sap_near_rigid_threshold() for details."
+        "  5. Some other cause. You may want to use Stack Overflow (#drake "
+        "     tag) to request some assistance.",
+        context.get_time());
+    throw std::runtime_error(msg);
+  }
+
+  if (sap_problem.num_constraints() > 0) {
+
+    DRAKE_DEMAND(!has_locked_dofs);
+
+    // Solve for derivatives of v using the implicit function theorem on
+    // r(v, theta) = 0.
+    VectorX<AutoDiffXd> v = sap_results_double.v;
+
+    if (sap_results_double.vc.size() !=
+        sap_problem.num_constraint_equations()) {
+      drake::log()->info(fmt::format("#constraints   {}  {}",
+                                     sap_problem_double.num_constraints(),
+                                     sap_problem.num_constraints()));
+      drake::log()->info(
+          fmt::format("#constrainteqs {}  {}",
+                      sap_problem_double.num_constraint_equations(),
+                      sap_problem.num_constraint_equations()));
+      drake::log()->info(
+          fmt::format("vc.size() {}", sap_results_double.vc.size()));
+    }
+
+    DRAKE_DEMAND(sap_results_double.vc.size() == sap_problem.num_constraint_equations());
+
+    VectorX<AutoDiffXd> delassus_diagonal =
+        sap.get_model()->delassus_diagonal();
+
+    DRAKE_DEMAND(delassus_diagonal.size() == sap_problem.num_constraint_equations());
+
+    VectorX<AutoDiffXd> gamma(sap_problem.num_constraint_equations());
+    VectorX<AutoDiffXd> vc(sap_problem.num_constraint_equations());
+    sap_problem.CalcConstraintVelocityAndImpulse(v, delassus_diagonal, &vc,
+                                                 &gamma);
+
+    const VectorX<AutoDiffXd> a = (v - v0_ad) / plant().time_step();
+
+    MultibodyForces<AutoDiffXd> forces(plant());
+    CalcDiscreteUpdateMultibodyForces(context, v, gamma, &forces);
+
+    const VectorX<AutoDiffXd> r =
+        plant().time_step() * plant().CalcInverseDynamics(context, a, forces);
+
+    const MatrixX<double> dr_dtheta = math::ExtractGradient(r);
+    MatrixX<double> dv_dtheta(sap_problem.num_velocities(), dr_dtheta.cols());
+
+    sap.PropagateGradients(dr_dtheta, &dv_dtheta);
+
+    math::InitializeAutoDiff(sap_results_double.v, dv_dtheta, &v);
+
+    sap_results->v = std::move(v);
+    sap_results->gamma = std::move(gamma);
+    // The derivatives of vc are incorrect, they only contain the ∂J/∂θ ⋅ v term, but are missing the J ⋅ ∂v/∂θ terms.
+    sap_results->vc = std::move(vc);
+    // These need to be computed from the computed gamma.
+    sap_results->j = sap_results_double.j;
+  } else {
+    sap_results->v = sap_problem.v_star();
+    // Zero size anyway, don't even need to copy.
+    sap_results->gamma = sap_results_double.gamma;
+    // These need to be updated from v_star()
+    sap_results->vc = sap_results_double.vc;
+    // Zero size anyway, don't even need to copy.
+    sap_results->j = sap_results_double.j;
+  }
+}
+
+template <>
+void SapDriver<double>::CalcSapSolverResults(
+    const systems::Context<double>& context,
+    SapSolverResults<double>* sap_results) const {
+  const ContactProblemCache<double>& contact_problem_cache =
+      EvalContactProblemCache(context);
+
+  const SapContactProblem<double>& sap_problem = *contact_problem_cache.sap_problem;
+
+  bool has_locked_dofs = (contact_problem_cache.sap_problem_locked != nullptr);
+
+  // We use the velocity stored in the current context as initial guess.
+  const VectorX<double>& x0 =
+      context.get_discrete_state(manager().multibody_state_index()).value();
+  VectorX<double> v0 = x0.bottomRows(this->plant().num_velocities());
+
+  // Eliminate known DoFs.
+  if (has_locked_dofs) {
+    const auto& unlocked_indices =
+        manager().EvalJointLockingCache(context).unlocked_velocity_indices;
+    v0 = SelectRows(v0, unlocked_indices);
+  }
+
+  if (manager().deformable_driver() != nullptr) {
+    const VectorX<double> deformable_v0 =
+        manager().deformable_driver()->EvalParticipatingVelocities(context);
+    const int rigid_dofs = v0.size();
+    const int deformable_dofs = deformable_v0.size();
+    v0.conservativeResize(rigid_dofs + deformable_dofs);
+    v0.tail(deformable_dofs) = deformable_v0;
   }
 
   // Solve the reduced DOF locked problem.
-  SapSolver<T> sap;
+  SapSolver<double> sap;
   sap.set_parameters(sap_parameters_);
 
   SapSolverStatus status;
   if (has_locked_dofs) {
-    SapSolverResults<T> locked_sap_results;
+    SapSolverResults<double> locked_sap_results;
     status = sap.SolveWithGuess(*contact_problem_cache.sap_problem_locked, v0,
                                 &locked_sap_results);
     if (status == SapSolverStatus::kSuccess) {
@@ -986,6 +1150,17 @@ void SapDriver<T>::CalcContactSolverResults(
 template <typename T>
 void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
     const systems::Context<T>& context, MultibodyForces<T>* forces) const {
+  // Next time step state.
+
+  const SapSolverResults<T>& sap_results = EvalSapSolverResults(context);
+  CalcDiscreteUpdateMultibodyForces(context, sap_results.v, sap_results.gamma,
+                                    forces);
+}
+
+template <typename T>
+void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
+    const systems::Context<T>& context, const VectorX<T>& v,
+    const VectorX<T>& gamma, MultibodyForces<T>* forces) const {
   auto& generalized_forces = forces->mutable_generalized_forces();
   auto& spatial_forces = forces->mutable_body_forces();
 
@@ -994,10 +1169,7 @@ void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
       context.get_discrete_state(manager().multibody_state_index()).value();
   const auto v0 = x0.bottomRows(plant().num_velocities());
 
-  // Next time step state.
-  const SapSolverResults<T>& sap_results = EvalSapSolverResults(context);
   // Generalized velocities and accelerations.
-  const VectorX<T>& v = sap_results.v;
   const VectorX<T> a = (v - v0) / plant().time_step();
 
   // Include all state dependent forces (not constraints) evaluated at t₀
@@ -1023,7 +1195,6 @@ void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
 
   VectorX<T> constraints_generalized_forces(plant().num_velocities());
   std::vector<SpatialForce<T>> constraint_spatial_forces(plant().num_bodies());
-  const VectorX<T>& gamma = sap_results.gamma;
 
   // N.B. When CompliantContactManager builds the problem, the "about point" for
   // the reporting of multibody forces is defined to be at body origins and

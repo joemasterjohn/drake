@@ -6,6 +6,7 @@
 #include "drake/common/drake_throw.h"
 #include "drake/common/eigen_types.h"
 #include "drake/common/ssize.h"
+#include "drake/math/autodiff_gradient.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
 #include "drake/multibody/plant/slicing_and_indexing.h"
@@ -49,6 +50,32 @@ std::unique_ptr<SapContactProblem<T>> SapContactProblem<T>::Clone() const {
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = get_constraint(i);
     clone->AddConstraint(c.Clone());
+  }
+  return clone;
+}
+
+template <typename T>
+std::unique_ptr<SapContactProblem<double>>
+SapContactProblem<T>::CloneToDouble() const {
+  if constexpr (std::is_same_v<T, double>) {
+    return this->Clone();
+  }
+
+  const double time_step = ExtractDoubleOrThrow(time_step_);
+  std::vector<MatrixX<double>> A;
+  A.reserve(A_.size());
+  for (int i = 0; i < ssize(A_); ++i) {
+    A.push_back(ExtractDoubleOrThrow(A_[i]));
+  }
+  const VectorX<double> v_star = ExtractDoubleOrThrow(v_star_);
+
+  auto clone =
+      std::make_unique<SapContactProblem<double>>(time_step, A, v_star);
+
+  clone->set_num_objects(num_objects());
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = get_constraint(i);
+    clone->AddConstraint(c.CloneToDouble());
   }
   return clone;
 }
@@ -160,24 +187,7 @@ void SapContactProblem<T>::ExpandContactSolverResults(
   results->j.setZero();
 
   // Set vc to vc* for known DoFs. Unknown DoFs will be overwritten below.
-  for (int i = 0; i < num_constraints(); ++i) {
-    const SapConstraint<T>& c = get_constraint(i);
-
-    Eigen::VectorBlock<VectorX<T>> vc_segment = results->vc.segment(
-        constraint_equations_start(i), c.num_constraint_equations());
-
-    c.first_clique_jacobian().MultiplyAndAddTo(
-        results->v.segment(velocities_start(c.first_clique()),
-                           num_velocities(c.first_clique())),
-        &vc_segment);
-
-    if (c.num_cliques() > 1) {
-      c.second_clique_jacobian().MultiplyAndAddTo(
-          results->v.segment(velocities_start(c.second_clique()),
-                             num_velocities(c.second_clique())),
-          &vc_segment);
-    }
-  }
+  CalcConstraintVelocity(results->v, &results->vc);
 
   // Copy v and j for participating velocities.
   reduced_mapping.velocity_permutation.ApplyInverse(reduced_results.v,
@@ -320,6 +330,80 @@ void SapContactProblem<T>::CalcConstraintMultibodyForces(
   (*generalized_forces) /= time_step();
   for (SpatialForce<T>& F : *spatial_forces) {
     F.get_coeffs() /= time_step();
+  }
+}
+
+template <typename T>
+void SapContactProblem<T>::CalcConstraintVelocity(const VectorX<T>& v,
+                                                  VectorX<T>* vc) const {
+  DRAKE_THROW_UNLESS(v.size() == num_velocities());
+  DRAKE_THROW_UNLESS(vc != nullptr);
+  DRAKE_THROW_UNLESS(vc->size() == num_constraint_equations());
+
+  vc->setZero();
+
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = get_constraint(i);
+
+    Eigen::VectorBlock<VectorX<T>> vc_segment = vc->segment(
+        constraint_equations_start(i), c.num_constraint_equations());
+
+    c.first_clique_jacobian().MultiplyAndAddTo(
+        v.segment(velocities_start(c.first_clique()),
+                  num_velocities(c.first_clique())),
+        &vc_segment);
+    if (c.num_cliques() > 1) {
+      c.second_clique_jacobian().MultiplyAndAddTo(
+          v.segment(velocities_start(c.second_clique()),
+                    num_velocities(c.second_clique())),
+          &vc_segment);
+    }
+  }
+}
+
+template <typename T>
+void SapContactProblem<T>::CalcConstraintVelocityAndImpulse(
+    const VectorX<T>& v, const VectorX<T>& delassus_diagonal, VectorX<T>* vc,
+    VectorX<T>* gamma) const {
+  DRAKE_THROW_UNLESS(v.size() == num_velocities());
+  DRAKE_THROW_UNLESS(gamma != nullptr);
+  DRAKE_THROW_UNLESS(gamma->size() == num_constraint_equations());
+
+  // MakeData
+  std::vector<std::unique_ptr<AbstractValue>> bundle_data;
+  bundle_data.reserve(num_constraints());
+  int constraint_start = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = *constraints_[i];
+    const int ni = c.num_constraint_equations();
+    const auto wi = delassus_diagonal.segment(constraint_start, ni);
+    bundle_data.emplace_back(c.MakeData(time_step(), wi));
+    constraint_start += ni;
+  }
+
+  // Calc vc
+  CalcConstraintVelocity(v, vc);
+
+  // CalcData
+  constraint_start = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = *constraints_[i];
+    const int ni = c.num_constraint_equations();
+    const auto vc_i = vc->segment(constraint_start, ni);
+    AbstractValue& data = *bundle_data[i];
+    c.CalcData(vc_i, &data);
+    constraint_start += ni;
+  }
+
+  // CalcImpulse
+  constraint_start = 0;
+  for (int i = 0; i < num_constraints(); ++i) {
+    const SapConstraint<T>& c = *constraints_[i];
+    const int ni = c.num_constraint_equations();
+    const AbstractValue& data = *bundle_data[i];
+    auto gamma_i = gamma->segment(constraint_start, ni);
+    c.CalcImpulse(data, &gamma_i);
+    constraint_start += ni;
   }
 }
 

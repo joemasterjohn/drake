@@ -222,6 +222,7 @@ class SapLimitConstraint final : public SapConstraint<T> {
     return std::unique_ptr<SapLimitConstraint<T>>(
         new SapLimitConstraint<T>(*this));
   }
+  std::unique_ptr<SapConstraint<double>> DoCloneToDouble() const final;
   void DoAccumulateGeneralizedImpulses(
       int c, const Eigen::Ref<const VectorX<T>>& gamma,
       EigenPtr<VectorX<T>> tau) const final;

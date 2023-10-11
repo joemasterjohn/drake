@@ -44,17 +44,26 @@ struct ContactProblemCache {
     // data from the plant. When joint locking is preset, the locked problem
     // is solved and its results expanded into results for the original.
     sap_problem_locked =
-        std::make_unique<contact_solvers::internal::SapContactProblem<T>>(
-            time_step, std::vector<MatrixX<T>>(), VectorX<T>());
+        std::make_unique<contact_solvers::internal::SapContactProblem<double>>(
+            time_step, std::vector<MatrixX<double>>(), VectorX<double>());
+
+    sap_problem_double =
+        std::make_unique<contact_solvers::internal::SapContactProblem<double>>(
+            time_step, std::vector<MatrixX<double>>(), VectorX<double>());
   }
+
   copyable_unique_ptr<contact_solvers::internal::SapContactProblem<T>>
       sap_problem;
   // Start/end constraint index for PD controller constraints in sap_problem.
   int pd_controller_constraints_start{0};
   int num_pd_controller_constraints{0};
 
-  copyable_unique_ptr<contact_solvers::internal::SapContactProblem<T>>
+  copyable_unique_ptr<contact_solvers::internal::SapContactProblem<double>>
       sap_problem_locked;
+
+  // Double version of the SapContactProblem, used for solving only.
+  copyable_unique_ptr<contact_solvers::internal::SapContactProblem<double>>
+      sap_problem_double;
 
   // TODO(amcastro-tri): consider removing R_WC from the contact problem cache
   // and instead cache ContactPairKinematics separately.
@@ -112,6 +121,11 @@ class SapDriver {
   // actuation from implicit PD controllers.
   void CalcActuation(const systems::Context<T>& context,
                      VectorX<T>* actuation) const;
+
+  void CalcDiscreteUpdateMultibodyForces(const systems::Context<T>& context,
+                                         const VectorX<T>& v,
+                                         const VectorX<T>& gamma,
+                                         MultibodyForces<T>* forces) const;
 
  private:
   // Provide private access for unit testing only.
@@ -292,6 +306,16 @@ class SapDriver {
   // Parameters for SAP.
   contact_solvers::internal::SapSolverParameters sap_parameters_;
 };
+
+// Forward declaration of specializations.
+template <>
+void SapDriver<double>::CalcSapSolverResults(
+    const systems::Context<double>& context,
+    contact_solvers::internal::SapSolverResults<double>* sap_results) const;
+template <>
+void SapDriver<AutoDiffXd>::CalcSapSolverResults(
+    const systems::Context<AutoDiffXd>& context,
+    contact_solvers::internal::SapSolverResults<AutoDiffXd>* sap_results) const;
 
 }  // namespace internal
 }  // namespace multibody

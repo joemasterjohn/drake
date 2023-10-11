@@ -176,6 +176,10 @@ class SapModel {
     return const_model_data_.impulses_permutation;
   }
 
+  const VectorX<T>& delassus_diagonal() const {
+    return const_model_data_.delassus_diagonal;
+  }
+
   /* The time step of problem(). */
   const T& time_step() const { return problem_->time_step(); }
 

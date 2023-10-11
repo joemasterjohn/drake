@@ -269,6 +269,9 @@ class SapSolver {
                                  const VectorX<T>& v_guess,
                                  SapSolverResults<T>* result);
 
+  void PropagateGradients(const MatrixX<double>& dr_dtheta,
+                          MatrixX<double>* dv_dtheta);
+
   // New parameters will affect the next call to SolveWithGuess().
   void set_parameters(const SapSolverParameters& parameters);
 
@@ -276,6 +279,10 @@ class SapSolver {
   // Statistics are reset with SolverStats::Reset() on each new call to
   // SolveWithGuess().
   const SolverStats& get_statistics() const;
+
+  const SapModel<T>* get_model() const {
+    return model_.get();
+  }
 
  private:
   friend class SapSolverTester;
@@ -433,6 +440,10 @@ class SapSolver {
   // TODO(amcastro-tri): Consider moving stats into the solver's state stored as
   // part of the model's context.
   mutable SolverStats stats_;
+  std::unique_ptr<systems::Context<T>> context_;
+  std::unique_ptr<systems::Context<T>> scratch_;
+  std::unique_ptr<SuperNodalSolver> supernodal_solver_;
+
 };
 
 // Forward-declare specializations, prior to DRAKE_DECLARE... below.
@@ -445,7 +456,9 @@ template <>
 std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const systems::Context<double>&, const SearchDirectionData&,
     systems::Context<double>*) const;
-
+template <>
+void SapSolver<double>::PropagateGradients(const MatrixX<double>& dr_dtheta,
+                                           MatrixX<double>* dv_dtheta);
 }  // namespace internal
 }  // namespace contact_solvers
 }  // namespace multibody

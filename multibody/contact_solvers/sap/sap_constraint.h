@@ -253,6 +253,11 @@ class SapConstraint {
   /* Polymorphic deep-copy into a new instance. */
   std::unique_ptr<SapConstraint<T>> Clone() const { return DoClone(); }
 
+  /* Polymorphic scalar-converting deep-copy into a new instance. */
+  std::unique_ptr<SapConstraint<double>> CloneToDouble() const {
+    return DoCloneToDouble();
+  }
+
   /* Creates a "reduced" clone of this constraint by removing known DoFs from
    the constraint's Jacobian. That is, the newly reduced constraint will have
    this constraint's Jacobian excluding columns for known DoFs. The following
@@ -332,6 +337,12 @@ class SapConstraint {
   /* Clone() implementation. Derived classes must override to provide
    polymorphic deep-copy into a new instance. */
   virtual std::unique_ptr<SapConstraint<T>> DoClone() const = 0;
+
+  /* CloneToDouble() implementation. Derived classes must override to provide
+   polymorphic scalar-converting deep-copy into a new instance. */
+  virtual std::unique_ptr<SapConstraint<double>> DoCloneToDouble() const {
+    throw std::logic_error("Constraints must implement this function.");
+  };
   // @}
 
  private:
