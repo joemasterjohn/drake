@@ -591,7 +591,14 @@ void SapDriver<T>::AddWeldConstraints(
 
   const Frame<T>& frame_W = plant().world_frame();
 
+  const std::map<MultibodyConstraintId, bool>& constraint_active_status =
+      manager().GetConstraintActiveStatus(context);
+
   for (const auto& [id, spec] : manager().weld_constraints_specs()) {
+
+    // skip this constraint if it is not active.
+    if (!constraint_active_status.at(id)) continue;
+
     const Body<T>& body_A = plant().get_body(spec.body_A);
     const Body<T>& body_B = plant().get_body(spec.body_B);
 
@@ -1009,7 +1016,7 @@ void SapDriver<T>::CalcDiscreteUpdateMultibodyForces(
   // N.B. When CompliantContactManager builds the problem, the "about point" for
   // the reporting of multibody forces is defined to be at body origins and
   // expressed in the world frame.
-  // Therefore aggregation of forces per-body makes sense in this call.
+  // Therefore aggregation of forces peFr-body makes sense in this call.
   const ContactProblemCache<T>& contact_problem_cache =
       EvalContactProblemCache(context);
   contact_problem_cache.sap_problem->CalcConstraintMultibodyForces(

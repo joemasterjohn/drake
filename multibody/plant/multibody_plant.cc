@@ -3077,6 +3077,9 @@ void MultibodyPlant<T>::DeclareParameters() {
   for (const auto& [id, spec] : ball_constraints_specs_) {
     constraint_active_status_map[id] = true;
   }
+  for (const auto& [id, spec] : weld_constraints_specs_) {
+    constraint_active_status_map[id] = true;
+  }
 
   internal::ConstraintActiveStatusMap map_wrapper{constraint_active_status_map};
 

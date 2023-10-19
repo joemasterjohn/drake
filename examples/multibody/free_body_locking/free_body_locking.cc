@@ -6,7 +6,6 @@
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/scene_graph.h"
-#include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/benchmarks/inclined_plane/inclined_plane_plant.h"
 #include "drake/multibody/plant/contact_results_to_lcm.h"
@@ -37,15 +36,15 @@ DEFINE_double(stiction_tolerance, 1.0E-3,
               "Allowable drift speed during stiction (m/s).");
 DEFINE_double(inclined_plane_angle_degrees, 15.0,
               "Inclined plane angle (degrees), i.e., angle from Wx to Ax.");
-DEFINE_double(inclined_plane_coef_static_friction, 0.5,
+DEFINE_double(inclined_plane_coef_static_friction, 0.2,
               "Inclined plane's coefficient of static friction (no units).");
-DEFINE_double(inclined_plane_coef_kinetic_friction, 0.5,
+DEFINE_double(inclined_plane_coef_kinetic_friction, 0.,
               "Inclined plane's coefficient of kinetic friction (no units).  "
               "When time_step > 0, this value is ignored.  Only the "
               "coefficient of static friction is used in fixed-time step.");
-DEFINE_double(bodyB_coef_static_friction, 0.5,
+DEFINE_double(bodyB_coef_static_friction, 0.2,
               "Body B's coefficient of static friction (no units).");
-DEFINE_double(bodyB_coef_kinetic_friction, 0.5,
+DEFINE_double(bodyB_coef_kinetic_friction, 0.2,
               "Body B's coefficient of kinetic friction (no units).  "
               "When time_step > 0, this value is ignored.  Only the "
               "coefficient of static friction is used in fixed-time step.");
@@ -72,14 +71,14 @@ int do_main() {
   const math::RigidTransform<double> X_WC(Vector3<double>::Zero());
   const math::RigidTransform<double> X_WA(
       math::RotationMatrixd::MakeXRotation(-0.2));
-  const Vector4<double> white(0.9, 0.9, 0.9, 1.0);
-  const Vector4<double> blue(1.0, 0.55, 0.0, 1.0);
+  const Vector4<double> white(0.6, 0.6, 0.6, 1.0);
+  const Vector4<double> orange(1.0, 0.55, 0.0, 1.0);
 
   geometry::ProximityProperties props;
   props.AddProperty(geometry::internal::kMaterialGroup,
                     geometry::internal::kFriction, coef_friction_bodyB);
   props.AddProperty(geometry::internal::kHydroGroup,
-                    geometry::internal::kElastic, 1e5);
+                    geometry::internal::kElastic, 1e6);
   props.AddProperty(geometry::internal::kHydroGroup,
                     geometry::internal::kRezHint, 0.2);
   props.AddProperty(geometry::internal::kHydroGroup,
@@ -97,36 +96,30 @@ int do_main() {
   SpatialInertia<double> body_inertia(
       0.5, Vector3<double>::Zero(),
       UnitInertia<double>::TriaxiallySymmetric(0.1));
-  const auto& body = plant.AddRigidBody("cylinder1", body_inertia);
-  plant.RegisterVisualGeometry(body, X_WC, geometry::Cylinder(0.5, 0.2),
-                               "cylinder1_viz", blue);
-  plant.RegisterCollisionGeometry(body, X_WC, geometry::Cylinder(0.5, 0.2),
-                                  "cylinder1_col", props);
+  const Vector3<double> p_WoBo(0, -2, 1.75);
+  const Vector3<double> dp{0, -0.22, 0};
+
+  std::vector<MultibodyConstraintId> constraints;
 
   // Make cylinders and joints
-  for (int i = 2; i <= FLAGS_num_bodies; ++i) {
+  for (int i = 0; i < FLAGS_num_bodies; ++i) {
     const auto& cylinder =
         plant.AddRigidBody(fmt::format("cylinder{}", i), body_inertia);
     plant.RegisterVisualGeometry(cylinder, X_WC, geometry::Cylinder(0.5, 0.2),
-                                 fmt::format("cylinder{}_viz", i), blue);
+                                 fmt::format("cylinder{}_viz", i), orange);
     plant.RegisterCollisionGeometry(cylinder, X_WC,
                                     geometry::Cylinder(0.5, 0.2),
                                     fmt::format("cylinder{}_col", i), props);
-
-    const auto& cylinder_prev =
-        plant.GetBodyByName(fmt::format("cylinder{}", i - 1));
-
-    const auto& joint_const = plant.AddJoint<QuaternionFloatingJoint>(
-        fmt::format("{}_{}", i - 1, i), cylinder_prev, {}, cylinder, {}, 0.0,
-        0.0);
-    auto& joint = plant.GetMutableJointByName<QuaternionFloatingJoint>(
-        joint_const.name());
-    joint.SetDefaultPose(
-        math::RigidTransform<double>(Vector3<double>(0, 0, -0.22)));
+    const math::RigidTransform<double> X_WB(
+        math::RotationMatrix<double>::MakeXRotation(0.5 * M_PI),
+        p_WoBo + i * dp);
+    plant.SetDefaultFreeBodyPose(cylinder, X_WB);
+    constraints.push_back(plant.AddWeldConstraint(
+        plant.world_body(), X_WB, cylinder, math::RigidTransformd()));
   }
 
   plant.set_contact_model(ContactModel::kPoint);
-
+  plant.set_discrete_contact_solver(DiscreteContactSolver::kSap);
   plant.Finalize();
   plant.set_penetration_allowance(FLAGS_penetration_allowance);
 
@@ -135,11 +128,6 @@ int do_main() {
   // this is the maximum sliding speed for the points to be regarded as
   // stationary relative to each other (so that static friction is used).
   plant.set_stiction_tolerance(FLAGS_stiction_tolerance);
-
-  // Publish contact results for visualization.
-  // TODO(Mitiguy) Ensure contact forces can be displayed when time_step = 0.
-  if (FLAGS_time_step > 0)
-    ConnectContactResultsToDrakeVisualizer(&builder, plant, scene_graph);
 
   geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph);
   auto diagram = builder.Build();
@@ -156,22 +144,6 @@ int do_main() {
   // zero.
   plant.SetDefaultContext(&plant_context);
 
-  // Overwrite B's default initial position so it is somewhere above the
-  // inclined plane provided `0 < inclined_plane_angle < 40`.
-  const auto& bodyB = plant.GetBodyByName("cylinder1");
-  const math::RigidTransform<double> X_WB(
-      math::RotationMatrix<double>::MakeXRotation(0.5 * M_PI),
-      Vector3<double>(0, -2, 1.75));
-  plant.SetFreeBodyPoseInWorldFrame(&plant_context, bodyB, X_WB);
-
-  for (int i = 2; i <= FLAGS_num_bodies; ++i) {
-    auto& joint = plant.GetJointByName<QuaternionFloatingJoint>(
-        fmt::format("{}_{}", i - 1, i));
-    joint.Lock(&plant_context);
-  }
-
-  bodyB.Lock(&plant_context);
-
   systems::Simulator<double> simulator(*diagram, std::move(diagram_context));
   systems::IntegratorBase<double>& integrator =
       simulator.get_mutable_integrator();
@@ -186,16 +158,14 @@ int do_main() {
   simulator.Initialize();
   simulator.AdvanceTo(FLAGS_simulation_interval);
 
-  for (int i = 0; i < FLAGS_num_bodies - 1; ++i) {
-    auto& joint = plant.GetJointByName<QuaternionFloatingJoint>(
-        fmt::format("{}_{}", FLAGS_num_bodies - i - 1, FLAGS_num_bodies - i));
-    joint.Unlock(&plant_context);
+  for (int i = 0; i < FLAGS_num_bodies; ++i) {
+    plant.SetConstraintActiveStatus(
+        &plant_context, constraints[i], false);
+    drake::log()->info(fmt::format("unlock: {}", i));
     simulator.AdvanceTo((i + 2) * FLAGS_simulation_interval);
   }
 
-  bodyB.Unlock(&plant_context);
-
-  simulator.AdvanceTo((FLAGS_num_bodies + 1) * FLAGS_simulation_interval);
+  simulator.AdvanceTo((FLAGS_num_bodies + 10) * FLAGS_simulation_interval);
 
   return 0;
 }
