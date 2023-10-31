@@ -406,6 +406,17 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "profiler",
+    srcs = ["profiler.cc"],
+    hdrs = ["profiler.h"],
+    deps = [
+        ":essential",
+        ":scope_exit",
+        ":type_safe_index",
+    ],
+)
+
+drake_cc_library(
     name = "is_cloneable",
     hdrs = ["is_cloneable.h"],
 )
