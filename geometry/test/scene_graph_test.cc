@@ -359,7 +359,7 @@ TEST_F(SceneGraphTest, RegisterUnsupportedDeformableGeometry) {
 // Smoke test hydroelasticate. Fine detail should be tested in
 // internal_hydroelasticate_test.
 TEST_F(SceneGraphTest, Hydroelasticate) {
-  EXPECT_FALSE(scene_graph_.get_config().hydroelasticate.enabled);
+  EXPECT_FALSE(scene_graph_.get_config().default_hydroelastic_config.enabled);
   SourceId s_id = scene_graph_.RegisterSource();
   auto geometry_instance = make_unique<GeometryInstance>(
       RigidTransformd::Identity(), make_unique<Box>(1.0, 2.0, 3.0), "box");
@@ -372,9 +372,9 @@ TEST_F(SceneGraphTest, Hydroelasticate) {
   EXPECT_FALSE(props->HasGroup(kHydroGroup));
 
   SceneGraphConfig config;
-  config.hydroelasticate.enabled = true;
+  config.default_hydroelastic_config.enabled = true;
   scene_graph_.set_config(config);
-  EXPECT_TRUE(scene_graph_.get_config().hydroelasticate.enabled);
+  EXPECT_TRUE(scene_graph_.get_config().default_hydroelastic_config.enabled);
   // Hydroelasticated context.
   CreateDefaultContext();
   props = query_object().inspector().GetProximityProperties(g_id);

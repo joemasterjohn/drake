@@ -84,7 +84,7 @@ class GeometryStateValue final : public Value<GeometryState<T>> {
 
 // Throws if config values are invalid.
 void ValidateConfig(const SceneGraphConfig& config) {
-  const auto& hydro = config.hydroelasticate;
+  const auto& hydro = config.default_hydroelastic_config;
   DRAKE_THROW_UNLESS(std::isfinite(hydro.minimum_primitive_size));
   DRAKE_THROW_UNLESS(std::isfinite(hydro.default_hydroelastic_modulus));
   DRAKE_THROW_UNLESS(std::isfinite(hydro.default_mesh_resolution_hint));
@@ -306,7 +306,7 @@ GeometryId SceneGraph<T>::RegisterGeometry(
   auto geometry_id =
       g_state.RegisterGeometry(source_id, frame_id, std::move(geometry));
   const auto& config = scene_graph_config(*context);
-  if (config.hydroelasticate.enabled == true && has_proximity) {
+  if (config.default_hydroelastic_config.enabled == true && has_proximity) {
     internal::Hydroelasticate(&g_state, config, geometry_id);
   }
   return geometry_id;
@@ -358,7 +358,7 @@ void SceneGraph<T>::ChangeShape(
   const auto& config = scene_graph_config(*context);
   auto* props = g_state.GetProximityProperties(geometry_id);
   bool need_hydroelasticate =
-      config.hydroelasticate.enabled && (props != nullptr);
+      config.default_hydroelastic_config.enabled && (props != nullptr);
   if (need_hydroelasticate) {
     ProximityProperties new_props(*props);
     new_props.UpdateProperty(internal::kHydroGroup, internal::kComplianceType,
@@ -484,7 +484,7 @@ void SceneGraph<T>::AssignRole(Context<T>* context, SourceId source_id,
   auto& g_state = mutable_geometry_state(context);
   g_state.AssignRole(source_id, geometry_id, std::move(properties), assign);
   const auto& config = scene_graph_config(*context);
-  if (config.hydroelasticate.enabled == true) {
+  if (config.default_hydroelastic_config.enabled == true) {
     internal::Hydroelasticate(&g_state, config, geometry_id);
   }
 }
@@ -576,7 +576,7 @@ void SceneGraph<T>::SetDefaultParameters(const Context<T>& context,
                                          Parameters<T>* parameters) const {
   LeafSystem<T>::SetDefaultParameters(context, parameters);
   const GeometryState<T>* from = &hub_.model();
-  if (hub_.config().hydroelasticate.enabled) {
+  if (hub_.config().default_hydroelastic_config.enabled) {
     from = &hub_.hydroelasticated_model();
   }
   parameters->template get_mutable_abstract_parameter<GeometryState<T>>(

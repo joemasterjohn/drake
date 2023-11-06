@@ -24,17 +24,17 @@ void BackfillDefaults(ProximityProperties* properties,
   };
 
   backfill(kHydroGroup, kElastic,
-           config.hydroelasticate.default_hydroelastic_modulus);
+           config.default_hydroelastic_config.default_hydroelastic_modulus);
   backfill(kHydroGroup, kRezHint,
-           config.hydroelasticate.default_mesh_resolution_hint);
+           config.default_hydroelastic_config.default_mesh_resolution_hint);
   backfill(kHydroGroup, kSlabThickness,
-           config.hydroelasticate.default_slab_thickness);
+           config.default_hydroelastic_config.default_slab_thickness);
 
   backfill(kMaterialGroup, kHcDissipation,
-           config.hydroelasticate.default_hunt_crossley_dissipation);
+           config.default_hydroelastic_config.default_hunt_crossley_dissipation);
   multibody::CoulombFriction friction{
-    config.hydroelasticate.default_static_friction,
-    config.hydroelasticate.default_dynamic_friction,
+    config.default_hydroelastic_config.default_static_friction,
+    config.default_hydroelastic_config.default_dynamic_friction,
   };
   backfill(kMaterialGroup, kFriction, friction);
 }
@@ -61,7 +61,7 @@ class ShapeAdjuster final : private ShapeReifier {
 
   void CheckTooSmall(ReifyData* data, double max_radius) {
     if (2 * max_radius <
-        data->config.hydroelasticate.minimum_primitive_size) {
+        data->config.default_hydroelastic_config.minimum_primitive_size) {
       data->is_too_small = true;
     }
   }

@@ -331,18 +331,18 @@ class TestGeometrySceneGraph(unittest.TestCase):
                 1 if i == 0 else 0)
 
     def test_scene_graph_config(self):
-        hydro_config = mut.HydroelasticateConfig()
+        hydro_config = mut.DefaultHydroelasticConfig()
         scene_graph_config = mut.SceneGraphConfig()
         scene_graph = mut.SceneGraph(config=scene_graph_config)
         got_config = scene_graph.get_config()
-        self.assertFalse(got_config.hydroelasticate.enabled)
-        scene_graph_config.hydroelasticate.enabled = True
+        self.assertFalse(got_config.default_hydroelastic_config.enabled)
+        scene_graph_config.default_hydroelastic_config.enabled = True
         scene_graph.set_config(config=scene_graph_config)
         got_config = scene_graph.get_config()
-        self.assertTrue(got_config.hydroelasticate.enabled)
+        self.assertTrue(got_config.default_hydroelastic_config.enabled)
 
         # ParamInit.
-        param_init_hydro = mut.HydroelasticateConfig(
+        param_init_hydro = mut.DefaultHydroelasticConfig(
             enabled=True,
             minimum_primitive_size=1,
             default_hydroelastic_modulus=2,
@@ -353,10 +353,10 @@ class TestGeometrySceneGraph(unittest.TestCase):
             default_static_friction=7,
         )
         param_init_scene_graph = mut.SceneGraphConfig(
-            hydroelasticate=param_init_hydro)
+            default_hydroelastic_config=param_init_hydro)
         # Spot-check that at least one value got passed through.
         self.assertEqual(
-            param_init_scene_graph.hydroelasticate.default_static_friction, 7)
+            param_init_scene_graph.default_hydroelastic_config.default_static_friction, 7)
 
     @numpy_compare.check_all_types
     def test_scene_graph_renderer_with_context(self, T):

@@ -5,15 +5,15 @@
 namespace drake {
 namespace geometry {
 
-/// Configurable properties for the automatic hydroelasticate feature.
+/// Configurable properties for the default hydroelastic feature.
 ///
-/// Controls whether the hydroelasticate feature is enabled, and what default
+/// Controls whether the default hydroelastic feature is enabled, and what default
 /// values are supplied for proximity properties to geometries that are not
 /// annotated for hydroelastic contact in the scene graph model.
 ///
-/// @see @ref hug_hydroelasticate, @ref hug_properties,
+/// @see @ref hug_default_hydroelastic, @ref hug_properties,
 /// @ref stribeck_approximation.
-struct HydroelasticateConfig {
+struct DefaultHydroelasticConfig {
   /// Passes this object to an Archive.
   /// Refer to @ref yaml_serialization "YAML Serialization" for background.
   template <typename Archive>
@@ -27,7 +27,7 @@ struct HydroelasticateConfig {
     a->Visit(DRAKE_NVP(default_dynamic_friction));
     a->Visit(DRAKE_NVP(default_static_friction));
   }
-  /// If true, the hydroelasticate feature will be applied to scene graph model
+  /// If true, the default hydroelastic feature will be applied to scene graph model
   /// data when new contexts are created.
   bool enabled{false};
   /// Configures the minimum primitive geometry size (in meters) to consider
@@ -36,23 +36,23 @@ struct HydroelasticateConfig {
   /// setting.
   double minimum_primitive_size{1e-4};
   /// Configures the default hydroelastic modulus (in pascals) to use when
-  /// hydroelasticate is active.
+  /// default hydroelastic is active.
   double default_hydroelastic_modulus{1e7};
   /// Configures the default resolution hint (in meters) to use when
-  /// hydroelasticate is active.
+  /// default hydroelastic is active.
   double default_mesh_resolution_hint{0.01};
   /// Configures the default slab thickness (in meters) to use when
-  /// hydroelasticate is active. Only has an effect on half space geometry
+  /// default hydroelastic is active. Only has an effect on half space geometry
   /// elements.
   double default_slab_thickness{10.0};
   /// Configures the default dissipation (in seconds per meter) to use when
-  /// hydroelasticate is active.
+  /// default hydroelastic is active.
   double default_hunt_crossley_dissipation{1.25};
   /// Configures the default dynamic friction (dimensionless) to use when
-  /// hydroelasticate is active.
+  /// default hydroelastic is active.
   double default_dynamic_friction{0.5};
   /// Configures the default dynamic friction (dimensionless) to use when
-  /// hydroelasticate is active.
+  /// default hydroelastic is active.
   double default_static_friction{0.5};
 };
 
@@ -64,11 +64,11 @@ struct SceneGraphConfig {
   /// Refer to @ref yaml_serialization "YAML Serialization" for background.
   template <typename Archive>
   void Serialize(Archive* a) {
-    a->Visit(DRAKE_NVP(hydroelasticate));
+    a->Visit(DRAKE_NVP(default hydroelastic));
   }
 
-  /// Configures the SceneGraph hydroelasticate feature.
-  HydroelasticateConfig hydroelasticate{};
+  /// Configures the SceneGraph default hydroelastic feature.
+  DefaultHydroelasticConfig default_hydroelastic_config{};
 };
 
 }  // namespace geometry
