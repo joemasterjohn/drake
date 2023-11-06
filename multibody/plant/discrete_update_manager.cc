@@ -3,6 +3,7 @@
 #include <limits>
 #include <utility>
 
+#include "drake/common/profiler.h"
 #include "drake/multibody/plant/contact_properties.h"
 #include "drake/multibody/plant/deformable_driver.h"
 #include "drake/multibody/plant/deformable_model.h"
@@ -744,6 +745,8 @@ template <typename T>
 void DiscreteUpdateManager<T>::CalcContactKinematics(
     const systems::Context<T>& context,
     DiscreteContactData<ContactPairKinematics<T>>* result) const {
+  INSTRUMENT_FUNCTION("Computes contact kinematics (Jacobians)");
+
   plant().ValidateContext(context);
   DRAKE_DEMAND(result != nullptr);
   result->Clear();
@@ -888,6 +891,7 @@ template <typename T>
 void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
     const systems::Context<T>& context,
     DiscreteContactData<DiscreteContactPair<T>>* result) const {
+  INSTRUMENT_FUNCTION("Collects contact pairs");
   plant().ValidateContext(context);
   DRAKE_DEMAND(result != nullptr);
   result->Clear();

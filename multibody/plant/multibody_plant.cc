@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "drake/common/profiler.h"
 #include "drake/common/drake_throw.h"
 #include "drake/common/ssize.h"
 #include "drake/common/text_logging.h"
@@ -2412,6 +2413,7 @@ template <typename T>
 void MultibodyPlant<T>::CalcContactSurfaces(
     const drake::systems::Context<T>& context,
     std::vector<ContactSurface<T>>* contact_surfaces) const {
+  INSTRUMENT_FUNCTION("Calls QueryObject::ComputeContactSurfaces()");      
   this->ValidateContext(context);
   DRAKE_DEMAND(contact_surfaces != nullptr);
 

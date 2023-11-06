@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/profiler.h"
 #include "drake/common/default_scalars.h"
 #include "drake/common/extract_double.h"
 #include "drake/math/linear_solve.h"
@@ -104,6 +105,8 @@ template <>
 SapSolverStatus SapSolver<double>::SolveWithGuess(
     const SapContactProblem<double>& problem, const VectorX<double>& v_guess,
     SapSolverResults<double>* results) {
+  INSTRUMENT_FUNCTION("SAP's main entry point");
+
   using std::abs;
   using std::max;
 
@@ -473,6 +476,7 @@ std::pair<double, int> SapSolver<double>::PerformExactLineSearch(
     const systems::Context<double>& context,
     const SearchDirectionData& search_direction_data,
     systems::Context<double>* scratch) const {
+  INSTRUMENT_FUNCTION("Exact line search");
   DRAKE_DEMAND(parameters_.line_search_type ==
                SapSolverParameters::LineSearchType::kExact);
   DRAKE_DEMAND(scratch != nullptr);
@@ -612,6 +616,7 @@ MatrixX<T> SapSolver<T>::CalcDenseHessian(const Context<T>& context) const {
 
 template <typename T>
 std::unique_ptr<SuperNodalSolver> SapSolver<T>::MakeSuperNodalSolver() const {
+  INSTRUMENT_FUNCTION("Makes supernodal solver");
   if constexpr (std::is_same_v<T, double>) {
     const BlockSparseMatrix<T>& J = model_->constraints_bundle().J();
     switch (parameters_.linear_solver_type) {
@@ -678,6 +683,7 @@ template <typename T>
 void SapSolver<T>::CallSuperNodalSolver(const Context<T>& context,
                                         SuperNodalSolver* supernodal_solver,
                                         VectorX<T>* dv) const {
+  INSTRUMENT_FUNCTION("Updates G, factorizes and solves"); 
   if constexpr (std::is_same_v<T, double>) {
     UpdateSuperNodalSolver(context, supernodal_solver);
     if (!supernodal_solver->Factor()) {

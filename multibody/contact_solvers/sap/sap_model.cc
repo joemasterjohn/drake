@@ -3,6 +3,7 @@
 #include <memory>
 #include <utility>
 
+#include "drake/common/profiler.h"
 #include "drake/common/default_scalars.h"
 #include "drake/math/linear_solve.h"
 #include "drake/multibody/contact_solvers/block_sparse_matrix.h"
@@ -170,6 +171,7 @@ void SapModel<T>::SetVelocities(const VectorX<T>& v,
 template <typename T>
 void SapModel<T>::CalcConstraintVelocities(const Context<T>& context,
                                            VectorX<T>* vc) const {
+  INSTRUMENT_FUNCTION("vc = J * v");
   system_->ValidateContext(context);
   vc->resize(num_constraint_equations());
   const VectorX<T>& v = GetVelocities(context);
@@ -180,6 +182,7 @@ template <typename T>
 void SapModel<T>::CalcConstraintBundleDataCache(
     const systems::Context<T>& context,
     SapConstraintBundleDataCache* cache) const {
+  INSTRUMENT_FUNCTION("Updates all constraints's data");      
   system_->ValidateContext(context);
   const VectorX<T>& vc = EvalConstraintVelocities(context);
   constraints_bundle().CalcData(vc, &cache->bundle_data);
@@ -188,6 +191,7 @@ void SapModel<T>::CalcConstraintBundleDataCache(
 template <typename T>
 void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
                                     ImpulsesCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Compute impulses");
   // Impulses are computed as a side effect of updating the Hessian cache.
   // Therefore if the Hessian cache is up to date we do not need to recompute
   // the impulses but simply make a copy into the impulses cache.
@@ -212,6 +216,7 @@ void SapModel<T>::CalcImpulsesCache(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcMomentumGainCache(const Context<T>& context,
                                         MomentumGainCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("A * (v - v*)");
   system_->ValidateContext(context);
   cache->Resize(num_velocities());
   const VectorX<T>& v = GetVelocities(context);
@@ -223,6 +228,7 @@ void SapModel<T>::CalcMomentumGainCache(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcCostCache(const Context<T>& context,
                                 CostCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Calcs cost");
   system_->ValidateContext(context);
   const MomentumGainCache<T>& gain_cache = EvalMomentumGainCache(context);
   const VectorX<T>& velocity_gain = gain_cache.velocity_gain;
@@ -237,6 +243,7 @@ void SapModel<T>::CalcCostCache(const Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcGradientsCache(const systems::Context<T>& context,
                                      GradientsCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Evals stuff. Mostly Jᵀ⋅γ.");
   cache->Resize(num_velocities());
   const VectorX<T>& momentum_gain = EvalMomentumGain(context);  // = A⋅(v−v*)
   const VectorX<T>& gamma = EvalImpulses(context);
@@ -248,6 +255,7 @@ void SapModel<T>::CalcGradientsCache(const systems::Context<T>& context,
 template <typename T>
 void SapModel<T>::CalcHessianCache(const systems::Context<T>& context,
                                    HessianCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Computes γ and G");
   system_->ValidateContext(context);
   cache->Resize(num_constraints(), num_constraint_equations());
   const SapConstraintBundleData& bundle_data =

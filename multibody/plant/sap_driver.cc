@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "drake/common/profiler.h"
 #include "drake/common/unused.h"
 #include "drake/multibody/contact_solvers/contact_configuration.h"
 #include "drake/multibody/contact_solvers/contact_solver_utils.h"
@@ -194,6 +195,7 @@ void SapDriver<T>::CalcFreeMotionVelocities(const systems::Context<T>& context,
 template <typename T>
 std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     const systems::Context<T>& context, SapContactProblem<T>* problem) const {
+  INSTRUMENT_FUNCTION("Makes and adds contact constraints to the problem");
   DRAKE_DEMAND(problem != nullptr);
 
   // Parameters used by SAP to estimate regularization, see [Castro et al.,
@@ -749,6 +751,7 @@ void SapDriver<T>::AddFixedConstraints(
 template <typename T>
 void SapDriver<T>::CalcContactProblemCache(
     const systems::Context<T>& context, ContactProblemCache<T>* cache) const {
+  INSTRUMENT_FUNCTION("Builds ContactProblemCache.");
   std::vector<MatrixX<T>> A;
   CalcLinearDynamicsMatrix(context, &A);
   VectorX<T> v_star;
@@ -882,6 +885,8 @@ template <typename T>
 void SapDriver<T>::CalcSapSolverResults(
     const systems::Context<T>& context,
     SapSolverResults<T>* sap_results) const {
+  INSTRUMENT_FUNCTION("Evals problem and solves it");
+
   const ContactProblemCache<T>& contact_problem_cache =
       EvalContactProblemCache(context);
   const SapContactProblem<T>& sap_problem = *contact_problem_cache.sap_problem;
