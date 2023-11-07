@@ -35,6 +35,14 @@ class SchunkWsgController : public systems::Diagram<double> {
   // target.
   explicit SchunkWsgController(double kp = 2000.0, double ki = 0.0,
                                double kd = 5.0);
+
+};
+
+class SchunkWsgDesiredStateController : public systems::Diagram<double> {
+ public:
+  DRAKE_NO_COPY_NO_MOVE_NO_ASSIGN(SchunkWsgDesiredStateController)
+
+  explicit SchunkWsgDesiredStateController();
 };
 
 }  // namespace schunk_wsg

@@ -410,7 +410,7 @@ TEST_F(UrdfParserTest, MimicMismatchedJoint) {
       <joint name='joint1' type='revolute'>
         <parent link='parent'/>
         <child link='child1'/>
-        <mimic joint='joint0'/>
+        <mimic joint='joint0'/
       </joint>
     </robot>)""", ""), std::nullopt);
   EXPECT_THAT(TakeError(),

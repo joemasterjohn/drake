@@ -20,7 +20,7 @@ namespace {
 /// first).
 std::pair<double, double> RunWsgControllerTestStep(
     const lcmt_schunk_wsg_command& wsg_command, double wsg_position) {
-  SchunkWsgController dut;
+  SchunkWsgController dut{2000.0, 0.0, 5.0};
   std::unique_ptr<systems::Context<double>> context =
       dut.CreateDefaultContext();
   std::unique_ptr<systems::SystemOutput<double>> output = dut.AllocateOutput();
