@@ -81,6 +81,7 @@ drake_cc_library(
         ":sap_contact_problem",
         "//common:default_scalars",
         "//common:essential",
+        "//common:parallelism",
         "//multibody/contact_solvers:block_sparse_matrix",
     ],
 )

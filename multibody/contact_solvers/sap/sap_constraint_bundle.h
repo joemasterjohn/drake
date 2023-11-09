@@ -131,6 +131,7 @@ class SapConstraintBundle {
   BlockSparseMatrix<T> J_;
   // Constraint references in the order dictated by the ContactProblemGraph.
   std::vector<const SapConstraint<T>*> constraints_;
+  std::vector<int> constraint_start_;
 };
 
 }  // namespace internal
