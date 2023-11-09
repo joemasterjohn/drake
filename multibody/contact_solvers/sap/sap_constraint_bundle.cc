@@ -4,7 +4,12 @@
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/ssize.h"
+#include "drake/common/parallelism.h"
 #include "drake/multibody/contact_solvers/sap/contact_problem_graph.h"
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 namespace drake {
 namespace multibody {
@@ -25,11 +30,16 @@ SapConstraintBundle<T>::SapConstraintBundle(
   constraints_.reserve(problem->num_constraints());
 
   // Store constraints in the order specified by the graph, i.e. by clusters.
+  int constraint_start = 0;
+  constraint_start_.reserve(problem->num_constraints());
   for (const ContactProblemGraph::ConstraintCluster& e :
        problem->graph().clusters()) {
     for (int i : e.constraint_index()) {
       const SapConstraint<T>& c = problem->get_constraint(i);
       constraints_.push_back(&c);
+      constraint_start_.push_back(constraint_start);
+      const int ni = c.num_constraint_equations();
+      constraint_start += ni;
     }
   }
 
@@ -114,14 +124,16 @@ SapConstraintBundleData SapConstraintBundle<T>::MakeData(
     const T& time_step, const VectorX<T>& delassus_diagonal) const {
   DRAKE_DEMAND(delassus_diagonal.size() == num_constraint_equations());
   SapConstraintBundleData data;
-  data.reserve(num_constraints());
-  int constraint_start = 0;
+  data.resize(num_constraints());
+#if defined(_OPENMP)
+  const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for num_threads(parallelize.num_threads())
+#endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
-    const auto wi = delassus_diagonal.segment(constraint_start, ni);
-    data.emplace_back(c.MakeData(time_step, wi));
-    constraint_start += ni;
+    const auto wi = delassus_diagonal.segment(constraint_start_[i], ni);
+    data[i] = std::move(c.MakeData(time_step, wi));
   }
   return data;
 }
@@ -131,14 +143,16 @@ void SapConstraintBundle<T>::CalcData(
     const VectorX<T>& vc, SapConstraintBundleData* bundle_data) const {
   DRAKE_DEMAND(bundle_data != nullptr);
   DRAKE_DEMAND(ssize(*bundle_data) == num_constraints());
-  int constraint_start = 0;
+#if defined(_OPENMP)
+  const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for num_threads(parallelize.num_threads())
+#endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
-    const auto vc_i = vc.segment(constraint_start, ni);
+    const auto vc_i = vc.segment(constraint_start_[i], ni);
     AbstractValue& data = *(*bundle_data)[i];
     c.CalcData(vc_i, &data);
-    constraint_start += ni;
   }
 }
 
@@ -147,6 +161,10 @@ T SapConstraintBundle<T>::CalcCost(
     const SapConstraintBundleData& bundle_data) const {
   DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
   T cost = 0.0;
+#if defined(_OPENMP)
+  const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for num_threads(parallelize.num_threads())
+#endif  
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const AbstractValue& data = *bundle_data[i];
@@ -161,14 +179,16 @@ void SapConstraintBundle<T>::CalcImpulses(
   DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
   DRAKE_DEMAND(gamma != nullptr);
   DRAKE_DEMAND(gamma->size() == num_constraint_equations());
-  int constraint_start = 0;
+#if defined(_OPENMP)
+  const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for num_threads(parallelize.num_threads())
+#endif  
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
     const AbstractValue& data = *bundle_data[i];
-    auto gamma_i = gamma->segment(constraint_start, ni);
+    auto gamma_i = gamma->segment(constraint_start_[i], ni);
     c.CalcImpulse(data, &gamma_i);
-    constraint_start += ni;
   }
 }
 
@@ -182,16 +202,18 @@ void SapConstraintBundle<T>::CalcImpulsesAndConstraintsHessian(
   DRAKE_DEMAND(ssize(*G) == num_constraints());
 
   // The regularizer Hessian is G = d²ℓ/dvc² = dP/dy⋅R⁻¹.
-  int constraint_start = 0;
+#if defined(_OPENMP)
+  const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for num_threads(parallelize.num_threads())
+#endif  
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
     const AbstractValue& data = *bundle_data[i];
-    auto gamma_i = gamma->segment(constraint_start, ni);
+    auto gamma_i = gamma->segment(constraint_start_[i], ni);
     auto& Gi = (*G)[i];
     c.CalcImpulse(data, &gamma_i);
     c.CalcCostHessian(data, &Gi);
-    constraint_start += ni;
   }
 }
 
