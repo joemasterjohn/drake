@@ -53,7 +53,7 @@ DEFINE_double(
     "and no contact forces are displayed.  mbp_time_step must be >= 0.");
 
 // Visualization.
-DEFINE_bool(visualize, true, "Whether to visualize (true) or not (false).");
+DEFINE_bool(visualize, false, "Whether to visualize (true) or not (false).");
 DEFINE_bool(visualize_forces, false,
             "Whether to visualize forces (true) or not (false).");
 DEFINE_double(viz_period, 1.0 / 60.0, "Viz period.");
@@ -62,7 +62,7 @@ DEFINE_double(viz_period, 1.0 / 60.0, "Viz period.");
 DEFINE_string(discrete_contact_solver, "sap",
               "Discrete contact solver. Options are: 'tamsi', 'sap'");
 DEFINE_double(near_rigid_threshold, 1.0, "SAP near rigid threshold.");
-DEFINE_int32(grid_size, 2, "Grid size");
+DEFINE_int32(grid_size, 5, "Grid size");
 DEFINE_bool(use_hydro, true, "If true use hydro, otherwise point");
 
 using drake::geometry::CollisionFilterDeclaration;
@@ -224,18 +224,20 @@ int do_main() {
   fmt::print("Num velocities: {:d}\n", plant.num_velocities());
 
   // Publish contact results for visualization.
-  auto meshcat = std::make_shared<drake::geometry::Meshcat>();
+  std::shared_ptr<drake::geometry::Meshcat> meshcat{nullptr};
   if (FLAGS_visualize) {
+    meshcat = std::make_shared<drake::geometry::Meshcat>();
     drake::geometry::MeshcatVisualizerParams params;
     params.publish_period = FLAGS_viz_period;
     drake::geometry::MeshcatVisualizerd::AddToBuilder(
         &builder, scene_graph, meshcat, std::move(params));
-  }
-  if (FLAGS_visualize_forces) {
-    drake::multibody::meshcat::ContactVisualizerParams cparams;
-    cparams.newtons_per_meter = 60.0;
-    drake::multibody::meshcat::ContactVisualizerd::AddToBuilder(
-        &builder, plant, meshcat, std::move(cparams));
+
+    if (FLAGS_visualize_forces) {
+      drake::multibody::meshcat::ContactVisualizerParams cparams;
+      cparams.newtons_per_meter = 60.0;
+      drake::multibody::meshcat::ContactVisualizerd::AddToBuilder(
+          &builder, plant, meshcat, std::move(cparams));
+    }
   }
   auto diagram = builder.Build();
 
@@ -243,8 +245,8 @@ int do_main() {
   std::unique_ptr<systems::Context<double>> diagram_context =
       diagram->CreateDefaultContext();
   diagram->SetDefaultContext(diagram_context.get());
-  systems::Context<double>& plant_context =
-      diagram->GetMutableSubsystemContext(plant, diagram_context.get());
+  // systems::Context<double>& plant_context =
+  //     diagram->GetMutableSubsystemContext(plant, diagram_context.get());
 
   auto simulator =
       MakeSimulatorFromGflags(*diagram, std::move(diagram_context));
@@ -257,7 +259,7 @@ int do_main() {
     const systems::Context<double>& plant_ctx =
         plant.GetMyContextFromRoot(root_context);
     // Compute delta time and update previous time.
-    const double time = plant_ctx.get_time();
+    // const double time = plant_ctx.get_time();
     const auto& contact_results =
         plant.get_contact_results_output_port().Eval<ContactResults<double>>(
             plant_ctx);
@@ -278,7 +280,9 @@ int do_main() {
   }
 
   const double recording_frames_per_second = 1.0 / FLAGS_time_step;
-  meshcat->StartRecording(recording_frames_per_second);
+  if (FLAGS_visualize) {
+    meshcat->StartRecording(recording_frames_per_second);
+  }
   clock::time_point sim_start_time = clock::now();
   CALLGRIND_START_INSTRUMENTATION;
   simulator->AdvanceTo(FLAGS_simulation_time);
@@ -287,8 +291,10 @@ int do_main() {
   const double sim_time =
       std::chrono::duration<double>(sim_end_time - sim_start_time).count();
   std::cout << "AdvanceTo() time [sec]: " << sim_time << std::endl;
-  meshcat->StopRecording();
-  meshcat->PublishRecording();
+  if (FLAGS_visualize) {
+    meshcat->StopRecording();
+    meshcat->PublishRecording();
+  }
   std::cout << fmt::format("num_surfaces = {}\n", num_surfaces);
   std::cout << fmt::format("num_contacts = {}\n", nc);
 

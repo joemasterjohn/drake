@@ -127,7 +127,7 @@ SapConstraintBundleData SapConstraintBundle<T>::MakeData(
   data.resize(num_constraints());
 #if defined(_OPENMP)
   const Parallelism parallelize = Parallelism::Max();
-#pragma omp parallel for num_threads(parallelize.num_threads())
+#pragma omp parallel for shared(constraints_, delassus_diagonal, data) schedule(static) num_threads(parallelize.num_threads())
 #endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
@@ -145,7 +145,7 @@ void SapConstraintBundle<T>::CalcData(
   DRAKE_DEMAND(ssize(*bundle_data) == num_constraints());
 #if defined(_OPENMP)
   const Parallelism parallelize = Parallelism::Max();
-#pragma omp parallel for num_threads(parallelize.num_threads())
+#pragma omp parallel for shared(constraints_, vc, bundle_data) schedule(static) num_threads(parallelize.num_threads())
 #endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
@@ -160,17 +160,27 @@ template <typename T>
 T SapConstraintBundle<T>::CalcCost(
     const SapConstraintBundleData& bundle_data) const {
   DRAKE_DEMAND(ssize(bundle_data) == num_constraints());
-  T cost = 0.0;
+  if constexpr (std::is_same_v<T, double>) {
+    double cost = 0.0;
 #if defined(_OPENMP)
-  const Parallelism parallelize = Parallelism::Max();
-#pragma omp parallel for num_threads(parallelize.num_threads())
-#endif  
-  for (int i = 0; i < num_constraints(); ++i) {
-    const SapConstraint<T>& c = *constraints_[i];
-    const AbstractValue& data = *bundle_data[i];
-    cost += c.CalcCost(data);
+    const Parallelism parallelize = Parallelism::Max();
+#pragma omp parallel for shared(constraints_, bundle_data) reduction(+ : cost) schedule(static) num_threads(parallelize.num_threads())
+#endif
+    for (int i = 0; i < num_constraints(); ++i) {
+      const SapConstraint<T>& c = *constraints_[i];
+      const AbstractValue& data = *bundle_data[i];
+      cost += c.CalcCost(data);
+    }
+    return cost;
+  } else {
+    T cost = 0.0;
+    for (int i = 0; i < num_constraints(); ++i) {
+      const SapConstraint<T>& c = *constraints_[i];
+      const AbstractValue& data = *bundle_data[i];
+      cost += c.CalcCost(data);
+    }
+    return cost;
   }
-  return cost;
 }
 
 template <typename T>
@@ -181,8 +191,8 @@ void SapConstraintBundle<T>::CalcImpulses(
   DRAKE_DEMAND(gamma->size() == num_constraint_equations());
 #if defined(_OPENMP)
   const Parallelism parallelize = Parallelism::Max();
-#pragma omp parallel for num_threads(parallelize.num_threads())
-#endif  
+#pragma omp parallel for shared(constraints_, bundle_data, gamma) schedule(static) num_threads(parallelize.num_threads())
+#endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
@@ -204,8 +214,8 @@ void SapConstraintBundle<T>::CalcImpulsesAndConstraintsHessian(
   // The regularizer Hessian is G = d²ℓ/dvc² = dP/dy⋅R⁻¹.
 #if defined(_OPENMP)
   const Parallelism parallelize = Parallelism::Max();
-#pragma omp parallel for num_threads(parallelize.num_threads())
-#endif  
+#pragma omp parallel for shared(constraints_, bundle_data, gamma, G) schedule(static) num_threads(parallelize.num_threads())
+#endif
   for (int i = 0; i < num_constraints(); ++i) {
     const SapConstraint<T>& c = *constraints_[i];
     const int ni = c.num_constraint_equations();
