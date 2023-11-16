@@ -46,67 +46,23 @@ Vector3d CalcGradientWhenTouching(const fcl::CollisionObjectd& a,
   return Vector3d(kNan, kNan, kNan);
 }
 
-Vector3d FaceNormalIfStrictlyOnFace(const Vector3d& p_BQ,
-                                    const fcl::Boxd& box_B) {
+// Helper method to determine whether a point lies approximately (to internal
+// tolerance) on either a face, edge or vertex. To do so this method marks a
+// vector `n` with a 1 at index `i` if the point lies approximately on either
+// the positive or negative face of the box on dimension `i`. The sum of the
+// returned vector encodes whether the point is on a face (1), edge (2), vertex
+// (3) or none (0). The returned vector also encodes which face, edge or vertex
+// the point lies on (up to a sign).
+Vector3d PointOnBoxHelper(const Vector3d& p_BQ, const fcl::Boxd& box_B) {
   const Vector3d half_size = box_B.side / 2.0;
   const double kEps = 1e-14;
-  int count = 0;
-  using std::abs;
-  Vector3d candidate_direction(0, 0, 0);
-  for (int i = 0; i < 3; ++i) {
-    double diff = abs(half_size(i) - abs(p_BQ(i)));
-    if (diff <= kEps) {
-      ++count;
-      if (p_BQ(i) > 0) {
-        candidate_direction(i) = 1.0;
-      } else {
-        candidate_direction(i) = -1.0;
-      }
-    }
-  }
-  if (count == 1) {
-    return candidate_direction;
-  }
-  const double kNan = std::numeric_limits<double>::quiet_NaN();
-  return Vector3d(kNan, kNan, kNan);
-}
-
-int AxisIndexIfStrictlyOnEdge(const Eigen::Vector3d& p_BQ,
-                              const fcl::Boxd& box_B) {
-  const Vector3d half_size = box_B.side / 2.0;
-  const double kEps = 1e-14;
-  int count = 0;
-  using std::abs;
-  int candidate_axis = -2;
-  for (int i = 0; i < 3; ++i) {
-    double diff = abs(half_size(i) - abs(p_BQ(i)));
-    if (diff <= kEps) {
-      ++count;
-    } else {
-      candidate_axis = i;
-    }
-  }
-  if (count == 2) {
-    return candidate_axis;
-  }
-  return -1;
-}
-
-bool IsAtVertex(const Vector3d& p_BQ, const fcl::Boxd& box_B) {
-  const Vector3d half_size = box_B.side / 2.0;
-  const double kEps = 1e-14;
-  int count = 0;
+  Vector3d n{0.0, 0.0, 0.0};
   using std::abs;
   for (int i = 0; i < 3; ++i) {
     double diff = abs(half_size(i) - abs(p_BQ(i)));
-    if (diff <= kEps) {
-      ++count;
-    }
+    if (diff <= kEps) n(i) = 1.0;
   }
-  if (count == 3) {
-    return true;
-  }
-  return false;
+  return n;
 }
 
 std::pair<double, double> ProjectedMinMax(const fcl::Boxd& box_A,
@@ -158,23 +114,37 @@ Vector3d BoxBoxGradient(const fcl::Boxd& box_A, const fcl::Boxd& box_B,
   const double kEps = 1e-14;
   DRAKE_DEMAND((X_WA * p_ACa - X_WB * p_BCb).norm() < kEps);
 
+  const Vector3d v_A = PointOnBoxHelper(p_ACa, box_A);
+  const Vector3d v_B = PointOnBoxHelper(p_BCb, box_B);
+  double s_A = v_A.sum();
+  double s_B = v_B.sum();
+
+  DRAKE_ASSERT(s_A > 0 && s_A <= 3);
+  DRAKE_ASSERT(s_B > 0 && s_B <= 3);
+
   // Face-to-*. Use the face normal if a witness point is strictly inside
   // a face (but neither edge nor vertex).
-  const Vector3d normal_A = FaceNormalIfStrictlyOnFace(p_ACa, box_A);
-  if (!normal_A.array().isNaN().any()) {
+
+  // p_ACa is on a face of box_A, determine the sign of the face normal, and
+  // transform to world coordinates.
+  if (s_A == 1) {
+    const Vector3d normal_A = (v_A.dot(p_ACa) > 0 ? v_A : -v_A);
     return -(X_WA.rotation() * normal_A);
   }
-  const Vector3d normal_B = FaceNormalIfStrictlyOnFace(p_BCb, box_B);
-  if (!normal_B.array().isNaN().any()) {
+  // p_BCb is on a face of box_B, determine the sign of the face normal, and
+  // transform to world coordinates.
+  if (s_B == 1) {
+    // p_BCb is on a face of B
+    const Vector3d normal_B = (v_B.dot(p_BCb) > 0 ? v_B : -v_B);
     return X_WB.rotation() * normal_B;
   }
 
+  // The index of the non-zero entry determines the axis of the edge that either
+  // Ca or Cb lies on.
+  const int axis_index_A = (Vector3d::Ones() - v_A).dot(Vector3d(0, 1, 2));
+  const int axis_index_B = (Vector3d::Ones() - v_B).dot(Vector3d(0, 1, 2));
   // Edge-to-edge.
-  const int axis_index_A = AxisIndexIfStrictlyOnEdge(p_ACa, box_A);
-  const int axis_index_B = AxisIndexIfStrictlyOnEdge(p_BCb, box_B);
-  const bool Ca_is_strictly_on_edge = (axis_index_A != -1);
-  const bool Cb_is_strictly_on_edge = (axis_index_B != -1);
-  if (Ca_is_strictly_on_edge && Cb_is_strictly_on_edge) {
+  if (s_A == 2 && s_B == 2) {
     const Vector3d cross_product_W =
         X_WA.rotation()
             .col(axis_index_A)
@@ -200,8 +170,8 @@ Vector3d BoxBoxGradient(const fcl::Boxd& box_A, const fcl::Boxd& box_B,
   // Edge-vertex. An edge in Box A touches a vertex in Box B. A separating
   // plane passes through the edge in Box A and one of the edges incident
   // to the vertex in Box B.
-  const bool Cb_is_at_a_vertex = IsAtVertex(p_BCb, box_B);
-  if (Ca_is_strictly_on_edge && Cb_is_at_a_vertex) {
+  // Ca is strictly on an edge and Cb is strictly on a vertex.
+  if (s_A == 2 && s_B == 3) {
     const Vector3d edge_vector_A_W = X_WA.rotation().col(axis_index_A);
     const Vector3d nhat_BA_W =
         MakeSeparatingVector(box_A, box_B, X_WA, X_WB,
@@ -212,8 +182,8 @@ Vector3d BoxBoxGradient(const fcl::Boxd& box_A, const fcl::Boxd& box_B,
     return nhat_BA_W;
   }
   // Vertex-edge. This is the symmetric case of the above case.
-  const bool Ca_is_at_a_vertex = IsAtVertex(p_ACa, box_A);
-  if (Cb_is_strictly_on_edge && Ca_is_at_a_vertex) {
+  // Ca is strictly on a vertex and Cb is strictly on an edge.
+  if (s_A == 3 && s_B == 2) {
     const Vector3d edge_vector_B_W = X_WB.rotation().col(axis_index_B);
     const Vector3d nhat_BA_W =
         MakeSeparatingVector(box_A, box_B, X_WA, X_WB,
@@ -225,7 +195,7 @@ Vector3d BoxBoxGradient(const fcl::Boxd& box_A, const fcl::Boxd& box_B,
   }
 
   // Vertex-vertex.
-  DRAKE_ASSERT(Ca_is_at_a_vertex && Cb_is_at_a_vertex);
+  DRAKE_ASSERT(s_A == 3 && s_B == 3);
   // This is the special case of vertex-vertex and the below case is the
   // general one.
   Vector3d nhat_BA_W = MakeSeparatingVector(

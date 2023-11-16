@@ -37,40 +37,15 @@ Eigen::Vector3d CalcGradientWhenTouching(const fcl::CollisionObjectd& a,
                                          const Eigen::Vector3d& p_ACa,
                                          const Eigen::Vector3d& p_BCb);
 
-/* Returns an outward face normal of box_B if the query point Q is strictly
- on a face; otherwise, returns a Vector3d of NaN. Q is strictly on a face
- when it is on the face but not on an edge or a vertex. It uses an internal
- tolerance.
-
- @param p_BQ   The position of the query point Q measured and expressed in
-               frame B of the box.
- @param box_B  The box expressed in frame B.
-
- @return An outward face normal of the box expressed in frame B of the box,
-         which could be ±Vector3d::UnitX(), ±Vector3d::UnitY(), or
-         ±Vector3d::UnitZ(). Furthermore, it could be Vector3d of NaN if
-         the query point is not strictly on a face of the box. */
-Eigen::Vector3d FaceNormalIfStrictlyOnFace(const Eigen::Vector3d& p_BQ,
-                                           const fcl::Boxd& box_B);
-
-/* Returns an axis index i (0, 1, or 2 for X, Y, or Z) of box_B if the query
- point Q is strictly on an edge of box_B parallel to the i-th axis; otherwise,
- returns -1.  Q is strictly on an edge when it is on the edge but not at the
- end points of the edge.  It uses an internal tolerance.
-
- @param p_BQ   The position of the query point Q measured and expressed in
-               frame B of the box.
- @param box_B  The box expressed in frame B. */
-int AxisIndexIfStrictlyOnEdge(const Eigen::Vector3d& p_BQ,
-                              const fcl::Boxd& box_B);
-
-/* Returns true if the query point Q is at a vertex of the box.  It uses an
- internal tolerance.
-
- @param p_BQ   The position of the query point Q measured and expressed in
-               frame B of the box.
- @param box_B  The box expressed in frame B. */
-bool IsAtVertex(const Eigen::Vector3d& p_BQ, const fcl::Boxd& box_B);
+/* Helper method to determine whether a point `p_BQ` lies approximately (to
+ internal tolerance) on either a face, edge or vertex of `box_B`. To do so this
+ method marks a vector `n` with a 1 at index `i` if the point lies approximately
+ on either the positive or negative face of the box on dimension `i`. The sum of
+ the returned vector encodes whether the point is on a face (1), edge (2),
+ vertex (3) or none (0). The returned vector also encodes which face, edge or
+ vertex the point lies on (up to a sign). */
+Eigen::Vector3d PointOnBoxHelper(const Eigen::Vector3d& p_BQ,
+                                 const fcl::Boxd& box_B);
 
 /* Returns the projected interval [min, max] of a box on a line through
  World's origin.

@@ -65,78 +65,61 @@ GTEST_TEST(CalcGradientWhenTouching, box_touches_box) {
             -Vector3d::UnitX());
 }
 
-GTEST_TEST(PointInBox, FaceNormalIfStrictlyOnFace) {
+void PointOnBoxHelperTester(const fcl::Boxd box_B, const Vector3d p_BCb,
+                            int expected_sum,
+                            std::optional<int> expected_axis_index,
+                            std::optional<const Vector3d> expected_normal) {
+  const Vector3d v_B = PointOnBoxHelper(p_BCb, box_B);
+  double s_B = v_B.sum();
+
+  // Check the expected encoding sum.
+  EXPECT_EQ(s_B, expected_sum);
+
+  // If strictly on a face, check the expected normal.
+  if (s_B == 1) {
+    const Vector3d normal_B = (v_B.dot(p_BCb) > 0 ? v_B : -v_B);
+    ASSERT_TRUE(expected_normal.has_value());
+    EXPECT_EQ(normal_B, expected_normal.value());
+  }
+
+  // If strictly on an edge, check the expected axis index.
+  if (s_B == 2) {
+    const int axis_index_B = (Vector3d::Ones() - v_B).dot(Vector3d(0, 1, 2));
+    ASSERT_TRUE(expected_axis_index.has_value());
+    EXPECT_EQ(axis_index_B, expected_axis_index.value());
+  }
+}
+
+GTEST_TEST(PointInBox, PointOnBoxHelper) {
   // The box spans [-1,1]x[-2,2]x[-4,4].
   const fcl::Boxd box_B(2, 4, 8);
 
-  // Test some representative cases but not all possible cases.
+  // This point is in the interior of the box.
+  PointOnBoxHelperTester(box_B, Vector3d(0.01, -0.02, 0.03), 0, {}, {});
+  // This point is outside the box.
+  PointOnBoxHelperTester(box_B, Vector3d(10, 10, 10), 0, {}, {});
+
   // This point is strictly on -X face of the box.
-  EXPECT_EQ(FaceNormalIfStrictlyOnFace(Vector3d(-1, 0.02, 0.03), box_B),
-            -Vector3d::UnitX());
+  PointOnBoxHelperTester(box_B, Vector3d(-1, 0.02, 0.03), 1, {},
+                         -Vector3d::UnitX());
   // This point is strictly on +Y face of the box.
-  EXPECT_EQ(FaceNormalIfStrictlyOnFace(Vector3d(0.01, 2, -0.03), box_B),
-            Vector3d::UnitY());
+  PointOnBoxHelperTester(box_B, Vector3d(0.01, 2, -0.03), 1, {},
+                         Vector3d::UnitY());
   // This point is strictly on -Z face of the box.
-  EXPECT_EQ(FaceNormalIfStrictlyOnFace(Vector3d(0.01, -0.02, -4), box_B),
-            -Vector3d::UnitZ());
-  // This point is in the interior of the box.
-  EXPECT_TRUE(FaceNormalIfStrictlyOnFace(Vector3d(0.01, -0.02, 0.03), box_B)
-                  .array()
-                  .isNaN()
-                  .any());
-  // This point is outside the box.
-  EXPECT_TRUE(FaceNormalIfStrictlyOnFace(Vector3d(10, 10, 10), box_B)
-                  .array()
-                  .isNaN()
-                  .any());
-  // This point is on an edge parallel to X-axis of the box.
-  EXPECT_TRUE(FaceNormalIfStrictlyOnFace(Vector3d(0.01, -2, 4), box_B)
-                  .array()
-                  .isNaN()
-                  .any());
-  // This point is at a vertex of the box.
-  EXPECT_TRUE(FaceNormalIfStrictlyOnFace(Vector3d(1, -2, 4), box_B)
-                  .array()
-                  .isNaN()
-                  .any());
-}
+  PointOnBoxHelperTester(box_B, Vector3d(0.01, -0.02, -4), 1, {},
+                         -Vector3d::UnitZ());
 
-GTEST_TEST(PointInBox, AxisIndexIfStrictlyOnEdge) {
-  // The box spans [-1,1]x[-2,2]x[-4,4].
-  const fcl::Boxd box_B(2, 4, 8);
-
-  // Test some representative cases but not all possible cases.
   // This point is on an edge parallel to X-axis of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(0.1, 2, -4), box_B), 0);
+  PointOnBoxHelperTester(box_B, Vector3d(0.1, 2, -4), 2, 0, {});
   // This point is on an edge parallel to Y-axis of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(-1, 0.1, 4), box_B), 1);
+  PointOnBoxHelperTester(box_B, Vector3d(-1, 0.1, 4), 2, 1, {});
   // This point is on an edge parallel to Z-axis of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(1, -2, 0.1), box_B), 2);
-  // This point is in the interior of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(0.1, -0.2, 0.3), box_B), -1);
-  // This point is outside the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(10, 10, 10), box_B), -1);
-  // This point is in the middle of +Z face of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(0, 0, 4), box_B), -1);
-  // This point is at a vertex of the box.
-  EXPECT_EQ(AxisIndexIfStrictlyOnEdge(Vector3d(-1, -2, -4), box_B), -1);
-}
+  PointOnBoxHelperTester(box_B, Vector3d(1, -2, 0.1), 2, 2, {});
 
-GTEST_TEST(PointInBox, IsAtVertex) {
-  // The box spans [-1,1]x[-2,2]x[-4,4].
-  const fcl::Boxd box_B(2, 4, 8);
-
-  // Test some representative cases but not all possible cases.
   // The point is at a vertex of the box.
-  EXPECT_TRUE(IsAtVertex(Vector3d(1, 2, 4), box_B));
-  // The point is in the middle of an edge parallel to X axis.
-  EXPECT_FALSE(IsAtVertex(Vector3d(0, 2, 4), box_B));
-  // The point is at the center of +Z face.
-  EXPECT_FALSE(IsAtVertex(Vector3d(0, 0, 4), box_B));
-  // The point is at the center of the box.
-  EXPECT_FALSE(IsAtVertex(Vector3d(0, 0, 0), box_B));
-  // The point is outside the box.
-  EXPECT_FALSE(IsAtVertex(Vector3d(10, 10, 10), box_B));
+  PointOnBoxHelperTester(box_B, Vector3d(1, 2, 4), 3, {}, {});
+  // The point is at a vertex of the box.
+  PointOnBoxHelperTester(box_B, Vector3d(-1, 2, -4), 3, {}, {});
 }
 
 GTEST_TEST(SeparatingAxis, ProjectedMinMax) {
