@@ -529,6 +529,7 @@ drake_cc_library(
     srcs = ["make_mesh_field.cc"],
     hdrs = ["make_mesh_field.h"],
     deps = [
+        "//common:parallelism",
         ":calc_distance_to_surface_mesh",
         ":mesh_field",
         ":triangle_surface_mesh",

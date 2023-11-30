@@ -40,7 +40,8 @@ TriangleSurfaceMesh<double> ConvertVolumeToSurfaceMeshDouble(
 
 template <typename T>
 VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
-    const VolumeMesh<T>* mesh_M, const T& hydroelastic_modulus) {
+    const VolumeMesh<T>* mesh_M, const T& hydroelastic_modulus,
+    const Parallelism parallelize) {
   DRAKE_DEMAND(hydroelastic_modulus > T(0));
   DRAKE_DEMAND(mesh_M != nullptr);
   // The subscript _d is for the scalar type double.
@@ -51,19 +52,21 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
   //  cause a vertex on the boundary to have a non-zero value. Consider
   //  initializing pressure_values to zeros and skip the computation for
   //  boundary vertices.
-  std::vector<T> pressure_values;
-  T max_value(std::numeric_limits<double>::lowest());
+  std::vector<T> pressure_values(mesh_M->num_vertices());
+  double max_value = std::numeric_limits<double>::lowest();
   // First round, it's actually unsigned distance, not pressure values yet.
-  for (const Vector3<T>& p_MV : mesh_M->vertices()) {
-    Vector3<double> p_MV_d = ExtractDoubleOrThrow(p_MV);
-    T pressure(internal::CalcDistanceToSurfaceMesh(p_MV_d, surface_d));
-    pressure_values.emplace_back(pressure);
-    if (max_value < pressure) {
-      max_value = pressure;
-    }
+  [[maybe_unused]] const int num_threads = parallelize.num_threads();
+#if defined(_OPENMP)
+#pragma omp parallel for num_threads(num_threads) reduction(max:max_value)
+#endif
+  for (int i = 0; i < mesh_M->num_vertices(); ++i) {
+    const Vector3<double> p_MV_d = ExtractDoubleOrThrow(mesh_M->vertex(i));
+    const double pressure(internal::CalcDistanceToSurfaceMesh(p_MV_d, surface_d));
+    pressure_values[i] = pressure;
+    max_value = (max_value > pressure ? max_value : pressure);
   }
 
-  if (max_value <= T(0)) {
+  if (max_value <= 0) {
     throw std::runtime_error(
         "MakeVolumeMeshPressureField(): "
         "the computed max distance to boundary among "

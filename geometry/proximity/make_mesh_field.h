@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drake/common/parallelism.h"
 #include "drake/geometry/proximity/volume_mesh.h"
 #include "drake/geometry/proximity/volume_mesh_field.h"
 
@@ -50,7 +51,8 @@ namespace internal {
  */
 template <typename T>
 VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
-    const VolumeMesh<T>* mesh_M, const T& hydroelastic_modulus);
+    const VolumeMesh<T>* mesh_M, const T& hydroelastic_modulus,
+    const Parallelism parallelize);
 
 }  // namespace internal
 }  // namespace geometry

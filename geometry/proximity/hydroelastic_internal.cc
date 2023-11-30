@@ -432,9 +432,13 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 
   const double hydroelastic_modulus =
       validator.Extract(props, kHydroGroup, kElastic);
-
+#if defined(_OPENMP)
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus));
+      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus, true));
+#else
+  auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus, false));
+#endif
 
   return SoftGeometry(SoftMesh(std::move(mesh), std::move(pressure)));
 }
