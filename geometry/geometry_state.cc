@@ -694,6 +694,28 @@ GeometryState<T>::maybe_get_hydroelastic_mesh(GeometryId geometry_id) const {
 }
 
 template <typename T>
+std::variant<std::monostate, const VolumeMeshFieldLinear<double, double>*>
+GeometryState<T>::maybe_get_hydroelastic_mesh_field(
+    GeometryId geometry_id) const {
+  const auto& hydro_geometries = geometry_engine_->hydroelastic_geometries();
+  switch (hydro_geometries.hydroelastic_type(geometry_id)) {
+    case HydroelasticType::kUndefined:
+      break;
+    case HydroelasticType::kRigid: {
+      break;
+    }
+    case HydroelasticType::kSoft: {
+      const auto& soft = hydro_geometries.soft_geometry(geometry_id);
+      if (!soft.is_half_space()) {
+        return &soft.pressure_field();
+      }
+      break;
+    }
+  }
+  return {};
+}
+
+template <typename T>
 const ProximityProperties* GeometryState<T>::GetProximityProperties(
     GeometryId id) const {
   const InternalGeometry* geometry = GetGeometry(id);

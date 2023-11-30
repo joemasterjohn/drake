@@ -17,6 +17,7 @@
 #include "drake/geometry/proximity/polygon_surface_mesh.h"
 #include "drake/geometry/proximity/triangle_surface_mesh.h"
 #include "drake/geometry/proximity/volume_mesh.h"
+#include "drake/geometry/proximity/volume_mesh_field.h"
 #include "drake/geometry/render/render_mesh.h"
 #include "drake/geometry/shape_specification.h"
 
@@ -342,6 +343,9 @@ class SceneGraphInspector {
   std::variant<std::monostate, const TriangleSurfaceMesh<double>*,
                const VolumeMesh<double>*>
   maybe_get_hydroelastic_mesh(GeometryId geometry_id) const;
+
+  std::variant<std::monostate, const VolumeMeshFieldLinear<double, double>*>
+  maybe_get_hydroelastic_mesh_field(GeometryId geometry_id) const;
 
   /** Return a pointer to the const properties indicated by `role` of the
    geometry with the given `geometry_id`.

@@ -390,6 +390,7 @@ drake_cc_library(
         ":tessellation_strategy",
         ":triangle_surface_mesh",
         ":volume_mesh",
+        ":volume_mesh_refiner",
         "//common:copyable_unique_ptr",
         "//common:essential",
         "//geometry:geometry_ids",
@@ -584,6 +585,7 @@ drake_cc_library(
     srcs = ["make_mesh_field.cc"],
     hdrs = ["make_mesh_field.h"],
     deps = [
+        "//common:parallelism",
         ":calc_distance_to_surface_mesh",
         ":mesh_field",
         ":triangle_surface_mesh",
@@ -948,6 +950,19 @@ drake_cc_binary(
         "//common:add_text_logging_gflags",
         "@gflags",
     ],
+)
+
+drake_cc_binary(
+    name = "vtk_mesh_writer",
+    srcs = ["test/vtk_mesh_writer.cc"],
+    deps = [
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//geometry:scene_graph_inspector",
+        "//common:essential",
+        ":mesh_to_vtk",
+        "@gflags",
+    ]
 )
 
 drake_cc_googletest(

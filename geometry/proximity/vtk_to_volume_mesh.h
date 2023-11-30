@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "drake/geometry/proximity/volume_mesh.h"
 
@@ -47,7 +48,8 @@ namespace internal {
 VolumeMesh<double> ReadVtkToVolumeMesh(const std::string& filename,
                                        double scale = 1.0);
 
-//@}
+std::vector<double> ReadVtkToPressureValues(const std::string& filename);
+  //@}
 
 }  // namespace internal
 }  // namespace geometry

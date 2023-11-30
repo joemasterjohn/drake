@@ -14,5 +14,11 @@ CELLS 1 5
 CELL_TYPES 1
 10
 
-
+POINT_DATA 4
+SCALARS Pressure[Pa] double 1
+LOOKUP_TABLE default
+1.0
+2.0
+3.0
+4.0
 

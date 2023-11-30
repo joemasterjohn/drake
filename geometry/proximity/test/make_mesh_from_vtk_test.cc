@@ -1,5 +1,6 @@
 #include "drake/geometry/proximity/make_mesh_from_vtk.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "drake/common/find_resource.h"
@@ -71,6 +72,16 @@ GTEST_TEST(MakeVolumeMeshFromVtkTest, NegativeVolumeThrow) {
       "MakeVolumeMeshFromVtk.* tetrahedron.*"
       "with vertices .* has non-positive volume, "
       "so you might want to switch two consecutive vertices.");
+}
+
+GTEST_TEST(MakePressureFromVtkTest, SimplePressureValues) {
+  const Mesh mesh_specification(
+      FindResourceOrThrow("drake/geometry/test/one_tetrahedron.vtk"));
+
+  std::vector<double> pressure =
+      MakePressureFromVtk<double>(mesh_specification);
+
+  EXPECT_THAT(pressure, testing::ElementsAre(1, 2, 3, 4));
 }
 
 }  // namespace

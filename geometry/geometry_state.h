@@ -341,6 +341,11 @@ class GeometryState {
                const VolumeMesh<double>*>
   maybe_get_hydroelastic_mesh(GeometryId geometry_id) const;
 
+  /** Implementation of
+   SceneGraphInspector::maybe_get_hydroelastic_mesh_field().  */
+  std::variant<std::monostate, const VolumeMeshFieldLinear<double, double>*>
+  maybe_get_hydroelastic_mesh_field(GeometryId geometry_id) const;
+
   /** Implementation of SceneGraphInspector::GetProximityProperties().  */
   const ProximityProperties* GetProximityProperties(GeometryId id) const;
 

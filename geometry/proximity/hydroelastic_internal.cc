@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 
+#include "drake/common/ssize.h"
 #include "drake/geometry/proximity/make_box_field.h"
 #include "drake/geometry/proximity/make_box_mesh.h"
 #include "drake/geometry/proximity/make_capsule_field.h"
@@ -23,6 +24,7 @@
 #include "drake/geometry/proximity/obj_to_surface_mesh.h"
 #include "drake/geometry/proximity/polygon_to_triangle_mesh.h"
 #include "drake/geometry/proximity/tessellation_strategy.h"
+#include "drake/geometry/proximity/volume_mesh_refiner.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 
 namespace drake {
@@ -458,11 +460,10 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
     const Mesh& mesh_specification, const ProximityProperties& props) {
   PositiveDouble validator("Mesh", "soft");
 
-  const double hydroelastic_modulus =
-      validator.Extract(props, kHydroGroup, kElastic);
-
   std::unique_ptr<VolumeMesh<double>> mesh;
   std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure;
+  const double hydroelastic_modulus =
+      validator.Extract(props, kHydroGroup, kElastic);
 
   if (mesh_specification.extension() == ".vtk") {
     // If they've explicitly provided a .vtk file, we'll treat it as it is a
@@ -470,8 +471,31 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
     mesh = make_unique<VolumeMesh<double>>(
         MakeVolumeMeshFromVtk<double>(mesh_specification));
 
+    // If the .vtk file already contains pressure values, defer to those loaded
+    // from file.
+    std::vector<double> pressure_values =
+        MakePressureFromVtk<double>(mesh_specification);
+    if (ssize(pressure_values) == mesh->num_vertices()) {
+      auto mesh_field = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+          std::move(pressure_values), mesh.get());
+      return SoftGeometry(SoftMesh(std::move(mesh), std::move(mesh_field)));
+    }
+
+    // Refine the mesh.
+    VolumeMeshRefiner refiner(*mesh);
+    auto refined_mesh = make_unique<VolumeMesh<double>>(refiner.Refine());
+
+#if defined(_OPENMP)
     pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-        MakeVolumeMeshPressureField(mesh.get(), hydroelastic_modulus));
+        MakeVolumeMeshPressureField(refined_mesh.get(), hydroelastic_modulus,
+                                    true));
+#else
+    pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+        MakeVolumeMeshPressureField(refined_mesh.get(), hydroelastic_modulus,
+                                    false));
+#endif
+
+    return SoftGeometry(SoftMesh(std::move(refined_mesh), std::move(pressure)));
   } else {
     // Otherwise, we'll create a compliant representation of its convex hull.
     const TriangleSurfaceMesh<double> surface_mesh =
@@ -481,9 +505,8 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
 
     pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
         MakeConvexPressureField(mesh.get(), hydroelastic_modulus));
+    return SoftGeometry(SoftMesh(std::move(mesh), std::move(pressure)));
   }
-
-  return SoftGeometry(SoftMesh(std::move(mesh), std::move(pressure)));
 }
 
 }  // namespace hydroelastic
