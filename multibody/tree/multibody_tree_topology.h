@@ -478,7 +478,7 @@ class MultibodyTreeTopology {
   }
 
   // Returns the number of mobilized bodies (BodyNodes). Currently this is
-  // restricted to being equal to the number of user-supplied Body objects.
+  // restricted to being equal to the number of user-supplied RigidBody objects.
   // TODO(sherm1) Relax this restriction -- the number of mobilized bodies can
   //  differ from the number of user-provided links.
   int num_mobods() const {

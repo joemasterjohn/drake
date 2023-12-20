@@ -121,7 +121,7 @@ const double kPadMinorRadius = 6e-3;   // 6 mm.
 // @param[in] pad_offset the ring offset along the x-axis in the finger
 // coordinate frame, i.e., how far the ring protrudes from the center of the
 // finger.
-// @param[in] finger the Body representing the finger
+// @param[in] finger the RigidBody representing the finger
 void AddGripperPads(MultibodyPlant<double>* plant, const double pad_offset,
                     const RigidBody<double>& finger) {
   const int sample_count = FLAGS_ring_samples;

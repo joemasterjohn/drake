@@ -129,35 +129,24 @@ void VerifyModelBasics(const MultibodyTree<T>& model) {
   // Get links by name.
   for (const std::string& link_name : kLinkNames) {
     drake::test::LimitMalloc guard;
-    const RigidBody<T>& link = model.GetBodyByName(link_name);
-    EXPECT_EQ(link.name(), link_name);
-  }
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      model.GetBodyByName(kInvalidName),
-      ".*There is no Body named .*valid names in model instance "
-      "'WorldModelInstance' are: world; valid names in model instance "
-      "'DefaultModelInstance' are: iiwa_link_1, iiwa_link_2.*");
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      model.GetBodyByName(kLinkNames[0], world_model_instance()),
-      ".*There is no Body.*but one does exist in other model instances.*");
-
-  // Test that calling GetBodyByName() with an invalid ModelInstanceIndex
-  // throws.
-  const ModelInstanceIndex kInvalidIndex(1<<30);
-  DRAKE_EXPECT_THROWS_MESSAGE(
-      model.GetBodyByName(kLinkNames[0], kInvalidIndex),
-      ".*There is no model instance.*in the model.*");
-
-  // Test we can also retrieve links as RigidBody objects.
-  for (const std::string& link_name : kLinkNames) {
-    drake::test::LimitMalloc guard;
     const RigidBody<T>& link = model.GetRigidBodyByName(link_name);
     EXPECT_EQ(link.name(), link_name);
   }
   DRAKE_EXPECT_THROWS_MESSAGE(
       model.GetRigidBodyByName(kInvalidName),
-      ".*There is no Body named .*valid names in model instance "
-      "'DefaultModelInstance' are.* iiwa_link_1.*");
+      ".*There is no RigidBody named .*valid names in model instance "
+      "'WorldModelInstance' are: world; valid names in model instance "
+      "'DefaultModelInstance' are: iiwa_link_1, iiwa_link_2.*");
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      model.GetRigidBodyByName(kLinkNames[0], world_model_instance()),
+      ".*There is no RigidBody.*but one does exist in other model instances.*");
+
+  // Test that calling GetRigidBodyByName() with an invalid ModelInstanceIndex
+  // throws.
+  const ModelInstanceIndex kInvalidIndex(1<<30);
+  DRAKE_EXPECT_THROWS_MESSAGE(
+      model.GetRigidBodyByName(kLinkNames[0], kInvalidIndex),
+      ".*There is no model instance.*in the model.*");
 
   // Get frames by name.
   for (const std::string& frame_name : kFrameNames) {
@@ -250,7 +239,7 @@ GTEST_TEST(MultibodyTree, VerifyModelBasics) {
   // model. This is not allowed and an exception should be thrown.
   DRAKE_EXPECT_THROWS_MESSAGE(
       model->AddFrame<FixedOffsetFrame>("iiwa_link_5",
-                                        model->GetBodyByName("iiwa_link_1"),
+                                        model->GetRigidBodyByName("iiwa_link_1"),
                                         RigidTransform<double>()),
       ".* already contains a frame named 'iiwa_link_5'. "
       "Frame names must be unique within a given model.");
@@ -261,7 +250,7 @@ GTEST_TEST(MultibodyTree, VerifyModelBasics) {
       model->AddJoint<RevoluteJoint>(
           "iiwa_joint_4",
           model->world_body(), std::nullopt,
-          model->GetBodyByName("iiwa_link_5"), std::nullopt,
+          model->GetRigidBodyByName("iiwa_link_5"), std::nullopt,
           Vector3<double>::UnitZ()),
       ".* already contains a joint named 'iiwa_joint_4'. "
       "Joint names must be unique within a given model.");
@@ -293,8 +282,8 @@ GTEST_TEST(MultibodyTree, EmptyGetElementByName) {
   const std::string kInvalidName = "InvalidName";
 
   DRAKE_EXPECT_THROWS_MESSAGE(
-      model.GetBodyByName(kInvalidName),
-      ".*There is no Body named .*valid names in model instance "
+      model.GetRigidBodyByName(kInvalidName),
+      ".*There is no RigidBody named .*valid names in model instance "
       "'WorldModelInstance' are.* world.*");
   DRAKE_EXPECT_THROWS_MESSAGE(
       model.GetFrameByName(kInvalidName),
@@ -340,9 +329,9 @@ GTEST_TEST(MultibodyTree, RetrievingAmbiguousNames) {
 
   // Accessing by name throws, unless we specify the intended model instance.
   DRAKE_EXPECT_THROWS_MESSAGE(
-      model->GetBodyByName(link_name),
-      ".*Body.*appears in multiple model instances.*disambiguate.*");
-  EXPECT_NO_THROW(model->GetBodyByName(link_name, default_model_instance()));
+      model->GetRigidBodyByName(link_name),
+      ".*RigidBody.*appears in multiple model instances.*disambiguate.*");
+  EXPECT_NO_THROW(model->GetRigidBodyByName(link_name, default_model_instance()));
 }
 
 // MBPlant provides most of the testing for MBTreeSystem. Here we just want
@@ -403,7 +392,7 @@ class KukaIiwaModelTests : public ::testing::Test {
           false /* do not finalize model yet */, gravity_);
 
       // Keep pointers to the modeling elements.
-      end_effector_link_ = &tree->GetBodyByName("iiwa_link_7");
+      end_effector_link_ = &tree->GetRigidBodyByName("iiwa_link_7");
       joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_1"));
       joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_2"));
       joints_.push_back(&tree->GetJointByName<RevoluteJoint>("iiwa_joint_3"));
@@ -1445,9 +1434,9 @@ TEST_F(KukaIiwaModelTests, CalcJacobianSpatialVelocityC) {
   }
 
   // Three arbitrary frames on the robot.
-  const RigidBody<double>& link3 = tree().GetBodyByName("iiwa_link_3");
-  const RigidBody<double>& link5 = tree().GetBodyByName("iiwa_link_5");
-  const RigidBody<double>& link7 = tree().GetBodyByName("iiwa_link_7");
+  const RigidBody<double>& link3 = tree().GetRigidBodyByName("iiwa_link_3");
+  const RigidBody<double>& link5 = tree().GetRigidBodyByName("iiwa_link_5");
+  const RigidBody<double>& link7 = tree().GetRigidBodyByName("iiwa_link_7");
 
   // An arbitrary point Q in the end effector link 7.
   const Vector3d p_L7Q = Vector3d(0.2, -0.1, 0.5);

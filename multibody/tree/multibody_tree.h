@@ -757,13 +757,6 @@ class MultibodyTree {
   bool HasModelInstanceNamed(std::string_view name) const;
   // @}
 
-  // See MultibodyPlant method.
-  const RigidBody<T>& GetBodyByName(std::string_view name) const;
-
-  // See MultibodyPlant method.
-  const RigidBody<T>& GetBodyByName(
-      std::string_view name, ModelInstanceIndex model_instance) const;
-
   // Returns a list of body indices associated with `model_instance`.
   std::vector<BodyIndex> GetBodyIndices(ModelInstanceIndex model_instance)
   const;

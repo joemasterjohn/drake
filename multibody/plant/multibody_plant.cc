@@ -3408,8 +3408,8 @@ void MultibodyPlant<T>::CalcFramePoseOutput(const Context<T>& context,
   // NOTE: The body index to frame id map *always* includes the world body but
   // the world body does *not* get reported in the frame poses; only dynamic
   // frames do.
-  // TODO(amcastro-tri): Make use of Body::EvalPoseInWorld(context) once caching
-  // lands.
+  // TODO(amcastro-tri): Make use of RigidBody::EvalPoseInWorld(context) once
+  // caching lands.
   poses->clear();
   for (const auto& it : body_index_to_frame_id_) {
     const BodyIndex body_index = it.first;

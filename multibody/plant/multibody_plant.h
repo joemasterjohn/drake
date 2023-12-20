@@ -1153,7 +1153,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @param[in] name
   ///   A string that identifies the new body to be added to `this` model. A
   ///   std::runtime_error is thrown if a body named `name` already is part of
-  ///   @p model_instance. See HasBodyNamed(), Body::name().
+  ///   @p model_instance. See HasBodyNamed(), RigidBody::name().
   /// @param[in] model_instance
   ///   A model instance index which this body is part of.
   /// @param[in] M_BBo_B
@@ -1200,7 +1200,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///   A string that identifies the new body to be added to `this` model. A
   ///   std::runtime_error is thrown if a body named `name` already is part of
   ///   the model in the default model instance. See HasBodyNamed(),
-  ///   Body::name().
+  ///   RigidBody::name().
   /// @param[in] M_BBo_B
   ///   The SpatialInertia of the new rigid body to be added to `this`
   ///   %MultibodyPlant, computed about the body frame origin `Bo` and expressed
@@ -1305,7 +1305,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///     plant.AddRigidBody("Body1", SpatialInertia<double>(...));
   ///   const RigidBody<double>& body_2 =
   ///     plant.AddRigidBody("Body2", SpatialInertia<double>(...));
-  ///   // Body 1 serves as parent, Body 2 serves as child.
+  ///   // RigidBody 1 serves as parent, RigidBody 2 serves as child.
   ///   // Define the pose X_BM of a frame M rigidly attached to child body B.
   ///   const RevoluteJoint<double>& elbow =
   ///     plant.AddJoint<RevoluteJoint>(
@@ -1632,9 +1632,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   ///
   ///    f = −stiffness ⋅ d − damping ⋅ ḋ
   ///
-  /// @param[in] body_A Body to which point P is rigidly attached.
+  /// @param[in] body_A RigidBody to which point P is rigidly attached.
   /// @param[in] p_AP Position of point P in body A's frame.
-  /// @param[in] body_B Body to which point Q is rigidly attached.
+  /// @param[in] body_B RigidBody to which point Q is rigidly attached.
   /// @param[in] p_BQ Position of point Q in body B's frame.
   /// @param[in] distance Fixed length of the distance constraint, in meters. It
   /// must be strictly positive.
@@ -1677,9 +1677,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// all times with point Q affixed to body B, effectively modeling a
   /// ball-and-socket joint.
   ///
-  /// @param[in] body_A Body to which point P is rigidly attached.
+  /// @param[in] body_A RigidBody to which point P is rigidly attached.
   /// @param[in] p_AP Position of point P in body A's frame.
-  /// @param[in] body_B Body to which point Q is rigidly attached.
+  /// @param[in] body_B RigidBody to which point Q is rigidly attached.
   /// @param[in] p_BQ Position of point Q in body B's frame.
   /// @returns the id of the newly added constraint.
   ///
@@ -1699,9 +1699,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// all times with frame Q affixed to body B, effectively modeling a weld
   /// joint.
   ///
-  /// @param[in] body_A Body to which frame P is rigidly attached.
+  /// @param[in] body_A RigidBody to which frame P is rigidly attached.
   /// @param[in] X_AP Pose of frame P in body A's frame.
-  /// @param[in] body_B Body to which frame Q is rigidly attached.
+  /// @param[in] body_B RigidBody to which frame Q is rigidly attached.
   /// @param[in] X_BQ Pose of frame Q in body B's frame.
   /// @returns the id of the newly added constraint.
   ///
@@ -1780,8 +1780,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// when %MultibodyPlant registers the corresponding SceneGraph frame, it is
   /// named with a "scoped name". This is a concatenation of
   /// `[model instance name]::[body name]`. Searching for a frame with just the
-  /// name `body name` will fail. (See Body::name() and GetModelInstanceName()
-  /// for those values.)
+  /// name `body name` will fail. (See RigidBody::name() and
+  /// GetModelInstanceName() for those values.)
   /// @{
 
   /// Registers `this` plant to serve as a source for an instance of
@@ -3093,8 +3093,8 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @anchor mbp_working_with_free_bodies
   /// @name                Working with free bodies
   ///
-  /// A %MultibodyPlant user adds sets of Body and Joint objects to `this` plant
-  /// to build a physical representation of a mechanical model.
+  /// A %MultibodyPlant user adds sets of RigidBody and Joint objects to `this`
+  /// plant to build a physical representation of a mechanical model.
   /// At Finalize(), %MultibodyPlant builds a mathematical representation of
   /// such system, consisting of a tree representation. In this
   /// representation each body is assigned a Mobilizer, which grants a certain
@@ -3104,12 +3104,12 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// tree. If the root body has six degrees of freedom with respect to the
   /// world, it is called a "free body" (sometimes called a "floating body").
   /// A user can request the set of all free bodies with a call to
-  /// GetFloatingBaseBodies(). Alternatively, a user can query whether a Body is
-  /// free (floating) or not with Body::is_floating().
+  /// GetFloatingBaseBodies(). Alternatively, a user can query whether a
+  /// RigidBody is free (floating) or not with RigidBody::is_floating().
   /// For many applications, a user might need to work with indexes in the
   /// multibody state vector. For such applications,
-  /// Body::floating_positions_start() and
-  /// Body::floating_velocities_start_in_v() offer the additional level of
+  /// RigidBody::floating_positions_start() and
+  /// RigidBody::floating_velocities_start_in_v() offer the additional level of
   /// introspection needed.
   ///
   /// It is sometimes convenient for users to perform operations on Bodies
@@ -3118,7 +3118,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// bodies at the time of Finalize(). Using Joint APIs to affect a free body
   /// (setting  state, changing parameters, etc.) has the same effect as using
   /// the free body APIs below. Each implicitly created joint is named the same
-  /// as the free body, as reported by `Body::name()`. In the rare case that
+  /// as the free body, as reported by `RigidBody::name()`. In the rare case that
   /// there is already some (unrelated) joint with that name, we'll prepend
   /// underscores to the name until it is unique.
   /// @{
@@ -3174,7 +3174,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// effect of the call is that the value will be echoed back in
   /// GetDefaultFreeBodyPose().
   /// @param[in] body
-  ///   Body whose default pose will be set.
+  ///   RigidBody whose default pose will be set.
   /// @param[in] X_WB
   ///   Default pose of the body.
   void SetDefaultFreeBodyPose(const RigidBody<T>& body,
@@ -3185,7 +3185,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Gets the default pose of `body` as set by SetDefaultFreeBodyPose(). If no
   /// pose is specified for the body, returns the identity pose.
   /// @param[in] body
-  ///   Body whose default pose will be retrieved.
+  ///   RigidBody whose default pose will be retrieved.
   math::RigidTransform<double> GetDefaultFreeBodyPose(
       const RigidBody<T>& body) const {
     return internal_tree().GetDefaultFreeBodyPose(body);
@@ -3331,7 +3331,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Evaluates V_WB, body B's spatial velocity in the world frame W.
   /// @param[in] context The context storing the state of the model.
   /// @param[in] body_B  The body B for which the spatial velocity is requested.
-  /// @retval V_WB_W Body B's spatial velocity in the world frame W,
+  /// @retval V_WB_W RigidBody B's spatial velocity in the world frame W,
   ///   expressed in W (for point Bo, the body's origin).
   /// @throws std::exception if Finalize() was not called on `this` model or
   ///   if `body_B` does not belong to this model.
@@ -3344,7 +3344,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// Evaluates A_WB, body B's spatial acceleration in the world frame W.
   /// @param[in] context The context storing the state of the model.
   /// @param[in] body_B  The body for which spatial acceleration is requested.
-  /// @retval A_WB_W Body B's spatial acceleration in the world frame W,
+  /// @retval A_WB_W RigidBody B's spatial acceleration in the world frame W,
   ///   expressed in W (for point Bo, the body's origin).
   /// @throws std::exception if Finalize() was not called on `this` model or
   ///   if `body_B` does not belong to this model.
@@ -3787,7 +3787,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// spatial forces F on each body, refer to documentation in MultibodyForces
   /// for details. Users of MultibodyForces will use
   /// MultibodyForces::mutable_generalized_forces() to mutate the stored
-  /// generalized forces directly and will use Body::AddInForceInWorld() to
+  /// generalized forces directly and will use RigidBody::AddInForceInWorld() to
   /// append spatial forces.
   ///
   /// For a given set of forces stored as MultibodyForces, this method will
@@ -4589,7 +4589,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// @see HasBodyNamed() to query if there exists a body in `this`
   /// %MultibodyPlant with a given specified name.
   const RigidBody<T>& GetBodyByName(std::string_view name) const {
-    return internal_tree().GetBodyByName(name);
+    return internal_tree().GetRigidBodyByName(name);
   }
 
   /// Returns a constant reference to the body that is uniquely identified
@@ -4599,7 +4599,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   /// %MultibodyPlant with a given specified name.
   const RigidBody<T>& GetBodyByName(std::string_view name,
                                     ModelInstanceIndex model_instance) const {
-    return internal_tree().GetBodyByName(name, model_instance);
+    return internal_tree().GetRigidBodyByName(name, model_instance);
   }
 
   /// Returns a list of body indices associated with `model_instance`.

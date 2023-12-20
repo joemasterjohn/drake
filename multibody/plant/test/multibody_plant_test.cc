@@ -763,7 +763,7 @@ class AcrobotPlantTests : public ::testing::Test {
       const SpatialForce<double>& F_Bo_W =
           body.GetForceInWorld(*plant_context_, forces);
       const double mass = body.default_mass();
-      // TODO(amcastro-tri): provide Body::EvalCOMInWorld().
+      // TODO(amcastro-tri): provide RigidBody::EvalCOMInWorld().
       const Vector3<double> p_BoBcm_B =
           body.CalcCenterOfMassInBodyFrame(*plant_context_);
       const RigidTransform<double> X_WB =

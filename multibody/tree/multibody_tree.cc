@@ -166,7 +166,7 @@ namespace {
 template <typename ElementIndex>
 std::string_view GetElementClassname() {
   if constexpr (std::is_same_v<ElementIndex, BodyIndex>) {
-    return "Body";
+    return "RigidBody";
   }
   if constexpr (std::is_same_v<ElementIndex, FrameIndex>) {
     return "Frame";
@@ -276,7 +276,7 @@ bool HasElementNamed(
   return true;
 }
 
-// Common implementation for GetBodyByName, GetFrameByName, etc.
+// Common implementation for GetRigidBodyByName, GetFrameByName, etc.
 template <typename T, typename ElementIndex>
 const auto& GetElementByName(
     const MultibodyTree<T>& tree, std::string_view name,
@@ -420,18 +420,6 @@ bool MultibodyTree<T>::HasModelInstanceNamed(std::string_view name) const {
 }
 
 template <typename T>
-const RigidBody<T>& MultibodyTree<T>::GetBodyByName(
-    std::string_view name) const {
-  return GetElementByName(*this, name, std::nullopt, body_name_to_index_);
-}
-
-template <typename T>
-const RigidBody<T>& MultibodyTree<T>::GetBodyByName(
-    std::string_view name, ModelInstanceIndex model_instance) const {
-  return GetElementByName(*this, name, model_instance, body_name_to_index_);
-}
-
-template <typename T>
 std::vector<BodyIndex> MultibodyTree<T>::GetBodyIndices(
     ModelInstanceIndex model_instance) const {
   DRAKE_THROW_UNLESS(model_instance < instance_name_to_index_.size());
@@ -498,27 +486,13 @@ const Frame<T>& MultibodyTree<T>::GetFrameByName(
 template <typename T>
 const RigidBody<T>& MultibodyTree<T>::GetRigidBodyByName(
     std::string_view name) const {
-  const RigidBody<T>* body =
-      dynamic_cast<const RigidBody<T>*>(&GetBodyByName(name));
-  if (body == nullptr) {
-    throw std::logic_error(
-        fmt::format("Body '{}' is not a RigidBody.", name));
-  }
-  return *body;
+  return GetElementByName(*this, name, std::nullopt, body_name_to_index_);
 }
 
 template <typename T>
 const RigidBody<T>& MultibodyTree<T>::GetRigidBodyByName(
     std::string_view name, ModelInstanceIndex model_instance) const {
-  DRAKE_THROW_UNLESS(model_instance < instance_name_to_index_.size());
-  const RigidBody<T>* body =
-      dynamic_cast<const RigidBody<T>*>(&GetBodyByName(name, model_instance));
-  if (body == nullptr) {
-    throw std::logic_error(
-        fmt::format("Body '{}' in model instance '{}' is not a RigidBody.",
-                    name, instance_index_to_name_.at(model_instance)));
-  }
-  return *body;
+  return GetElementByName(*this, name, model_instance, body_name_to_index_);
 }
 
 template <typename T>
@@ -2079,11 +2053,12 @@ Vector3<T> MultibodyTree<T>::CalcCenterOfMassPositionInWorld(
   // Sum over all the bodies that are in model_instances except for the 0th body
   // (which is the world body), and count each body's contribution only once.
   // Reminder: Although it is not possible for a body to belong to multiple
-  // model instances [as Body::model_instance() returns a body's unique model
-  // instance], it is possible for the same model instance to be added multiple
-  // times to std::vector<ModelInstanceIndex>& model_instances).  The code below
-  // ensures a body's contribution to the sum occurs only once.  Duplicate
-  // model_instances in std::vector are considered an upstream user error.
+  // model instances [as RigidBody::model_instance() returns a body's unique
+  // model instance], it is possible for the same model instance to be added
+  // multiple times to std::vector<ModelInstanceIndex>& model_instances).  The
+  // code below ensures a body's contribution to the sum occurs only once.
+  // Duplicate model_instances in std::vector are considered an upstream user
+  // error.
   int number_of_non_world_bodies_processed = 0;
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
     const RigidBody<T>& body = get_body(body_index);
@@ -2235,11 +2210,12 @@ Vector3<T> MultibodyTree<T>::CalcCenterOfMassTranslationalVelocityInWorld(
   // Sum over all the bodies that are in model_instances except for the 0th body
   // (which is the world body), and count each body's contribution only once.
   // Reminder: Although it is not possible for a body to belong to multiple
-  // model instances [as Body::model_instance() returns a body's unique model
-  // instance], it is possible for the same model instance to be added multiple
-  // times to std::vector<ModelInstanceIndex>& model_instances).  The code below
-  // ensures a body's contribution to the sum occurs only once.  Duplicate
-  // model_instances in std::vector are considered an upstream user error.
+  // model instances [as RigidBody::model_instance() returns a body's unique
+  // model instance], it is possible for the same model instance to be added
+  // multiple times to std::vector<ModelInstanceIndex>& model_instances).  The
+  // code below ensures a body's contribution to the sum occurs only once.
+  // Duplicate model_instances in std::vector are considered an upstream user
+  // error.
   int number_of_non_world_bodies_processed = 0;
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
     const RigidBody<T>& body = get_body(body_index);
@@ -2918,7 +2894,7 @@ void MultibodyTree<T>::CalcJacobianAngularAndOrTranslationalVelocityInWorld(
     Js_v_WFpi_W->setZero();
   }
 
-  // Body to which frame_F is welded/attached.
+  // RigidBody to which frame_F is welded/attached.
   const RigidBody<T>& body_F = frame_F.body();
 
   // Return zero Jacobians for bodies anchored to the world, since for anchored
@@ -3103,11 +3079,12 @@ void MultibodyTree<T>::CalcJacobianCenterOfMassTranslationalVelocity(
   // Sum over all bodies contained in model_instances except for the 0th body
   // (which is the world body), and count each body's contribution only once.
   // Reminder: Although it is not possible for a body to belong to multiple
-  // model instances [as Body::model_instance() returns a body's unique model
-  // instance], it is possible for the same model instance to be added multiple
-  // times to std::vector<ModelInstanceIndex>& model_instances).  The code below
-  // ensures a body's contribution to the sum occurs only once.  Duplicate
-  // model_instances in std::vector are considered an upstream user error.
+  // model instances [as RigidBody::model_instance() returns a body's unique
+  // model instance], it is possible for the same model instance to be added
+  // multiple times to std::vector<ModelInstanceIndex>& model_instances).  The
+  // code below ensures a body's contribution to the sum occurs only once.
+  // Duplicate model_instances in std::vector are considered an upstream user
+  // error.
   int number_of_non_world_bodies_processed = 0;
   for (BodyIndex body_index(1); body_index < num_bodies(); ++body_index) {
     const RigidBody<T>& body = get_body(body_index);

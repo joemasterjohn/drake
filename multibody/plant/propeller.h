@@ -25,8 +25,8 @@ struct PropellerInfo {
         thrust_ratio(thrust_ratio_),
         moment_ratio(moment_ratio_) {}
 
-  /** The BodyIndex of a Body in the MultibodyPlant to which the propeller is
-  attached.  The spatial forces will be applied to this body. */
+  /** The BodyIndex of a RigidBody in the MultibodyPlant to which the propeller
+  is attached.  The spatial forces will be applied to this body. */
   BodyIndex body_index;
 
   /** Pose of the propeller frame P measured in the body frame B. @default is

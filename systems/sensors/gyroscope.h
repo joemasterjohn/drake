@@ -73,7 +73,7 @@ class Gyroscope final : public LeafSystem<T> {
     return *measurement_output_port_;
   }
 
-  /// Returns the index of the Body that was supplied in the constructor.
+  /// Returns the index of the RigidBody that was supplied in the constructor.
   const multibody::BodyIndex& body_index() const { return body_index_; }
 
   /// Gets X_BS, the pose of sensor frame S in body B.

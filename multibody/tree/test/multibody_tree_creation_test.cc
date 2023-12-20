@@ -351,7 +351,7 @@ class TreeTopologyTests : public ::testing::Test {
                            BodyIndex body) {
     const MobodIndex node = topology.get_body(body).mobod_index;
 
-    // Verify that the corresponding Body and BodyNode reference each other
+    // Verify that the corresponding RigidBody and BodyNode reference each other
     // correctly.
     EXPECT_EQ(topology.get_body(body).mobod_index,
               topology.get_body_node(node).index);
@@ -928,7 +928,8 @@ const RigidBody<double>& AddCubicalLink(
   return model->AddRigidBody(body_name, M_BBo_B);
 }
 
-// Verify Body::default_rotational_inertia() and related MultibodyTree methods.
+// Verify RigidBody::default_rotational_inertia() and related MultibodyTree
+// methods.
 GTEST_TEST(DefaultInertia, VerifyDefaultRotationalInertia) {
   // Create a model and add three rigid bodies, namely A, B, C.
   MultibodyTree<double> model;

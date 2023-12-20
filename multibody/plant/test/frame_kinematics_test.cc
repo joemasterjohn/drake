@@ -341,7 +341,7 @@ TEST_F(KukaIiwaModelTests, CalcSpatialAcceleration) {
                                                  *end_effector_link_);
   EXPECT_EQ(A_WE_W.get_coeffs(), A_WE_W_expected1.get_coeffs());
 
-  // Also verify A_WE_W against Body::EvalSpatialAccelerationInWorld().
+  // Also verify A_WE_W against RigidBody::EvalSpatialAccelerationInWorld().
   const SpatialAcceleration<double> A_WE_W_expected2 =
       end_effector_link_->EvalSpatialAccelerationInWorld(*context_);
   EXPECT_EQ(A_WE_W.get_coeffs(), A_WE_W_expected2.get_coeffs());

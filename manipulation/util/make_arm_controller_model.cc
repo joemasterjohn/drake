@@ -106,7 +106,7 @@ std::unique_ptr<MultibodyPlant<double>> MakeArmControllerModel(
     for (const RigidBody<double>* welded_body : sim_gripper_welded_bodies) {
       if ((welded_body->model_instance() != gripper_info->model_instance) &&
           (welded_body->model_instance() != arm_info.model_instance)) {
-        log()->debug("Adding BodyIndex of Body {}", welded_body->name());
+        log()->debug("Adding BodyIndex of RigidBody {}", welded_body->name());
         sim_gripper_body_indices.push_back(welded_body->index());
       }
     }

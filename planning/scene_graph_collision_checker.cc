@@ -255,7 +255,7 @@ RobotClearance SceneGraphCollisionChecker::DoCalcContextRobotClearance(
 
     // Convert the witness points from body frame to world frame.
     // TODO(jwnimmer-tri) Instead of CalcPointsPositions, try either
-    // Body::EvalPoseInWorld or QueryObject::GetPoseInWorld.
+    // RigidBody::EvalPoseInWorld or QueryObject::GetPoseInWorld.
     Vector3d p_WCa;
     plant().CalcPointsPositions(plant_context, frame_A, p_ACa, frame_W, &p_WCa);
     Vector3d p_WCb;

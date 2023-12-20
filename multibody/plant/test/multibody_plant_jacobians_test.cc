@@ -508,8 +508,8 @@ TEST_F(TwoDOFPlanarPendulumTest,
   const RigidBody<double>& body_A = rigid_bodyA();
   const RigidBody<double>& body_B = rigid_bodyB();
 
-  // Verify Body::CalcCenterOfMassTranslationalVelocityInWorld() with by-hand
-  // results for translational velocities measured in the world frame W:
+  // Verify RigidBody::CalcCenterOfMassTranslationalVelocityInWorld() with
+  // by-hand results for translational velocities measured in the world frame W:
   // Acm's translational velocity: v_WAcm_W = 0.5 L wAz_ Wy.
   // Bcm's translational velocity: v_WBcm_W = (0.5 L wBz_ + 1.5 L wAz_) Wy.
   const Vector3d v_WAcm_W_expected(0, 0.5 * link_length_ * wAz_, 0);

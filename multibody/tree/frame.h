@@ -31,7 +31,7 @@ template<typename T> class RigidBody;
 /// to a %Frame are applied to the %Frame's underlying Body. Force-producing
 /// elements like joints, actuators, and constraints usually employ two %Frames,
 /// with one %Frame connected to one body and the other connected to a different
-/// Body. Every %Frame object can report the Body to which it is attached.
+/// Body. Every %Frame object can report the RigidBody to which it is attached.
 /// Despite its name, %Frame is not the most general frame in Drake
 /// (see FrameBase for more information).
 ///
@@ -172,7 +172,7 @@ class Frame : public FrameBase<T> {
 
   /// Computes and returns the pose `X_WF` of `this` frame F in the world
   /// frame W as a function of the state of the model stored in `context`.
-  /// @note Body::EvalPoseInWorld() provides a more efficient way to obtain
+  /// @note RigidBody::EvalPoseInWorld() provides a more efficient way to obtain
   /// the pose for a body frame.
   math::RigidTransform<T> CalcPoseInWorld(
       const systems::Context<T>& context) const {
@@ -262,8 +262,8 @@ class Frame : public FrameBase<T> {
   /// ω_WF_W (frame F's angular velocity ω measured and expressed in the world
   /// frame W). The translational part is v_WFo_W (translational velocity v of
   /// frame F's origin point Fo, measured and expressed in the world frame W).
-  /// @note Body::EvalSpatialVelocityInWorld() provides a more efficient way to
-  /// obtain a body frame's spatial velocity measured in the world frame.
+  /// @note RigidBody::EvalSpatialVelocityInWorld() provides a more efficient
+  /// way to obtain a body frame's spatial velocity measured in the world frame.
   /// @see CalcSpatialVelocity(), CalcRelativeSpatialVelocityInWorld(), and
   /// CalcSpatialAccelerationInWorld().
   SpatialVelocity<T> CalcSpatialVelocityInWorld(
@@ -396,8 +396,9 @@ class Frame : public FrameBase<T> {
   /// expressed in the world frame W).  The translational part is a_WFo_W
   /// (translational acceleration of frame F's origin point Fo, measured and
   /// expressed in the world frame W).
-  /// @note Body::EvalSpatialAccelerationInWorld() provides a more efficient way
-  /// to obtain a body frame's spatial acceleration measured in the world frame.
+  /// @note RigidBody::EvalSpatialAccelerationInWorld() provides a more
+  /// efficient way to obtain a body frame's spatial acceleration measured in
+  /// the world frame.
   /// @note When cached values are out of sync with the state stored in context,
   /// this method performs an expensive forward dynamics computation, whereas
   /// once evaluated, successive calls to this method are inexpensive.
