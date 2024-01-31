@@ -957,8 +957,12 @@ drake_cc_googletest(
 
 drake_cc_googletest(
     name = "calc_distance_to_surface_mesh_test",
+    data = [
+        "//geometry:test_obj_files",
+    ],
     deps = [
         ":calc_distance_to_surface_mesh",
+        "//common:find_resource",
     ],
 )
 

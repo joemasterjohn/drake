@@ -20,6 +20,10 @@ double CalcDistanceToSurfaceMeshWithBvh(
     const Vector3<double>& p_WQ, const TriangleSurfaceMesh<double>& mesh_W,
     const Bvh<Obb, TriangleSurfaceMesh<double>>& bvh_W);
 
+double CalcDistanceToSurfaceMeshWithBvhBFS(
+    const Vector3<double>& p_WQ, const TriangleSurfaceMesh<double>& mesh_W,
+    const Bvh<Obb, TriangleSurfaceMesh<double>>& bvh_W);
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

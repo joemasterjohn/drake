@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <vector>
+#include <deque>
 
 #include "drake/geometry/proximity/distance_to_point_callback.h"
 #include "drake/math/rotation_matrix.h"
@@ -142,6 +143,7 @@ double TraverseBvhForMinSquaredDistance(
     const Vector3d& p_WQ, const TriangleSurfaceMesh<double>& mesh_W,
     const Bvh<Obb, TriangleSurfaceMesh<double>>::NodeType& node_W,
     double closest_squared_distance_found_so_far) {
+
   if (node_W.is_leaf()) {
     for (int i = 0; i < node_W.num_element_indices(); ++i) {
       const SurfaceTriangle& t = mesh_W.triangles()[node_W.element_index(i)];
@@ -152,6 +154,7 @@ double TraverseBvhForMinSquaredDistance(
                               mesh_W.vertices()[t.vertex(1)],
                               mesh_W.vertices()[t.vertex(2)]}));
     }
+
     return closest_squared_distance_found_so_far;
   }
 
@@ -205,6 +208,77 @@ double CalcDistanceToSurfaceMeshWithBvh(
   return std::sqrt(TraverseBvhForMinSquaredDistance(
       p_WQ, mesh_W, bvh_W.root_node(),
       std::numeric_limits<double>::infinity()));
+}
+
+double CalcDistanceToSurfaceMeshWithBvhBFS(
+    const Vector3<double>& p_WQ, const TriangleSurfaceMesh<double>& mesh_W,
+    const Bvh<Obb, TriangleSurfaceMesh<double>>& bvh_W) {
+  auto MaxDistSquaredBoxB = [](const Vector3d& p_BQ,
+                               const Vector3d& box_half_width_B) {
+    return (p_BQ.cwiseAbs() + box_half_width_B).squaredNorm();
+  };
+
+  using Node = Bvh<Obb, TriangleSurfaceMesh<double>>::NodeType;
+
+  std::deque<const Node*> queue;
+  queue.push_back(&bvh_W.root_node());
+
+  double current_min_distance = std::numeric_limits<double>::infinity();
+  double current_min_of_max_distance = std::numeric_limits<double>::infinity();
+
+  while (queue.size() > 0) {
+    const Node& node = *queue.front();
+    queue.pop_front();
+
+    if (node.is_leaf()) {
+      for (int i = 0; i < node.num_element_indices(); ++i) {
+        const SurfaceTriangle& t = mesh_W.triangles()[node.element_index(i)];
+        current_min_distance = std::min(
+            current_min_distance, CalcSquaredDistanceToTriangle(
+                                  p_WQ, {mesh_W.vertices()[t.vertex(0)],
+                                         mesh_W.vertices()[t.vertex(1)],
+                                         mesh_W.vertices()[t.vertex(2)]}));
+      }
+    current_min_of_max_distance =
+        std::min(current_min_of_max_distance, current_min_distance);
+      continue;
+    }
+
+    const Vector3d box_half_width_B = node.bv().half_width();
+    RigidTransformd X_WB = node.bv().pose();
+    Vector3d p_BQ = X_WB.inverse() * p_WQ;
+
+    const auto [closest_point_on_box_boundary_B, grad_signed_distance_B,
+                is_Q_on_edge_or_vertex] =
+        point_distance::DistanceToPoint<double>::ComputeDistanceToBox<3>(
+            box_half_width_B, p_BQ);
+    unused(is_Q_on_edge_or_vertex);
+    const double signed_distance =
+        grad_signed_distance_B.dot(p_BQ - closest_point_on_box_boundary_B);
+    const double distance_squared = signed_distance * signed_distance;
+
+    const double max_distance = MaxDistSquaredBoxB(p_BQ, box_half_width_B);
+    current_min_of_max_distance =
+        std::min(current_min_of_max_distance, max_distance);
+
+    // Check for possible pruning.
+    if (signed_distance > 0) {
+      // The query point is outside, so `distance` is the lower bound to any
+      // element in this box. Use the lower bound to possibly prune this
+      // subtree. If we've found something closer already or if the min of the
+      // max distance to any element in nodes we've already checked is smaller
+      // than the lower bound, we can prune.
+      if (distance_squared > current_min_distance ||
+          distance_squared > current_min_of_max_distance) {
+        continue;
+      }
+    }
+
+    queue.push_front(&node.right());
+    queue.push_front(&node.left());
+  }
+
+  return std::sqrt(current_min_distance);
 }
 
 }  // namespace internal

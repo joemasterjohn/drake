@@ -659,6 +659,8 @@ filegroup(
         "test/octahedron.obj",
         "test/quad_cube.mtl",
         "test/quad_cube.obj",
+        "test/yellow_bell_pepper_no_stem_low.obj",
+        "test/yellow_bell_pepper_no_stem_low.mtl",
     ],
 )
 
