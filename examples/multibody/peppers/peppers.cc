@@ -41,7 +41,7 @@ namespace examples {
 namespace {
 
 // Simulation parameters.
-DEFINE_double(simulation_time, 1.0, "Simulation duration in seconds");
+DEFINE_double(simulation_time, 10.0, "Simulation duration in seconds");
 DEFINE_double(
     time_step, 1.0E-2,
     "If mbp_time_step > 0, the fixed-time step period (in seconds) of discrete "
@@ -110,7 +110,7 @@ const std::string yellow_pepper(const std::string& number) {
             <pose>0 0 0 0 0 0</pose>
             <geometry>
               <mesh>
-                <uri>package://drake_models/veggies/yellow_bell_pepper_no_stem_low.obj</uri>
+                <uri>package://drake_models/veggies/assets/yellow_bell_pepper_no_stem_low.obj</uri>
                 <scale>1 1 1</scale>
               </mesh>
             </geometry>
@@ -119,7 +119,7 @@ const std::string yellow_pepper(const std::string& number) {
             <pose>0 0 0 0 0 0</pose>
             <geometry>
               <mesh>
-                <uri>package://drake_models/veggies/yellow_bell_pepper_no_stem_low.vtk</uri>
+                <uri>package://drake_models/veggies/assets/yellow_bell_pepper_no_stem_low.vtk</uri>
                 <scale>1 1 1</scale>
               </mesh>
             </geometry>
