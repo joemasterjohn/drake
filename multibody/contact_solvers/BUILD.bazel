@@ -132,6 +132,29 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "cusolver_utils",
+    srcs = [],
+    hdrs = ["cusolver_utils.h"],
+    deps = [
+        "@cuda//:cudart",
+        "@cuda//:cublas",
+        "@cuda//:cublasLt",
+        "@cuda//:cusolver",
+    ]
+)
+
+drake_cc_googletest(
+    name = "cusolver_test",
+    deps = [
+        ":cusolver_utils",
+        "@cuda//:cudart",
+        "@cuda//:cublas",
+        "@cuda//:cublasLt",
+        "@cuda//:cusolver",
+    ]
+)
+
+drake_cc_library(
     name = "linear_operator",
     srcs = ["linear_operator.cc"],
     hdrs = ["linear_operator.h"],

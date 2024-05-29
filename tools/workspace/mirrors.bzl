@@ -23,6 +23,9 @@ DEFAULT_MIRRORS = {
         "https://drake-mirror.csail.mit.edu/crates.io/{archive}",
         "https://s3.amazonaws.com/drake-mirror/crates.io/{archive}",
     ],
+    "cuda_debs": [
+	"https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/{basename}",  # noqa
+    ],
     "doxygen": [
         "https://drake-packages.csail.mit.edu/doxygen/{archive}",
         "https://s3.amazonaws.com/drake-packages/doxygen/{archive}",
