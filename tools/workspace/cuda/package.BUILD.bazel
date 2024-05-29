@@ -1,0 +1,65 @@
+# -*- mode: bazel -*-
+
+load(":manifest.bzl", "CUDA_VERSION")
+
+package(default_visibility = ["//visibility:public"])
+
+# These are the expected paths within the debs.
+LOCAL_DIR = "usr/local/cuda-{}".format(CUDA_VERSION)
+INCLUDE_DIR = LOCAL_DIR + "/include"
+LIB_DIR = LOCAL_DIR + "/lib64"
+
+# This is the compiler entry point as a single file.
+filegroup(
+    name = "nvcc",
+    srcs = [LOCAL_DIR + "/bin/nvcc"],
+)
+
+# This is ALL of the files in the repository, so that our compilation rules can
+# easily depend on all of CUDA.
+filegroup(
+    name = "usrlocal",
+    srcs = glob(include = [LOCAL_DIR + "/**"]) or fail("Missing usrlocal"),
+)
+
+# This is all the headers together as one.  It is non-trival to map specific
+# headers to specific libraries.
+cc_library(
+    name = "hdrs",
+    hdrs = glob(include = [INCLUDE_DIR + "/**"]) or fail("Missing hdrs"),
+    includes = [INCLUDE_DIR],
+)
+
+# These are all of the shared libraries.
+# TODO(jeremy.nimmer) It would be nice if we could add intra-CUDA deps
+# annotations here (e.g., nppist depends on nppc).
+[
+    cc_library(
+        name = name,
+        srcs = glob([LIB_DIR + "/lib" + name + ".so.*"]),
+        deps = [
+            ":hdrs",
+        ],
+    )
+    for name in [
+        # This list is almost everything in CUDA that has a lib*.so* file.
+        "cudart",
+        "cusolver",
+        "cublas",
+        "cublasLt",
+        "cusparse",
+        "nppc",
+        "nppial",
+        "nppicc",
+        "nppidei",
+        "nppif",
+        "nppig",
+        "nppim",
+        "nppist",
+        "nppisu",
+        "nppitc",
+        "npps",
+        "nvblas",
+        "nvjpeg",
+    ]
+]

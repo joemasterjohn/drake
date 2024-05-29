@@ -17,6 +17,7 @@ load("//tools/workspace/commons_io:repository.bzl", "commons_io_repository")
 load("//tools/workspace/conex_internal:repository.bzl", "conex_internal_repository")  # noqa
 load("//tools/workspace/crate_universe:repository.bzl", "crate_universe_repositories")  # noqa
 load("//tools/workspace/csdp_internal:repository.bzl", "csdp_internal_repository")  # noqa
+load("//tools/workspace/cuda:repository.bzl", "cuda_repository")  # noqa
 load("//tools/workspace/curl_internal:repository.bzl", "curl_internal_repository")  # noqa
 load("//tools/workspace/dm_control_internal:repository.bzl", "dm_control_internal_repository")  # noqa
 load("//tools/workspace/doxygen:repository.bzl", "doxygen_repository")
@@ -151,6 +152,8 @@ def add_default_repositories(excludes = [], mirrors = DEFAULT_MIRRORS):
         crate_universe_repositories(mirrors = mirrors, excludes = excludes)
     if "csdp_internal" not in excludes:
         csdp_internal_repository(name = "csdp_internal", mirrors = mirrors)
+    if "cuda" not in excludes:
+        cuda_repository(name = "cuda", mirrors = mirrors)
     if "curl_internal" not in excludes:
         curl_internal_repository(name = "curl_internal", mirrors = mirrors)
     if "doxygen" not in excludes:
