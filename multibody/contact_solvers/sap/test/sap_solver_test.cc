@@ -187,6 +187,15 @@ class PizzaSaverProblem {
         configuration, SapConstraintJacobian<double>{0, J.middleRows(6, 3)},
         parameters));
 
+    // print eigen matrix A
+    std::cout << "J" << std::endl;
+    for (int i = 0; i < J.rows(); i++) {
+      for (int j = 0; j < J.cols(); j++) {
+        std::cout << J(i, j) << " ";
+      }
+      std::cout << std::endl;
+    }
+
     return problem;
   }
 
@@ -196,6 +205,15 @@ class PizzaSaverProblem {
     // For this problem there is a single clique for the pizza saver.
     std::vector<MatrixXd> A(1);
     CalcMassMatrix(&A[0]);
+
+    // print A
+    std::cout << "A" << std::endl;
+    for (int i = 0; i < A[0].rows(); i++) {
+      for (int j = 0; j < A[0].cols(); j++) {
+        std::cout << A[0](i, j) << " ";
+      }
+      std::cout << std::endl;
+    }
 
     // Compute free motion velocities.
     VectorXd v_star = v0 + time_step_ * A[0].ldlt().solve(tau);
@@ -817,6 +835,12 @@ class SapNewtonIterationTest
     v_star_clique1 = 0.5 * (vl_ + vu_);
     v_star_.resize(num_velocities);
     v_star_ = v_star;
+
+    // print out v_star_
+    std::cout << "v_star_ : " << std::endl;
+    for (int i = 0; i < v_star_.size(); i++) {
+      std::cout << v_star_[i] << std::endl;
+    }
 
     std::vector<MatrixXd> A = {S22, S33, S44};
     sap_problem_ = std::make_unique<SapContactProblem<double>>(

@@ -60,6 +60,7 @@ LIBDRAKE_COMPONENTS = [
     "//multibody/constraint",
     "//multibody/contact_solvers",
     "//multibody/contact_solvers/sap",
+    "//multibody/contact_solvers:cusolver_utils",  # unpackaged
     "//multibody/fem",
     "//multibody/hydroelastics",
     "//multibody/inverse_kinematics",
@@ -81,6 +82,7 @@ LIBDRAKE_COMPONENTS = [
     "//planning/locomotion",
     "//planning/trajectory_optimization",
     "//solvers",
+    "//stubdev",
     "//systems/analysis",
     "//systems/controllers",
     "//systems/estimators",
@@ -90,5 +92,6 @@ LIBDRAKE_COMPONENTS = [
     "//systems/primitives",
     "//systems/rendering",
     "//systems/sensors",
+    "//tools/workspace/blas:accelerate",  # unpackaged
     "//visualization",
 ]

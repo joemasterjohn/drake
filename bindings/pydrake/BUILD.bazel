@@ -445,6 +445,7 @@ PYI_FILES = [
     "pydrake/systems/sensors.pyi",
     "pydrake/trajectories.pyi",
     "pydrake/visualization.pyi",
+    "pydrake/stubdev/cuda_sap.pyi",
 ]
 
 # TODO(mwoehlke-kitware): genrule inappropriately gives execute permission to

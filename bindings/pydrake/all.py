@@ -54,6 +54,7 @@ from .geometry.all import *
 from .multibody.all import *
 from .systems.all import *
 from .visualization import *
+from .stubdev import *
 
 # Preferred Ordering.
 # Please note this will *re*import some modules.
