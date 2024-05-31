@@ -10,7 +10,7 @@ namespace drake {
 namespace {
 
 GTEST_TEST(KernelTest, Cholesky) {
-  const int N = 128;
+  const int N = 256;
   std::vector<Eigen::MatrixXd> M;
   std::vector<Eigen::VectorXd> b;
   std::vector<Eigen::VectorXd> x;
