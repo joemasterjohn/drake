@@ -35,6 +35,28 @@ nvcc_library(
     ],
 )
 
+<<<<<<< HEAD
+=======
+nvcc_library(
+    name = "cuda_gauss_jordan",
+    hdrs = ["cuda_gauss_jordan.h"],
+    srcs = ["cuda_gauss_jordan.cu"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
+
+nvcc_library(
+    name = "cuda_gpu_collision",
+    hdrs = ["cuda_gpu_collision.h"],
+    srcs = ["cuda_gpu_collision.cu"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
+>>>>>>> f4fea6a01c (Json's week1 changes)
 drake_cc_googletest(
     name = "cuda_sample_test",
     srcs = ["cuda_sample_test.cc"],
@@ -65,4 +87,32 @@ drake_cc_googletest(
         ":cuda_cholesky",
         "@gtest//:main",
     ],
+<<<<<<< HEAD
 )
+=======
+)
+
+drake_cc_googletest(
+    name = "cuda_gauss_jordan_test",
+    srcs = ["cuda_gauss_jordan_test.cc"],
+    tags = ["cuda"],
+    deps = [
+	"//common:essential",
+        ":cuda_gauss_jordan",
+        "@gtest//:main",
+    ],
+)
+
+drake_cc_googletest(
+    name = "cuda_gpu_collision_test",
+    srcs = ["cuda_gpu_collision_test.cc"],
+    tags = ["cuda"],
+    deps = [
+	"//common:essential",
+        ":cuda_gpu_collision",
+        "@gtest//:main",
+    ],
+)
+
+
+>>>>>>> f4fea6a01c (Json's week1 changes)
