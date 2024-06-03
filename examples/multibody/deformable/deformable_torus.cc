@@ -43,6 +43,8 @@ DEFINE_double(
     contact_damping, 10.0,
     "Hunt and Crossley damping for the deformable body, only used when "
     "'contact_approximation' is set to 'lagged' or 'similar' [s/m].");
+DEFINE_double(contact_stiffness, 1e4,
+              "Contact stiffness for the rigid bodies [N/m].");
 
 using drake::examples::deformable::ParallelGripperController;
 using drake::examples::deformable::PointSourceForceField;
@@ -177,7 +179,8 @@ int do_main() {
   ProximityProperties rigid_proximity_props;
   /* Set the friction coefficient close to that of rubber against rubber. */
   const CoulombFriction<double> surface_friction(1.15, 1.15);
-  AddContactMaterial({}, {}, surface_friction, &rigid_proximity_props);
+  AddContactMaterial({}, FLAGS_contact_stiffness, surface_friction,
+                     &rigid_proximity_props);
   rigid_proximity_props.AddProperty(geometry::internal::kHydroGroup,
                                     geometry::internal::kRezHint, 0.01);
   /* Set up a ground. */
