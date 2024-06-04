@@ -4,8 +4,9 @@
 
 #include "cuda_cholesky.h"
 
+// CUDA error handeling
+// =====================
 static void HandleError(cudaError_t err, const char* file, int line) {
-  // CUDA error handeling from the "CUDA by example" book
   if (err != cudaSuccess) {
     printf("%s in %s at line %d\n", cudaGetErrorString(err), file, line);
     exit(EXIT_FAILURE);
@@ -13,7 +14,9 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 }
 
 #define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
+// =====================
 
+// Cholesky factorization kernel
 __global__ void cholesky_factorization(double* M, double* L,
                                        size_t num_equations, size_t n,
                                        size_t offset) {
@@ -53,6 +56,7 @@ __global__ void cholesky_factorization(double* M, double* L,
   }
 }
 
+// Cholesky solve forward substitution kernel
 __global__ void cholesky_solve_forward(double* L, double* b, double* x,
                                        double* y, size_t num_equations,
                                        size_t n, size_t offset) {
@@ -88,6 +92,7 @@ __global__ void cholesky_solve_forward(double* L, double* b, double* x,
   }
 }
 
+// Cholesky solve backward substitution kernel
 __global__ void cholesky_solve_backward(double* L, double* b, double* x,
                                         double* y, size_t num_equations,
                                         size_t n, size_t offset) {
@@ -121,6 +126,7 @@ __global__ void cholesky_solve_backward(double* L, double* b, double* x,
   }
 }
 
+// Main solve function - including memory allocation, copy, and kernel calls
 double matrix_solve(std::vector<Eigen::MatrixXd>& M,
                     std::vector<Eigen::VectorXd>& b,
                     std::vector<Eigen::VectorXd>& x) {
@@ -202,12 +208,6 @@ double matrix_solve(std::vector<Eigen::MatrixXd>& M,
   // Copy to host
   HANDLE_ERROR(cudaMemcpy(x_result, d_x, sizeof(double) * num_equations * n,
                           cudaMemcpyDeviceToHost));
-
-  for (int i = 0; i < num_equations; ++i) {
-    Eigen::Map<Eigen::VectorXd> x_result_i(x_result + i * n, n, 1);
-    std::cout << "||M*x - b||: " << (M[i] * x_result_i - b[i]).norm()
-              << std::endl;
-  }
 
   return 0;
 }

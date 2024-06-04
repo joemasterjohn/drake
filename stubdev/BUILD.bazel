@@ -35,16 +35,15 @@ nvcc_library(
     ],
 )
 
-<<<<<<< HEAD
-=======
 nvcc_library(
-    name = "cuda_gauss_jordan",
-    hdrs = ["cuda_gauss_jordan.h"],
-    srcs = ["cuda_gauss_jordan.cu"],
+    name = "cuda_matmul",
+    hdrs = ["cuda_matmul.h"],
+    srcs = ["cuda_matmul.cu"],
     deps = [
         "//common:essential",
     ],
 )
+
 
 
 nvcc_library(
@@ -56,7 +55,6 @@ nvcc_library(
     ],
 )
 
->>>>>>> f4fea6a01c (Json's week1 changes)
 drake_cc_googletest(
     name = "cuda_sample_test",
     srcs = ["cuda_sample_test.cc"],
@@ -87,20 +85,6 @@ drake_cc_googletest(
         ":cuda_cholesky",
         "@gtest//:main",
     ],
-<<<<<<< HEAD
-)
-=======
-)
-
-drake_cc_googletest(
-    name = "cuda_gauss_jordan_test",
-    srcs = ["cuda_gauss_jordan_test.cc"],
-    tags = ["cuda"],
-    deps = [
-	"//common:essential",
-        ":cuda_gauss_jordan",
-        "@gtest//:main",
-    ],
 )
 
 drake_cc_googletest(
@@ -114,5 +98,13 @@ drake_cc_googletest(
     ],
 )
 
-
->>>>>>> f4fea6a01c (Json's week1 changes)
+drake_cc_googletest(
+    name = "cuda_matmul_test",
+    srcs = ["cuda_matmul_test.cc"],
+    tags = ["cuda"],
+    deps = [
+	"//common:essential",
+        ":cuda_matmul",
+        "@gtest//:main",
+    ],
+)

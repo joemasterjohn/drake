@@ -9,44 +9,97 @@ namespace drake {
 namespace {
 
 GTEST_TEST(KernelTest, GPU_Collision) {
-  const int numSpheres = 6;
+  const int numSpheres = 10;
+  const int numProblems = 100;
 
-  Sphere h_spheres[numSpheres] = {// test case 1
-                                  {{0.0, 0.0, 0.0}, 0.5},
-                                  {{0.5, 0.5, 0.5}, 0.5},
-                                  // test case 2
-                                  {{20.0, 20.0, 20.0}, 0.5},
-                                  {{21.0, 20.0, 20.0}, 0.5},
-                                  // test case 3
-                                  {{25.0, 25.0, 25.0}, 0.5},
-                                  {{25.0, 25.0, 24.2}, 0.5}};
+  // initialize the problem input spheres_vec, within a box of size 4x4x4, all
+  // radius 0.5
+  Sphere h_spheres[numProblems * numSpheres];
+  for (int i = 0; i < numProblems; ++i) {
+    for (int j = 0; j < numSpheres; ++j) {
+      h_spheres[i * numSpheres + j].center = Eigen::Vector3d::Random();
+      h_spheres[i * numSpheres + j].center(0) =
+          3.0 * (h_spheres[i * numSpheres + j].center(0) + 1.0) - 1.5;
+      h_spheres[i * numSpheres + j].center(1) =
+          3.0 * (h_spheres[i * numSpheres + j].center(1) + 1.0) - 1.5;
+      h_spheres[i * numSpheres + j].center(2) =
+          3.0 * (h_spheres[i * numSpheres + j].center(2) + 1.0) - 1.5;
+      h_spheres[i * numSpheres + j].radius = 0.5;
+    }
+  }
 
   // Allocate memory for results on host
-  CollisionData h_collisionMatrixSpheres[numSpheres * numSpheres];
+  CollisionData h_collisionMatrixSpheres[numProblems * numSpheres * numSpheres];
 
   // Run the GPU collision engine
-  collision_engine(h_spheres, numSpheres, h_collisionMatrixSpheres);
+  collision_engine(h_spheres, numProblems, numSpheres,
+                   h_collisionMatrixSpheres);
 
-  std::cout << "Sphere-Sphere Collisions:" << std::endl;
-  for (int i = 0; i < numSpheres; ++i) {
-    for (int j = 0; j < numSpheres; ++j) {
-      if (h_collisionMatrixSpheres[i * numSpheres + j].isColliding) {
-        std::cout << "Collision between Sphere " << i << " and Sphere " << j
-                  << std::endl;
-        std::cout << "Collision Point: ("
-                  << h_collisionMatrixSpheres[i * numSpheres + j].p_WC(0)
-                  << ", "
-                  << h_collisionMatrixSpheres[i * numSpheres + j].p_WC(1)
-                  << ", "
-                  << h_collisionMatrixSpheres[i * numSpheres + j].p_WC(2) << ")"
-                  << std::endl;
-        std::cout << "Collision Normal: ("
-                  << h_collisionMatrixSpheres[i * numSpheres + j].nhat_BA_W(0)
-                  << ", "
-                  << h_collisionMatrixSpheres[i * numSpheres + j].nhat_BA_W(1)
-                  << ", "
-                  << h_collisionMatrixSpheres[i * numSpheres + j].nhat_BA_W(2)
-                  << ")" << std::endl;
+  // Print out the results
+  for (int i = 0; i < numProblems; i++) {
+    std::cout << "Problem " << i << ":" << std::endl;
+    for (int j = 0; j < numSpheres; j++) {
+      for (int k = 0; k < numSpheres; k++) {
+        if (h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                     j * numSpheres + k]
+                .isColliding) {
+          std::cout << "Collision between Sphere " << j << " and Sphere " << k
+                    << std::endl;
+          std::cout << "Sphere " << j << " center: ("
+                    << h_spheres[i * numSpheres + j].center(0) << ", "
+                    << h_spheres[i * numSpheres + j].center(1) << ", "
+                    << h_spheres[i * numSpheres + j].center(2) << ")"
+                    << std::endl;
+          std::cout << "Sphere " << k << " center: ("
+                    << h_spheres[i * numSpheres + k].center(0) << ", "
+                    << h_spheres[i * numSpheres + k].center(1) << ", "
+                    << h_spheres[i * numSpheres + k].center(2) << ")"
+                    << std::endl;
+          std::cout << "Collision Point: ("
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .p_WC(0)
+                    << ", "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .p_WC(1)
+                    << ", "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .p_WC(2)
+                    << ")" << std::endl;
+          std::cout << "Collision Normal: ("
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .nhat_BA_W(0)
+                    << ", "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .nhat_BA_W(1)
+                    << ", "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .nhat_BA_W(2)
+                    << ")" << std::endl;
+          std::cout << "Overlap Distance: "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .phi0
+                    << std::endl;
+          std::cout << "Rotation Matrix: " << std::endl;
+          for (int a = 0; a < 3; a++) {
+            for (int b = 0; b < 3; b++) {
+              std::cout
+                  << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                              j * numSpheres + k]
+                         .R(a, b)
+                  << " ";
+            }
+            std::cout << std::endl;
+          }
+
+          std::cout << "====================================" << std::endl;
+        }
       }
     }
   }

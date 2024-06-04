@@ -4,6 +4,18 @@
 
 #include "cuda_gpu_collision.h"
 
+// CUDA error handeling
+// =====================
+static void HandleError(cudaError_t err, const char* file, int line) {
+  if (err != cudaSuccess) {
+    printf("%s in %s at line %d\n", cudaGetErrorString(err), file, line);
+    exit(EXIT_FAILURE);
+  }
+}
+
+#define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
+// =====================
+
 // Device function to check Sphere-Sphere collision
 __host__ __device__ CollisionData checkSphereCollision(const Sphere& a,
                                                        const Sphere& b) {
@@ -36,7 +48,7 @@ __host__ __device__ CollisionData checkSphereCollision(const Sphere& a,
     data.p_WC = midpoint;
 
     // Get collision frame matrix
-    // step 1 - generate a random vector using eigen
+    // Random vector v is default to {1.0, 1.0, 1.0}
     Eigen::Vector3d v(1.0, 1.0, 1.0);
     v.normalize();
 
@@ -60,49 +72,60 @@ __host__ __device__ CollisionData checkSphereCollision(const Sphere& a,
 }
 
 // Kernel to detect collisions between Spheres
-__global__ void detectSphereCollisions(const Sphere* spheres, int numSpheres,
+__global__ void detectSphereCollisions(const Sphere* spheres, int numProblems,
+                                       int numSpheres,
                                        CollisionData* collisionMatrix,
                                        int offset) {
   int idx = threadIdx.x + offset;
-  if (idx < numSpheres) {
-    for (int j = idx; j < numSpheres; j++) {
-      if (idx != j) {
-        collisionMatrix[idx * numSpheres + j] =
-            checkSphereCollision(spheres[idx], spheres[j]);
-      }
+  int p_idx = blockIdx.x;
+
+  if (idx >= numSpheres) return;
+  if (p_idx >= numProblems) return;
+
+  for (int j = idx; j < numSpheres; j++) {
+    if (idx != j) {
+      collisionMatrix[(p_idx * numSpheres * numSpheres) + idx * numSpheres +
+                      j] =
+          checkSphereCollision(spheres[p_idx * numSpheres + idx],
+                               spheres[p_idx * numSpheres + j]);
     }
   }
 }
 
-void collision_engine(Sphere* h_spheres, const int numSpheres,
+void collision_engine(Sphere* h_spheres, const int numProblems,
+                      const int numSpheres,
                       CollisionData* h_collisionMatrixSpheres) {
   // Device memory allocations
   Sphere* d_spheres;
   CollisionData* d_collisionMatrixSpheres;
 
-  cudaMalloc((void**)&d_spheres, numSpheres * sizeof(Sphere));
-  cudaMalloc((void**)&d_collisionMatrixSpheres,
-             numSpheres * numSpheres * sizeof(CollisionData));
+  HANDLE_ERROR(cudaMalloc((void**)&d_spheres,
+                          numProblems * numSpheres * sizeof(Sphere)));
+  HANDLE_ERROR(cudaMalloc(
+      (void**)&d_collisionMatrixSpheres,
+      numProblems * numSpheres * numSpheres * sizeof(CollisionData)));
   // Copy data to device
-  cudaMemcpy(d_spheres, h_spheres, numSpheres * sizeof(Sphere),
-             cudaMemcpyHostToDevice);
+  HANDLE_ERROR(cudaMemcpy(d_spheres, h_spheres,
+                          numProblems * numSpheres * sizeof(Sphere),
+                          cudaMemcpyHostToDevice));
 
   // Kernel launches
   int threadsPerBlock = 32;
-  int blocksPerGridSpheres = 1;
+  int blocksPerGridSpheres = numProblems;
 
   int offset = 0;
   while (offset < numSpheres) {
     detectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
-        d_spheres, numSpheres, d_collisionMatrixSpheres, offset);
+        d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, offset);
     offset += 32;
-    cudaDeviceSynchronize();
+    HANDLE_ERROR(cudaDeviceSynchronize());
   }
 
   // Copy results back to host
-  cudaMemcpy(h_collisionMatrixSpheres, d_collisionMatrixSpheres,
-             numSpheres * numSpheres * sizeof(CollisionData),
-             cudaMemcpyDeviceToHost);
+  HANDLE_ERROR(
+      cudaMemcpy(h_collisionMatrixSpheres, d_collisionMatrixSpheres,
+                 numProblems * numSpheres * numSpheres * sizeof(CollisionData),
+                 cudaMemcpyDeviceToHost));
 
   // Free device memory
   cudaFree(d_spheres);
