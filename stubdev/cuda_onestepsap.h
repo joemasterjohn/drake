@@ -1,11 +1,21 @@
-#include "stubdev/cuda_cholesky.h"
-#include "stubdev/cuda_gauss_seidel.h"
-#include "stubdev/cuda_gpu_collision.h"
-#include "stubdev/cuda_matmul.h"
-#include <eigen3/Eigen/Dense>
+#pragma once
 
-void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_A,
-                      std::vector<Eigen::MatrixXd>& v_J,
-                      std::vector<Eigen::MatrixXd>& v_gamma,
-                      std::vector<Eigen::MatrixXd>& v_m,
-                      std::vector<Eigen::MatrixXd>& v_dv, int num_equations);
+#include <vector>
+
+#include <eigen3/Eigen/Dense>
+// define a constraint data structure
+struct ConstraintData {
+  Eigen::MatrixXd J;
+  Eigen::MatrixXd G;
+};
+
+// define a SAP data strucutre
+struct SAPGPUData {
+  Eigen::MatrixXd A;
+  Eigen::MatrixXd v_star;
+  ConstraintData constraint_data;
+};
+
+void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
+                      std::vector<SAPGPUData>& v_sap_data, int num_rbodies,
+                      int num_contacts, int num_equations);

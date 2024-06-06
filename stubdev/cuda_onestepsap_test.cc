@@ -13,36 +13,36 @@ GTEST_TEST(KernelTest, OneStepSAP) {
   // assume the problem contains 12 bodies, so A 12*3 by 12*3, v_m 12*3 by 1
   // etc..
   int num_rbodies = 12;
+  int num_contacts = 3;
   int num_equations = 200;
-  std::vector<Eigen::MatrixXd> v_m;
-  std::vector<Eigen::MatrixXd> v_A;
-  std::vector<Eigen::MatrixXd> v_J;
-  std::vector<Eigen::MatrixXd> v_gamma;
-  std::vector<Eigen::MatrixXd> v_dv;
-
-  // initialize the problem to be 64
-  // initialize fake v_m
-  // note that contact jacobian is 3*nc by num_rbodies*3, as it maps to
-  // num_rbodies generalized velocities gamma is impulse and a vector, so it is
-  // 3*nc by 1, since each contact has 3 components
+  std::vector<SAPGPUData> v_sap_data;
+  std::vector<Eigen::MatrixXd> v_guess;
   for (int i = 0; i < num_equations; i++) {
-    Eigen::MatrixXd m = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
-    Eigen::MatrixXd A =
-        Eigen::MatrixXd::Random(num_rbodies * 3, num_rbodies * 3);
-    Eigen::MatrixXd J =
-        Eigen::MatrixXd::Random(num_rbodies * 3, num_rbodies * 3);
-    Eigen::MatrixXd gamma = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
-    Eigen::MatrixXd dv = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
-    dv.setZero();
+    Eigen::MatrixXd guess = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
+    v_guess.push_back(guess);
 
-    v_m.push_back(m);
-    v_A.push_back(A);
-    v_J.push_back(J);
-    v_gamma.push_back(gamma);
-    v_dv.push_back(dv);
+    SAPGPUData sap_data;
+
+    sap_data.A = Eigen::MatrixXd::Random(num_rbodies * 3, num_rbodies * 3);
+    sap_data.A = sap_data.A.transpose() * sap_data.A;  // ensure A is SPD
+
+    sap_data.v_star =
+        Eigen::MatrixXd::Random(num_rbodies * 3, 1);  // free motion velocity
+
+    // J is contact 3nc x num_rbodies, G is 3nc x 3nc
+    // this confirms the size of the Hessian matrix H = A + J^T * G * J
+
+    sap_data.constraint_data.J =
+        Eigen::MatrixXd::Random(3 * num_contacts, num_rbodies);
+    sap_data.constraint_data.G =
+        Eigen::MatrixXd::Random(3 * num_contacts, 3 * num_contacts);
+    sap_data.constraint_data.G =
+        sap_data.constraint_data.G.transpose() * sap_data.constraint_data.G;
+
+    v_sap_data.push_back(sap_data);
   }
-
-  test_onestep_sap(v_A, v_J, v_gamma, v_m, dv, num_equations);
+  test_onestep_sap(v_guess, v_sap_data, num_rbodies, num_contacts,
+                   num_equations);
 }
 
 }  // namespace

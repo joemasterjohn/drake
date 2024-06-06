@@ -20,10 +20,10 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 // it can be matrix-matrix or matrix-vector
 // ==========================================================================
 
-__global__ void matrixMultiply_32hd_Kernel(double* v_A, double* v_B,
-                                           double* v_C, int A_row, int A_col,
-                                           int B_col, int stride,
-                                           int num_eqations) {
+__global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
+                                            double* v_C, int A_row, int A_col,
+                                            int B_col, int stride,
+                                            int num_eqations) {
   extern __shared__ double sums[];
 
   int thread_idx = threadIdx.x;
@@ -97,8 +97,8 @@ void matrixMultiply_32thd(std::vector<Eigen::MatrixXd>& v_A,
   cudaEventRecord(start);
   int stride = (M + threadsPerBlock - 1) / threadsPerBlock;
   // Launch kernel
-  matrixMultiply_32hd_Kernel<<<numBlocks, threadsPerBlock,
-                               2048 * sizeof(double)>>>(
+  matrixMultiply_32thd_Kernel<<<numBlocks, threadsPerBlock,
+                                2048 * sizeof(double)>>>(
       d_vA, d_vB, d_vC, M, N, K, stride, num_equations);
   cudaDeviceSynchronize();
 
@@ -141,8 +141,8 @@ __global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
 
   for (int i = 0; i < num_strides; i++) {
     int cur_idx = i * 32 + thread_idx;
-    int cur_row = cur_idx / 32;
-    int cur_col = cur_idx % 32;
+    int cur_row = cur_idx / row;
+    int cur_col = cur_idx % row;
 
     if (cur_row < row && cur_col < col) {
       d_Res(cur_row, cur_col) =
@@ -153,10 +153,10 @@ __global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
   }
 }
 
-void matrixLinOp_32hd(std::vector<Eigen::MatrixXd>& v_A,
-                      std::vector<Eigen::MatrixXd>& v_B,
-                      std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
-                      int num_equations) {
+void matrixLinOp_32thd(std::vector<Eigen::MatrixXd>& v_A,
+                       std::vector<Eigen::MatrixXd>& v_B,
+                       std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
+                       int num_equations) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
 
@@ -178,7 +178,7 @@ void matrixLinOp_32hd(std::vector<Eigen::MatrixXd>& v_A,
     HANDLE_ERROR(cudaMemcpy(d_vA + i * M * N, v_A[i].data(),
                             M * N * sizeof(double), cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_vB + i * M * N, v_B[i].data(),
-                            N * N * sizeof(double), cudaMemcpyHostToDevice));
+                            M * N * sizeof(double), cudaMemcpyHostToDevice));
   }
 
   // Define block and grid sizes
@@ -191,9 +191,10 @@ void matrixLinOp_32hd(std::vector<Eigen::MatrixXd>& v_A,
 
   cudaEventRecord(start);
   int num_strides = (M * N + threadsPerBlock - 1) / threadsPerBlock;
+
   // Launch kernel
   matrixLinOp_32thd_Kernel<<<numBlocks, threadsPerBlock>>>(
-      d_vA, d_vB, d_vRes, M, N, LinOpType::ADD, num_strides, num_equations);
+      d_vA, d_vB, d_vRes, M, N, op, num_strides, num_equations);
   cudaDeviceSynchronize();
 
   cudaEventRecord(stop);
