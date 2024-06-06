@@ -15,19 +15,25 @@ GTEST_TEST(KernelTest, CudaMatmul) {
 
   std::vector<Eigen::MatrixXd> v_A;
   std::vector<Eigen::MatrixXd> v_B;
-  std::vector<Eigen::MatrixXd> v_C_1;  // for CPU validation results
-  std::vector<Eigen::MatrixXd> v_C_2;  // for CPU validation results
+  std::vector<Eigen::MatrixXd> v_C_1;        // for CPU validation results
+  std::vector<Eigen::MatrixXd> v_C_2;        // for CPU validation results
+  std::vector<Eigen::MatrixXd> v_Diff_AB_1;  // for CPU validation results
+  std::vector<Eigen::MatrixXd> v_Diff_AB_2;  // for CPU validation results
 
   for (int i = 0; i < num_equations; i++) {
     Eigen::MatrixXd A = Eigen::MatrixXd::Random(128, 128);
     Eigen::MatrixXd B = Eigen::MatrixXd::Random(128, 128);
     Eigen::MatrixXd C_1(128, 128);  // matrix multiplication res
     Eigen::MatrixXd C_2(128, 128);  // validation res
+    Eigen::MatrixXd Diff_AB_1(128, 128);
+    Eigen::MatrixXd Diff_AB_2(128, 128);  // validation res
 
     v_A.push_back(A);
     v_B.push_back(B);
     v_C_1.push_back(C_1);
     v_C_2.push_back(C_2);
+    v_Diff_AB_1.push_back(Diff_AB_1);
+    v_Diff_AB_2.push_back(Diff_AB_2);
   }
 
   // Time the Eigen matrix multiplication for C_t3 in milliseconds
@@ -47,7 +53,16 @@ GTEST_TEST(KernelTest, CudaMatmul) {
   for (int i = 0; i < num_equations; i++) {
     EXPECT_LT((v_C_1[i] - v_C_2[i]).norm(), 1e-10);
   }
-}
 
+  // Eigen matrix subtraction for Diff_AB_t3 in milliseconds
+  matrixLinOp_32hd(v_A, v_B, v_Diff_AB_2, LinOpType::ADD, num_equations);
+  for (int i = 0; i < num_equations; i++) {
+    v_Diff_AB_1[i] = v_A[i] + v_B[i];
+  }
+
+  for (int i = 0; i < num_equations; i++) {
+    EXPECT_LT((v_Diff_AB_1[i] - v_Diff_AB_2[i]).norm(), 1e-10);
+  }
+}
 }  // namespace
 }  // namespace drake

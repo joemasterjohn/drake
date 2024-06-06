@@ -44,8 +44,6 @@ nvcc_library(
     ],
 )
 
-
-
 nvcc_library(
     name = "cuda_gpu_collision",
     hdrs = ["cuda_gpu_collision.h"],
@@ -105,6 +103,19 @@ drake_cc_googletest(
     deps = [
 	"//common:essential",
         ":cuda_matmul",
+        "@gtest//:main",
+    ],
+)
+
+drake_cc_googletest(
+    name = "cuda_onestepsap_test",
+    srcs = ["cuda_onestepsap_test.cc"],
+    tags = ["cuda"],
+    deps = [
+	"//common:essential",
+        ":cuda_matmul",
+        ":cuda_cholesky",
+        ":cuda_gauss_seidel",
         "@gtest//:main",
     ],
 )
