@@ -17,5 +17,6 @@ struct SAPGPUData {
 };
 
 void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
-                      std::vector<SAPGPUData>& v_sap_data, int num_rbodies,
+                      std::vector<SAPGPUData>& v_sap_data,
+                      std::vector<double>& v_lamda_m, int num_rbodies,
                       int num_contacts, int num_equations);

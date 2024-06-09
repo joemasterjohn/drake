@@ -14,9 +14,10 @@ GTEST_TEST(KernelTest, OneStepSAP) {
   // etc..
   int num_rbodies = 12;
   int num_contacts = 3;
-  int num_equations = 200;
+  int num_equations = 500;
   std::vector<SAPGPUData> v_sap_data;
   std::vector<Eigen::MatrixXd> v_guess;
+
   for (int i = 0; i < num_equations; i++) {
     Eigen::MatrixXd guess = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
     v_guess.push_back(guess);
@@ -41,8 +42,21 @@ GTEST_TEST(KernelTest, OneStepSAP) {
 
     v_sap_data.push_back(sap_data);
   }
-  test_onestep_sap(v_guess, v_sap_data, num_rbodies, num_contacts,
+
+  // variable to store the results on CPU, passed as a reference to the
+  // test_onestep_sap function call
+  std::vector<double> v_lambda_m;
+  v_lambda_m.resize(num_equations);
+
+  test_onestep_sap(v_guess, v_sap_data, v_lambda_m, num_rbodies, num_contacts,
                    num_equations);
+
+  for (int i = 0; i < num_equations; i++) {
+    Eigen::MatrixXd delta_v = v_guess[i] - v_sap_data[i].v_star;
+    Eigen::MatrixXd delta_P = v_sap_data[i].A * delta_v;
+    Eigen::MatrixXd lambda_cpu = 0.5 * delta_v.transpose() * delta_P;
+    EXPECT_LT(v_lambda_m[i] - lambda_cpu(0, 0), 1e-10);
+  }
 }
 
 }  // namespace

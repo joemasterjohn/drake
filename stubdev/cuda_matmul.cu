@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "cuda_matmul.cuh"
 #include "cuda_matmul.h"
 
 static void HandleError(cudaError_t err, const char* file, int line) {
@@ -29,6 +30,8 @@ __global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
   int thread_idx = threadIdx.x;
   int equ_idx = blockIdx.x;
 
+  if (equ_idx >= num_eqations) return;
+
   Eigen::Map<Eigen::MatrixXd> d_A(v_A + equ_idx * A_row * A_col, A_row, A_col);
   Eigen::Map<Eigen::VectorXd> d_B(v_B + equ_idx * A_col * B_col, A_col, B_col);
   Eigen::Map<Eigen::MatrixXd> d_C(v_C + equ_idx * A_row * B_col, A_row, B_col);
@@ -38,8 +41,7 @@ __global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
       for (int i = 0; i < stride; i++) {
         int row = i * 32 + thread_idx;
         int col = j;
-
-        if (row < A_row && col < A_col) {
+        if (row < A_row) {
           if (col == 0) {
             sums[row] = 0.0;
           }
@@ -57,10 +59,10 @@ __global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
   }
 }
 
-void matrixMultiply_32thd(std::vector<Eigen::MatrixXd>& v_A,
-                          std::vector<Eigen::MatrixXd>& v_B,
-                          std::vector<Eigen::MatrixXd>& v_C,
-                          int num_equations) {
+void matrixMultiply_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
+                               std::vector<Eigen::MatrixXd>& v_B,
+                               std::vector<Eigen::MatrixXd>& v_C,
+                               int num_equations) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
   int K = v_B[0].cols();
@@ -123,6 +125,17 @@ void matrixMultiply_32thd(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaFree(d_vC));
 }
 
+// Matrix multiplication of two matrices A and B, and store the result in C
+// This function assumes that the matrices passed in are stored on GPU
+void matrixMultiply_32thd_Device(double* d_v_A, double* d_v_B, double* d_v_C,
+                                 int A_row, int A_col, int B_col,
+                                 int num_equations) {
+  int num_stride = (A_row + 31) / 32;
+  matrixMultiply_32thd_Kernel<<<num_equations, 32, 2048 * sizeof(double)>>>(
+      d_v_A, d_v_B, d_v_C, A_row, A_col, B_col, num_stride, num_equations);
+  cudaDeviceSynchronize();
+}
+
 // ==========================================================================
 // Matrix to Matrix addition using 32 threads per block
 // Note: the sizes of two matrices need to be the same to add them
@@ -139,10 +152,13 @@ __global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
   Eigen::Map<Eigen::VectorXd> d_B(v_B + equ_idx * row * col, row, col);
   Eigen::Map<Eigen::MatrixXd> d_Res(v_Res + equ_idx * row * col, row, col);
 
+  if (equ_idx >= num_eqations) return;
+
   for (int i = 0; i < num_strides; i++) {
     int cur_idx = i * 32 + thread_idx;
-    int cur_row = cur_idx / row;
-    int cur_col = cur_idx % row;
+    if (cur_idx >= row * col) continue;
+    int cur_col = cur_idx / row;
+    int cur_row = cur_idx % row;
 
     if (cur_row < row && cur_col < col) {
       d_Res(cur_row, cur_col) =
@@ -153,10 +169,10 @@ __global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
   }
 }
 
-void matrixLinOp_32thd(std::vector<Eigen::MatrixXd>& v_A,
-                       std::vector<Eigen::MatrixXd>& v_B,
-                       std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
-                       int num_equations) {
+void matrixLinOp_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
+                            std::vector<Eigen::MatrixXd>& v_B,
+                            std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
+                            int num_equations) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
 
@@ -218,16 +234,12 @@ void matrixLinOp_32thd(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaFree(d_vRes));
 }
 
-// // ==========================================================================
-// // Evaluate the gradient of the primal cost l_p
-// // ==========================================================================
-// void evalute_l_p_grad(std::vector<Eigen::MatrixXd>& v_A,
-//                       std::vector<Eigen::MatrixXd>& v_v,
-//                       std::vector<Eigen::MatrixXd>& v_v_m,
-//                       std::vector<Eigen::MatrixXd>& v_J,
-//                       std::vector<Eigen::MatrixXd>& v_gamma,
-//                       std::vector<Eigen::MatrixXd>& v_grad_l_p,  // result
-//                       int num_equations) {
-//   // Allocate device memory
-//   double *d_A, *d_v, *d_v_m, *d_J, *d_gamma, *d_grad_l_p;
-// }
+// Matrix addition or subtraction of two matrices A and B, and store the result
+// in C This function assumes that the matrices passed in are stored on GPU
+void matrixLinOp_32thd_Device(double* d_v_A, double* d_v_B, double* d_v_Res,
+                              int row, int col, LinOpType op,
+                              int num_eqations) {
+  int num_strides = (row * col + 31) / 32;
+  matrixLinOp_32thd_Kernel<<<num_eqations, 32>>>(
+      d_v_A, d_v_B, d_v_Res, row, col, op, num_strides, num_eqations);
+}

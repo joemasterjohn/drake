@@ -37,7 +37,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_matmul",
-    hdrs = ["cuda_matmul.h"],
+    hdrs = ["cuda_matmul.h","cuda_matmul.cuh"],
     srcs = ["cuda_matmul.cu"],
     deps = [
         "//common:essential",
@@ -55,7 +55,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_onestepsap",
-    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h", "cuda_matmul.h", "cuda_gauss_seidel.h", "cuda_gpu_collision.h"],
+    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h", "cuda_matmul.h", "cuda_gauss_seidel.h", "cuda_gpu_collision.h", "cuda_matmul.cuh"],
     srcs = ["cuda_onestepsap.cu"],
     deps = [
         "//common:essential",
