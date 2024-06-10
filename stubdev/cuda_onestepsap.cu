@@ -1,12 +1,9 @@
 
 #include <iostream>
 
-#include "cuda_cholesky.h"
-#include "cuda_gauss_seidel.h"
-#include "cuda_gpu_collision.h"
 #include "cuda_matmul.cuh"
-#include "cuda_matmul.h"
 #include "cuda_onestepsap.h"
+#include "cuda_reduce.cuh"
 
 static void HandleError(cudaError_t err, const char* file, int line) {
   if (err != cudaSuccess) {
@@ -19,10 +16,13 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 
 void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
                       std::vector<SAPGPUData>& v_sap_data,
-                      std::vector<double>& v_lambda_m, int num_rbodies,
+                      std::vector<double>& v_lambda_m,
+                      std::vector<double>& v_lambda_r, int num_rbodies,
                       int num_contacts, int num_equations) {
   std::cout << "test_onestep_sap called with " << num_equations << " equations"
             << std::endl;
+
+  // calculation of lambda_m -> momentum cost
   int threadsPerBlock = 32;
   // allocate GPU memory to calculate v_guess - v_star
   double* d_v_guess;
@@ -150,5 +150,73 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
   // 0.5 * delta_v.transpose() * delta_p
   for (int i = 0; i < num_equations; i++) {
     v_lambda_m[i] *= 0.5;
+  }
+
+  // calculation of lambda_r -> impulse cost
+  // reserve space for lambda_r on GPU, size is num_equations
+
+  // copy impulse and R to GPU
+  double* d_impulse;
+  double* d_R;
+
+  size_t size_impulse = num_equations * num_contacts * 3 * sizeof(double);
+  size_t size_R = num_equations * num_contacts * 3 * 3 * sizeof(double);
+
+  HANDLE_ERROR(cudaMalloc((void**)&d_impulse, size_impulse));
+  HANDLE_ERROR(cudaMalloc((void**)&d_R, size_R));
+
+  for (int i = 0; i < num_equations; i++) {
+    for (int j = 0; j < num_contacts; j++) {
+      HANDLE_ERROR(cudaMemcpy(d_R + i * num_contacts * 3 * 3 + j * 3 * 3,
+                              v_sap_data[i].v_R[j].data(),
+                              3 * 3 * sizeof(double), cudaMemcpyHostToDevice));
+      HANDLE_ERROR(cudaMemcpy(d_impulse + i * num_contacts * 3 + j * 3,
+                              v_sap_data[i].v_gamma[j].data(),
+                              3 * sizeof(double), cudaMemcpyHostToDevice));
+    }
+  }
+
+  // allocate GPU space for intermediate results for impulse.transpose() * R
+  double* d_intermediate;
+  size_t size_intermediate = num_equations * num_contacts * 3 * sizeof(double);
+  HANDLE_ERROR(cudaMalloc((void**)&d_intermediate, size_intermediate));
+
+  // calculate lambda_r = 0.5 * impulse.transpose() * R * impulse
+  stride = 1;  // d_impulse is a column vector, so tranpose is a row vector
+  matrixMultiply_32thd_Kernel<<<num_equations * num_contacts, 32>>>(
+      d_impulse, d_R, d_intermediate, 1, 3, 3, stride,
+      num_equations * num_contacts);
+  HANDLE_ERROR(cudaDeviceSynchronize());
+
+  // allocate GPU space for final results for lambda_r
+  double* d_lambda_r;
+  size_t size_lambda_r = num_equations * num_contacts * sizeof(double);
+  HANDLE_ERROR(cudaMalloc((void**)&d_lambda_r, size_lambda_r));
+
+  stride = 1;  // intermediate is 1 by 3, and impulse vector is 3 x 1.
+  matrixMultiply_32thd_Kernel<<<num_equations * num_contacts, 32>>>(
+      d_intermediate, d_impulse, d_lambda_r, 1, 3, 1, stride,
+      num_equations * num_contacts);
+
+  HANDLE_ERROR(cudaDeviceSynchronize());
+
+  // allocate post reduce results for lambda_r
+  double* d_lambda_r_reduced;
+  size_t size_lambda_r_reduced = num_equations * sizeof(double);
+  HANDLE_ERROR(cudaMalloc((void**)&d_lambda_r_reduced, size_lambda_r_reduced));
+
+  // call reduce kernel, to sum up the lambda_r for each equation
+
+  reduce_by_problem_kernel<<<num_equations, 32>>>(
+      d_lambda_r, d_lambda_r_reduced, num_equations, num_contacts);
+
+  HANDLE_ERROR(cudaDeviceSynchronize());
+
+  // copy d_lambda_reduced back to v_lambda_r
+  HANDLE_ERROR(cudaMemcpy(v_lambda_r.data(), d_lambda_r_reduced,
+                          size_lambda_r_reduced, cudaMemcpyDeviceToHost));
+
+  for (int i = 0; i < num_equations; i++) {
+    v_lambda_r[i] *= 0.5;
   }
 }
