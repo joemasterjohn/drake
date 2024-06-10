@@ -24,6 +24,6 @@ struct CollisionData {
 };
 
 // Collision check
-void collision_engine(Sphere* h_spheres, const int numProblems,
-                      const int numSpheres,
-                      CollisionData* h_collisionMatrixSpheres);
+void CollisionEngine(Sphere* h_spheres, const int numProblems,
+                     const int numSpheres,
+                     CollisionData* h_collisionMatrixSpheres);

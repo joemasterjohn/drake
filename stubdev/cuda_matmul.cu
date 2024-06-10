@@ -20,18 +20,10 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 // Note: the sizes of two matrices are variable
 // it can be matrix-matrix or matrix-vector
 // ==========================================================================
-
-__global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
-                                            double* v_C, int A_row, int A_col,
-                                            int B_col, int stride,
-                                            int num_eqations) {
-  extern __shared__ double sums[];
-
-  int thread_idx = threadIdx.x;
-  int equ_idx = blockIdx.x;
-
-  if (equ_idx >= num_eqations) return;
-
+__device__ void MatrixMultiply32thdFunc(double* v_A, double* v_B, double* v_C,
+                                        double* sums, int thread_idx,
+                                        int equ_idx, int A_row, int A_col,
+                                        int B_col, int stride) {
   Eigen::Map<Eigen::MatrixXd> d_A(v_A + equ_idx * A_row * A_col, A_row, A_col);
   Eigen::Map<Eigen::VectorXd> d_B(v_B + equ_idx * A_col * B_col, A_col, B_col);
   Eigen::Map<Eigen::MatrixXd> d_C(v_C + equ_idx * A_row * B_col, A_row, B_col);
@@ -59,10 +51,65 @@ __global__ void matrixMultiply_32thd_Kernel(double* v_A, double* v_B,
   }
 }
 
-void matrixMultiply_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
-                               std::vector<Eigen::MatrixXd>& v_B,
-                               std::vector<Eigen::MatrixXd>& v_C,
-                               int num_equations) {
+// Kernel function serving as a wrapper
+__global__ void MatrixMultiply32thdKernel(double* v_A, double* v_B, double* v_C,
+                                          int A_row, int A_col, int B_col,
+                                          int stride, int num_eqations) {
+  extern __shared__ double sums[];
+
+  int thread_idx = threadIdx.x;
+  int equ_idx = blockIdx.x;
+
+  if (equ_idx >= num_eqations) return;
+
+  // Call the device function
+  MatrixMultiply32thdFunc(v_A, v_B, v_C, sums, thread_idx, equ_idx, A_row,
+                          A_col, B_col, stride);
+}
+
+// __global__ void MatrixMultiply32thdKernel(double* v_A, double* v_B, double*
+// v_C,
+//                                           int A_row, int A_col, int B_col,
+//                                           int stride, int num_eqations) {
+//   extern __shared__ double sums[];
+
+//   int thread_idx = threadIdx.x;
+//   int equ_idx = blockIdx.x;
+
+//   if (equ_idx >= num_eqations) return;
+
+//   Eigen::Map<Eigen::MatrixXd> d_A(v_A + equ_idx * A_row * A_col, A_row,
+//   A_col); Eigen::Map<Eigen::VectorXd> d_B(v_B + equ_idx * A_col * B_col,
+//   A_col, B_col); Eigen::Map<Eigen::MatrixXd> d_C(v_C + equ_idx * A_row *
+//   B_col, A_row, B_col);
+
+//   for (int k = 0; k < B_col; k++) {
+//     for (int j = 0; j < A_col; j++) {
+//       for (int i = 0; i < stride; i++) {
+//         int row = i * 32 + thread_idx;
+//         int col = j;
+//         if (row < A_row) {
+//           if (col == 0) {
+//             sums[row] = 0.0;
+//           }
+
+//           if (row < A_row) {
+//             sums[row] += d_A(row, col) * d_B(col, k);
+//           }
+
+//           if (col == A_col - 1) {
+//             d_C(row, k) = sums[row];
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
+
+void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
+                             std::vector<Eigen::MatrixXd>& v_B,
+                             std::vector<Eigen::MatrixXd>& v_C,
+                             int num_equations) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
   int K = v_B[0].cols();
@@ -99,8 +146,8 @@ void matrixMultiply_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
   cudaEventRecord(start);
   int stride = (M + threadsPerBlock - 1) / threadsPerBlock;
   // Launch kernel
-  matrixMultiply_32thd_Kernel<<<numBlocks, threadsPerBlock,
-                                2048 * sizeof(double)>>>(
+  MatrixMultiply32thdKernel<<<numBlocks, threadsPerBlock,
+                              2048 * sizeof(double)>>>(
       d_vA, d_vB, d_vC, M, N, K, stride, num_equations);
   cudaDeviceSynchronize();
 
@@ -125,34 +172,18 @@ void matrixMultiply_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaFree(d_vC));
 }
 
-// Matrix multiplication of two matrices A and B, and store the result in C
-// This function assumes that the matrices passed in are stored on GPU
-void matrixMultiply_32thd_Device(double* d_v_A, double* d_v_B, double* d_v_C,
-                                 int A_row, int A_col, int B_col,
-                                 int num_equations) {
-  int num_stride = (A_row + 31) / 32;
-  matrixMultiply_32thd_Kernel<<<num_equations, 32, 2048 * sizeof(double)>>>(
-      d_v_A, d_v_B, d_v_C, A_row, A_col, B_col, num_stride, num_equations);
-  cudaDeviceSynchronize();
-}
-
 // ==========================================================================
-// Matrix to Matrix addition using 32 threads per block
+// Matrix to Matrix addition and subtraction using 32 threads per block
 // Note: the sizes of two matrices need to be the same to add them
 // ==========================================================================
 
-__global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
-                                         double* v_Res, int row, int col,
-                                         LinOpType op, int num_strides,
-                                         int num_eqations) {
-  int thread_idx = threadIdx.x;
-  int equ_idx = blockIdx.x;
-
+// Device function to perform linear operations (addition or subtraction)
+__device__ void MatrixLinOp32thdFunc(double* v_A, double* v_B, double* v_Res,
+                                     int thread_idx, int equ_idx, int row,
+                                     int col, LinOpType op, int num_strides) {
   Eigen::Map<Eigen::MatrixXd> d_A(v_A + equ_idx * row * col, row, col);
   Eigen::Map<Eigen::VectorXd> d_B(v_B + equ_idx * row * col, row, col);
   Eigen::Map<Eigen::MatrixXd> d_Res(v_Res + equ_idx * row * col, row, col);
-
-  if (equ_idx >= num_eqations) return;
 
   for (int i = 0; i < num_strides; i++) {
     int cur_idx = i * 32 + thread_idx;
@@ -168,11 +199,24 @@ __global__ void matrixLinOp_32thd_Kernel(double* v_A, double* v_B,
     }
   }
 }
+// Kernel function serving as a wrapper
+__global__ void MatrixLinOp32thdKernel(double* v_A, double* v_B, double* v_Res,
+                                       int row, int col, LinOpType op,
+                                       int num_strides, int num_eqations) {
+  int thread_idx = threadIdx.x;
+  int equ_idx = blockIdx.x;
 
-void matrixLinOp_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
-                            std::vector<Eigen::MatrixXd>& v_B,
-                            std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
-                            int num_equations) {
+  if (equ_idx >= num_eqations) return;
+
+  // Call the device function
+  MatrixLinOp32thdFunc(v_A, v_B, v_Res, thread_idx, equ_idx, row, col, op,
+                       num_strides);
+}
+
+void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
+                          std::vector<Eigen::MatrixXd>& v_B,
+                          std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
+                          int num_equations) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
 
@@ -209,7 +253,7 @@ void matrixLinOp_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
   int num_strides = (M * N + threadsPerBlock - 1) / threadsPerBlock;
 
   // Launch kernel
-  matrixLinOp_32thd_Kernel<<<numBlocks, threadsPerBlock>>>(
+  MatrixLinOp32thdKernel<<<numBlocks, threadsPerBlock>>>(
       d_vA, d_vB, d_vRes, M, N, op, num_strides, num_equations);
   cudaDeviceSynchronize();
 
@@ -219,7 +263,7 @@ void matrixLinOp_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
   float milliseconds = 0.0;
   cudaEventElapsedTime(&milliseconds, start, stop);
 
-  std::cout << "Elapsed time for matrixLinOp_32thd_Kernel: " << milliseconds
+  std::cout << "Elapsed time for MatrixLinOp32thdKernel: " << milliseconds
             << " ms\n";
 
   // Copy result back to host
@@ -232,14 +276,4 @@ void matrixLinOp_32thd_Host(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaFree(d_vA));
   HANDLE_ERROR(cudaFree(d_vB));
   HANDLE_ERROR(cudaFree(d_vRes));
-}
-
-// Matrix addition or subtraction of two matrices A and B, and store the result
-// in C This function assumes that the matrices passed in are stored on GPU
-void matrixLinOp_32thd_Device(double* d_v_A, double* d_v_B, double* d_v_Res,
-                              int row, int col, LinOpType op,
-                              int num_eqations) {
-  int num_strides = (row * col + 31) / 32;
-  matrixLinOp_32thd_Kernel<<<num_eqations, 32>>>(
-      d_v_A, d_v_B, d_v_Res, row, col, op, num_strides, num_eqations);
 }

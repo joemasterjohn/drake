@@ -22,7 +22,7 @@ GTEST_TEST(KernelTest, Cholesky) {
     b.push_back(M[i] * x[i]);
   }
 
-  matrix_solve(M, b, x);
+  MatrixSolve(M, b, x);
 
   for (int i = 0; i < num_equations; ++i) {
     Eigen::VectorXd error = M[i] * x[i] - b[i];

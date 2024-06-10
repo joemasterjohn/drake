@@ -2,7 +2,7 @@
 #include <iostream>
 
 #include "cuda_matmul.cuh"
-#include "cuda_onestepsap.h"
+#include "cuda_onestepsap.cuh"
 #include "cuda_reduce.cuh"
 
 static void HandleError(cudaError_t err, const char* file, int line) {
@@ -14,13 +14,53 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 
 #define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
 
-void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
-                      std::vector<SAPGPUData>& v_sap_data,
-                      std::vector<double>& v_lambda_m,
-                      std::vector<double>& v_lambda_r, int num_rbodies,
-                      int num_contacts, int num_equations) {
-  std::cout << "test_onestep_sap called with " << num_equations << " equations"
-            << std::endl;
+void TestOneStepSapGPU(std::vector<Eigen::MatrixXd>& v_guess,
+                       std::vector<SAPCPUData>& v_sap_data,
+                       std::vector<double>& v_lambda_m,
+                       std::vector<double>& v_lambda_r, int num_rbodies,
+                       int num_contacts, int num_equations) {
+  std::cout << "TestOneStepSapGPU with GPU called with " << num_equations
+            << " equations" << std::endl;
+  SAPGPUData sap_gpu_data;
+
+  sap_gpu_data.MakeSAPGPUData(v_sap_data);
+
+  int threadsPerBlock = 32;
+  // allocate GPU memory to calculate v_guess - v_star
+  double* d_v_guess;
+  double* d_delta_v;
+
+  size_t size_v_guess = num_equations * num_rbodies * 3 * sizeof(double);
+  size_t size_delta_v = num_equations * num_rbodies * 3 * sizeof(double);
+
+  HANDLE_ERROR(cudaMalloc((void**)&d_v_guess, size_v_guess));
+  HANDLE_ERROR(cudaMalloc((void**)&d_delta_v, size_delta_v));
+
+  // Copy data to device
+  for (int i = 0; i < num_equations; i++) {
+    HANDLE_ERROR(cudaMemcpy(d_v_guess + i * num_rbodies * 3, v_guess[i].data(),
+                            num_rbodies * 3 * sizeof(double),
+                            cudaMemcpyHostToDevice));
+  }
+
+  // envoke substraction kernel
+  int num_strides = (3 * num_rbodies + threadsPerBlock - 1) / threadsPerBlock;
+
+  // Launch kernel
+  // Note: d_v_guess, d_v_star, and d_delta_v are all 3 * num_rbodies * 1
+  // MatrixLinOp32thdKernel<<<num_equations, threadsPerBlock>>>(
+  //     d_v_guess, sap_gpu_data.v_star(), d_delta_v, 3 * num_rbodies, 1,
+  //     LinOpType::SUB, num_strides, num_equations);
+  // cudaDeviceSynchronize();
+}
+
+void TestOneStepSap(std::vector<Eigen::MatrixXd>& v_guess,
+                    std::vector<SAPCPUData>& v_sap_data,
+                    std::vector<double>& v_lambda_m,
+                    std::vector<double>& v_lambda_r, int num_rbodies,
+                    int num_contacts, int num_equations) {
+  std::cout << "TestOneStepSap with CPU called with " << num_equations
+            << " equations" << std::endl;
 
   // calculation of lambda_m -> momentum cost
   int threadsPerBlock = 32;
@@ -52,7 +92,7 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
 
   // Launch kernel
   // Note: d_v_guess, d_v_star, and d_delta_v are all 3 * num_rbodies * 1
-  matrixLinOp_32thd_Kernel<<<num_equations, threadsPerBlock>>>(
+  MatrixLinOp32thdKernel<<<num_equations, threadsPerBlock>>>(
       d_v_guess, d_v_star, d_delta_v, 3 * num_rbodies, 1, LinOpType::SUB,
       num_strides, num_equations);
   cudaDeviceSynchronize();
@@ -104,7 +144,7 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
 
   // calculate delta_P = A * delta_v
   int stride = (A_rows + threadsPerBlock - 1) / threadsPerBlock;
-  matrixMultiply_32thd_Kernel<<<num_equations, 32>>>(
+  MatrixMultiply32thdKernel<<<num_equations, 32>>>(
       d_A, d_delta_v, d_delta_P, 3 * num_rbodies, 3 * num_rbodies, 1, stride,
       num_equations);
   cudaDeviceSynchronize();
@@ -137,9 +177,9 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
   HANDLE_ERROR(cudaMalloc((void**)&d_lambda, size_lambda));
 
   stride = 1;
-  matrixMultiply_32thd_Kernel<<<num_equations, 32>>>(
-      d_delta_v, d_delta_P, d_lambda, 1, 3 * num_rbodies, 1, stride,
-      num_equations);
+  MatrixMultiply32thdKernel<<<num_equations, 32>>>(d_delta_v, d_delta_P,
+                                                   d_lambda, 1, 3 * num_rbodies,
+                                                   1, stride, num_equations);
   cudaDeviceSynchronize();
 
   // copy results back
@@ -183,7 +223,7 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
 
   // calculate lambda_r = 0.5 * impulse.transpose() * R * impulse
   stride = 1;  // d_impulse is a column vector, so tranpose is a row vector
-  matrixMultiply_32thd_Kernel<<<num_equations * num_contacts, 32>>>(
+  MatrixMultiply32thdKernel<<<num_equations * num_contacts, 32>>>(
       d_impulse, d_R, d_intermediate, 1, 3, 3, stride,
       num_equations * num_contacts);
   HANDLE_ERROR(cudaDeviceSynchronize());
@@ -194,7 +234,7 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
   HANDLE_ERROR(cudaMalloc((void**)&d_lambda_r, size_lambda_r));
 
   stride = 1;  // intermediate is 1 by 3, and impulse vector is 3 x 1.
-  matrixMultiply_32thd_Kernel<<<num_equations * num_contacts, 32>>>(
+  MatrixMultiply32thdKernel<<<num_equations * num_contacts, 32>>>(
       d_intermediate, d_impulse, d_lambda_r, 1, 3, 1, stride,
       num_equations * num_contacts);
 
@@ -207,8 +247,8 @@ void test_onestep_sap(std::vector<Eigen::MatrixXd>& v_guess,
 
   // call reduce kernel, to sum up the lambda_r for each equation
 
-  reduce_by_problem_kernel<<<num_equations, 32>>>(
-      d_lambda_r, d_lambda_r_reduced, num_equations, num_contacts);
+  ReduceByProblemKernel<<<num_equations, 32>>>(d_lambda_r, d_lambda_r_reduced,
+                                               num_equations, num_contacts);
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 

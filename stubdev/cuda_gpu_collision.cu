@@ -17,7 +17,7 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 // =====================
 
 // Device function to check Sphere-Sphere collision
-__host__ __device__ CollisionData checkSphereCollision(const Sphere& a,
+__host__ __device__ CollisionData CheckSphereCollision(const Sphere& a,
                                                        const Sphere& b) {
   CollisionData data = {
       false, {0, 0, 0}, {0, 0, 0}, 0, Eigen::Matrix3d::Zero()};
@@ -72,7 +72,7 @@ __host__ __device__ CollisionData checkSphereCollision(const Sphere& a,
 }
 
 // Kernel to detect collisions between Spheres
-__global__ void detectSphereCollisions(const Sphere* spheres, int numProblems,
+__global__ void DetectSphereCollisions(const Sphere* spheres, int numProblems,
                                        int numSpheres,
                                        CollisionData* collisionMatrix,
                                        int offset) {
@@ -86,15 +86,15 @@ __global__ void detectSphereCollisions(const Sphere* spheres, int numProblems,
     if (idx != j) {
       collisionMatrix[(p_idx * numSpheres * numSpheres) + idx * numSpheres +
                       j] =
-          checkSphereCollision(spheres[p_idx * numSpheres + idx],
+          CheckSphereCollision(spheres[p_idx * numSpheres + idx],
                                spheres[p_idx * numSpheres + j]);
     }
   }
 }
 
-void collision_engine(Sphere* h_spheres, const int numProblems,
-                      const int numSpheres,
-                      CollisionData* h_collisionMatrixSpheres) {
+void CollisionEngine(Sphere* h_spheres, const int numProblems,
+                     const int numSpheres,
+                     CollisionData* h_collisionMatrixSpheres) {
   // Device memory allocations
   Sphere* d_spheres;
   CollisionData* d_collisionMatrixSpheres;
@@ -115,7 +115,7 @@ void collision_engine(Sphere* h_spheres, const int numProblems,
 
   int offset = 0;
   while (offset < numSpheres) {
-    detectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
+    DetectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
         d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, offset);
     offset += 32;
     HANDLE_ERROR(cudaDeviceSynchronize());

@@ -17,10 +17,10 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 // =====================
 
 // Cholesky factorization kernel
-__global__ void cholesky_factorization_warp_primitive(double* M, double* L,
-                                                      size_t num_equations,
-                                                      size_t n,
-                                                      size_t num_stride) {
+__global__ void CholeskyFactorizationWarpPrimitive(double* M, double* L,
+                                                   size_t num_equations,
+                                                   size_t n,
+                                                   size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
@@ -75,17 +75,11 @@ __global__ void cholesky_factorization_warp_primitive(double* M, double* L,
     }
   }
 }
-// Cholesky factorization kernel
-__global__ void cholesky_factorization(double* M, double* L,
-                                       size_t num_equations, size_t n,
-                                       size_t num_stride) {
-  int equ_idx = blockIdx.x;
-  int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
-    return;
-  }
-
+// Device function to perform Cholesky factorization
+__device__ void CholeskyFactorizationFunc(double* M, double* L, int equ_idx,
+                                          int thread_idx, size_t n,
+                                          size_t num_stride) {
   Eigen::Map<Eigen::MatrixXd> d_M(M + equ_idx * n * n, n, n);
   Eigen::Map<Eigen::MatrixXd> d_L(L + equ_idx * n * n, n, n);
 
@@ -117,10 +111,10 @@ __global__ void cholesky_factorization(double* M, double* L,
   }
 }
 
-// Cholesky solve forward substitution kernel
-__global__ void cholesky_solve_forward(double* L, double* b, double* x,
-                                       double* y, size_t num_equations,
-                                       size_t n, size_t num_stride) {
+// Cholesky factorization kernel
+__global__ void CholeskyFactorization(double* M, double* L,
+                                      size_t num_equations, size_t n,
+                                      size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
@@ -128,9 +122,15 @@ __global__ void cholesky_solve_forward(double* L, double* b, double* x,
     return;
   }
 
+  // Call the device function
+  CholeskyFactorizationFunc(M, L, equ_idx, thread_idx, n, num_stride);
+}
+
+__device__ void CholeskySolveForwardFunc(double* L, double* b, double* y,
+                                         int equ_idx, int thread_idx, size_t n,
+                                         size_t num_stride) {
   Eigen::Map<Eigen::MatrixXd> d_L(L + equ_idx * n * n, n, n);
   Eigen::Map<Eigen::VectorXd> d_b(b + equ_idx * n, n, 1);
-  Eigen::Map<Eigen::VectorXd> d_x(x + equ_idx * n, n, 1);
   Eigen::Map<Eigen::VectorXd> d_y(y + equ_idx * n, n, 1);
 
   for (int stride = 0; stride < num_stride; stride++) {
@@ -138,7 +138,6 @@ __global__ void cholesky_solve_forward(double* L, double* b, double* x,
     if (i >= n) return;
 
     // Forward substitution to solve L * y = b
-
     double sum = 0.0;
     for (int j = 0; j <= i; ++j) {
       if (j == i) {
@@ -155,10 +154,10 @@ __global__ void cholesky_solve_forward(double* L, double* b, double* x,
   }
 }
 
-// Cholesky solve backward substitution kernel
-__global__ void cholesky_solve_backward(double* L, double* b, double* x,
-                                        double* y, size_t num_equations,
-                                        size_t n, size_t num_stride) {
+// Cholesky solve forward substitution kernel
+__global__ void CholeskySolveForward(double* L, double* b, double* x, double* y,
+                                     size_t num_equations, size_t n,
+                                     size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
@@ -166,10 +165,17 @@ __global__ void cholesky_solve_backward(double* L, double* b, double* x,
     return;
   }
 
+  // Call the device function for forward substitution
+  CholeskySolveForwardFunc(L, b, y, equ_idx, thread_idx, n, num_stride);
+}
+
+// Device function to perform backward substitution
+__device__ void CholeskySolveBackwardFunc(double* L, double* y, double* x,
+                                          int equ_idx, int thread_idx, size_t n,
+                                          size_t num_stride) {
   Eigen::Map<Eigen::MatrixXd> d_L(L + equ_idx * n * n, n, n);
-  Eigen::Map<Eigen::VectorXd> d_b(b + equ_idx * n, n, 1);
-  Eigen::Map<Eigen::VectorXd> d_x(x + equ_idx * n, n, 1);
   Eigen::Map<Eigen::VectorXd> d_y(y + equ_idx * n, n, 1);
+  Eigen::Map<Eigen::VectorXd> d_x(x + equ_idx * n, n, 1);
 
   for (int stride = 0; stride < num_stride; stride++) {
     int i = n - 1 - (thread_idx + stride * 32);
@@ -191,10 +197,25 @@ __global__ void cholesky_solve_backward(double* L, double* b, double* x,
   }
 }
 
+// Cholesky solve backward substitution kernel
+__global__ void CholeskySolveBackward(double* L, double* b, double* x,
+                                      double* y, size_t num_equations, size_t n,
+                                      size_t num_stride) {
+  int equ_idx = blockIdx.x;
+  int thread_idx = threadIdx.x;
+
+  if (equ_idx >= num_equations) {
+    return;
+  }
+
+  // Call the device function for backward substitution
+  CholeskySolveBackwardFunc(L, y, x, equ_idx, thread_idx, n, num_stride);
+}
+
 // Main solve function - including memory allocation, copy, and kernel calls
-double matrix_solve(std::vector<Eigen::MatrixXd>& M,
-                    std::vector<Eigen::VectorXd>& b,
-                    std::vector<Eigen::VectorXd>& x) {
+double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
+                   std::vector<Eigen::VectorXd>& b,
+                   std::vector<Eigen::VectorXd>& x) {
   const int num_equations = M.size();
   const int n = b[0].size();
 
@@ -233,23 +254,23 @@ double matrix_solve(std::vector<Eigen::MatrixXd>& M,
 
   // Matrix Cholesky factorization
 
-  cholesky_factorization<<<num_equations, 32>>>(d_M, d_L, num_equations, n,
-                                                num_stride);
+  CholeskyFactorization<<<num_equations, 32>>>(d_M, d_L, num_equations, n,
+                                               num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Matrix Cholesky solve forward
 
-  cholesky_solve_forward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y,
-                                                num_equations, n, num_stride);
+  CholeskySolveForward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y, num_equations,
+                                              n, num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Matrix Cholesky solve backward
-  cholesky_solve_backward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y,
-                                                 num_equations, n, num_stride);
+  CholeskySolveBackward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y,
+                                               num_equations, n, num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());

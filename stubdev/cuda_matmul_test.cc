@@ -53,7 +53,7 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     // test 1 - matrix multiplication
 
     // Perform matrix multiplication
-    matrixMultiply_32thd_Host(v_A, v_B, v_C_1, num_equations);
+    MatrixMultiply32thdHost(v_A, v_B, v_C_1, num_equations);
 
     // Time the Eigen matrix multiplication for C_t3 in milliseconds
     auto start = std::chrono::high_resolution_clock::now();
@@ -72,7 +72,7 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
 
     // test 2 - matrix addition
 
-    matrixLinOp_32thd_Host(v_A, v_B, v_Res_add_1, LinOpType::ADD,
+    MatrixLinOp32thdHost(v_A, v_B, v_Res_add_1, LinOpType::ADD,
                            num_equations);
 
     start = std::chrono::high_resolution_clock::now();
@@ -89,7 +89,7 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     }
 
     // test 3 - matrix subtraction
-    matrixLinOp_32thd_Host(v_A, v_B, v_Res_sub_1, LinOpType::SUB,
+    MatrixLinOp32thdHost(v_A, v_B, v_Res_sub_1, LinOpType::SUB,
                            num_equations);
 
     start = std::chrono::high_resolution_clock::now();

@@ -32,7 +32,7 @@ GTEST_TEST(KernelTest, GPU_Collision) {
   CollisionData h_collisionMatrixSpheres[numProblems * numSpheres * numSpheres];
 
   // Run the GPU collision engine
-  collision_engine(h_spheres, numProblems, numSpheres,
+  CollisionEngine(h_spheres, numProblems, numSpheres,
                    h_collisionMatrixSpheres);
 
   // Print out the results
