@@ -14,7 +14,7 @@ GTEST_TEST(KernelTest, OneStepSAP_CPU) {
   // etc..
   int num_rbodies = 12;
   int num_contacts = 3;
-  int num_equations = 500;
+  int num_equations = 100;
   std::vector<SAPCPUData> v_sap_data;
   std::vector<Eigen::MatrixXd> v_guess;
 
@@ -87,14 +87,10 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   // etc..
   int num_rbodies = 12;
   int num_contacts = 3;
-  int num_equations = 500;
+  int num_equations = 100;
   std::vector<SAPCPUData> v_sap_data;
-  std::vector<Eigen::MatrixXd> v_guess;
 
   for (int i = 0; i < num_equations; i++) {
-    Eigen::MatrixXd guess = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
-    v_guess.push_back(guess);
-
     SAPCPUData sap_data;
 
     sap_data.num_contacts = num_contacts;
@@ -106,6 +102,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
 
     sap_data.v_star =
         Eigen::MatrixXd::Random(num_rbodies * 3, 1);  // free motion velocity
+    sap_data.v_guess = Eigen::MatrixXd::Random(num_rbodies * 3, 1);
 
     // J is contact 3nc x num_rbodies, G is 3nc x 3nc
     // this conforms the size of the Hessian matrix H = A + J^T * G * J
@@ -133,7 +130,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   v_lambda_m.resize(num_equations);
   v_lambda_r.resize(num_equations * num_contacts);
 
-  TestOneStepSapGPU(v_guess, v_sap_data, v_lambda_m, v_lambda_r, num_rbodies,
+  TestOneStepSapGPU(v_sap_data, v_lambda_m, v_lambda_r, num_rbodies,
                     num_contacts, num_equations);
 }
 

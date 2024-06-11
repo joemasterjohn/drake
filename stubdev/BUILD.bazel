@@ -37,7 +37,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_matmul",
-    hdrs = ["cuda_matmul.h","cuda_matmul.cuh"],
+    hdrs = ["cuda_matmul.h","cuda_matmul.cuh","cuda_onestepsap.cuh","cuda_onestepsap.h"],
     srcs = ["cuda_matmul.cu"],
     deps = [
         "//common:essential",

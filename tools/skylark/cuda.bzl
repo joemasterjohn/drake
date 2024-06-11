@@ -71,8 +71,6 @@ def _nvcc_object(
             "-use_fast_math",
             # Eigen requires some experimental extensions.
             "--expt-relaxed-constexpr",
-            # This is the default nvcc code-gen options.
-            "-gencode arch=compute_50,code=[compute_50,sm_50]",
             # The double-precision version of atomicAdd requires CUDA compute
             # capability 6.x but the Tesla M60 on Jenkins only supports 5.2.
             # This will generate and include code compatible with 6.0, which
