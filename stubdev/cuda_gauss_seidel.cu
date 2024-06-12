@@ -101,10 +101,10 @@ __host__ __device__ void gauss_seidel(const Eigen::Ref<Eigen::MatrixXd> M,
 }
 
 __global__ void cu_matrix_solve(double* M, double* b, double* x,
-                                size_t num_equations, size_t n) {
+                                size_t num_problems, size_t n) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (idx < num_equations) {
+  if (idx < num_problems) {
     Eigen::Map<Eigen::MatrixXd> d_M(M + idx * n * n, n, n);
     Eigen::Map<Eigen::VectorXd> d_b(b + idx * n, n, 1);
     Eigen::Map<Eigen::VectorXd> d_x(x + idx * n, n, 1);
@@ -203,20 +203,19 @@ double dot_vector_x(const Eigen::VectorXd& v1, const Eigen::VectorXd& v2) {
 double matrix_solve(const std::vector<Eigen::MatrixXd>& M,
                     const std::vector<Eigen::VectorXd>& b,
                     const std::vector<Eigen::VectorXd>& x) {
-  const int num_equations = M.size();
+  const int num_problems = M.size();
   const int n = b[0].size();
 
-  double* x_result = new double[num_equations * n];
+  double* x_result = new double[num_problems * n];
 
   // Allocate device arrays
   double *d_M, *d_b, *d_x;
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_M, sizeof(double) * num_equations * n * n));
-  HANDLE_ERROR(cudaMalloc((void**)&d_b, sizeof(double) * num_equations * n));
-  HANDLE_ERROR(cudaMalloc((void**)&d_x, sizeof(double) * num_equations * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_M, sizeof(double) * num_problems * n * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_b, sizeof(double) * num_problems * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_x, sizeof(double) * num_problems * n));
 
   // Copy to device
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     HANDLE_ERROR(cudaMemcpy(d_M + i * n * n, M[i].data(),
                             sizeof(double) * n * n, cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_b + i * n, b[i].data(), sizeof(double) * n,
@@ -224,17 +223,17 @@ double matrix_solve(const std::vector<Eigen::MatrixXd>& M,
   }
 
   // Matrix solve
-  cu_matrix_solve<<<(num_equations + 1023) / 1024, 1024>>>(d_M, d_b, d_x,
-                                                           num_equations, n);
+  cu_matrix_solve<<<(num_problems + 1023) / 1024, 1024>>>(d_M, d_b, d_x,
+                                                          num_problems, n);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Copy to host
-  HANDLE_ERROR(cudaMemcpy(x_result, d_x, sizeof(double) * num_equations * n,
+  HANDLE_ERROR(cudaMemcpy(x_result, d_x, sizeof(double) * num_problems * n,
                           cudaMemcpyDeviceToHost));
 
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     Eigen::Map<Eigen::VectorXd> x_result_i(x_result + i * n, n, 1);
     std::cout << "||M*x - b||: " << (M[i] * x_result_i - b[i]).norm()
               << std::endl;

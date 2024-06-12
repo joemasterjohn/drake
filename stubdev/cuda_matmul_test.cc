@@ -11,7 +11,7 @@ namespace drake {
 namespace {
 
 GTEST_TEST(KernelTest, CudaMatmul_Host) {
-  int num_equations = 1000;
+  int num_problems = 1000;
   int num_checks = 10;
   int N = 120;
 
@@ -30,7 +30,7 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     std::vector<Eigen::MatrixXd> v_Res_sub_1;  // A - B = Res_sub
     std::vector<Eigen::MatrixXd> v_Res_sub_2;  // for CPU validation results
 
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       Eigen::MatrixXd A = Eigen::MatrixXd::Random(N, N);
       Eigen::MatrixXd B = Eigen::MatrixXd::Random(N, N);
       Eigen::MatrixXd C_1(N, N);
@@ -53,11 +53,11 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     // test 1 - matrix multiplication
 
     // Perform matrix multiplication
-    MatrixMultiply32thdHost(v_A, v_B, v_C_1, num_equations);
+    MatrixMultiply32thdHost(v_A, v_B, v_C_1, num_problems);
 
     // Time the Eigen matrix multiplication for C_t3 in milliseconds
     auto start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       v_C_2[i] = v_A[i] * v_B[i];
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -66,17 +66,17 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     std::cout << "Elapsed time for Eigen mat mul CPU: " << elapsed.count()
               << " ms\n";
 
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       EXPECT_LT((v_C_1[i] - v_C_2[i]).norm(), 1e-10);
     }
 
     // test 2 - matrix addition
 
     MatrixLinOp32thdHost(v_A, v_B, v_Res_add_1, LinOpType::ADD,
-                           num_equations);
+                           num_problems);
 
     start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       v_Res_add_2[i] = v_A[i] + v_B[i];
     }
     end = std::chrono::high_resolution_clock::now();
@@ -84,16 +84,16 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     std::cout << "Elapsed time for Eigen mat add CPU: " << elapsed.count()
               << " ms\n";
 
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       EXPECT_LT((v_Res_add_1[i] - v_Res_add_2[i]).norm(), 1e-10);
     }
 
     // test 3 - matrix subtraction
     MatrixLinOp32thdHost(v_A, v_B, v_Res_sub_1, LinOpType::SUB,
-                           num_equations);
+                           num_problems);
 
     start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       v_Res_sub_2[i] = v_A[i] - v_B[i];
     }
     end = std::chrono::high_resolution_clock::now();
@@ -101,7 +101,7 @@ GTEST_TEST(KernelTest, CudaMatmul_Host) {
     std::cout << "Elapsed time for Eigen mat sub CPU: " << elapsed.count()
               << " ms\n";
 
-    for (int i = 0; i < num_equations; i++) {
+    for (int i = 0; i < num_problems; i++) {
       EXPECT_LT((v_Res_sub_1[i] - v_Res_sub_2[i]).norm(), 1e-10);
     }
   }

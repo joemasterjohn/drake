@@ -11,11 +11,11 @@ namespace {
 
 GTEST_TEST(KernelTest, Cholesky) {
   const int N = 256;
-  int num_equations = 300;
+  int num_problems = 300;
   std::vector<Eigen::MatrixXd> M;
   std::vector<Eigen::VectorXd> b;
   std::vector<Eigen::VectorXd> x;
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     Eigen::MatrixXd A = Eigen::MatrixXd::Random(N, N);
     M.push_back(A.transpose() * A);
     x.push_back(Eigen::VectorXd::Random(N));
@@ -24,7 +24,7 @@ GTEST_TEST(KernelTest, Cholesky) {
 
   MatrixSolve(M, b, x);
 
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     Eigen::VectorXd error = M[i] * x[i] - b[i];
     EXPECT_LT(error.norm(), 1e-10);
   }

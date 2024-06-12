@@ -14,21 +14,21 @@ struct SAPCPUData {
   Eigen::MatrixXd v_star;
   Eigen::MatrixXd v_guess;
   ConstraintData constraint_data;
-  std::vector<Eigen::MatrixXd> v_gamma;  // impulse data vector
-  std::vector<Eigen::MatrixXd> v_R;      // regularization matrix vector
+  std::vector<Eigen::Vector3d> v_gamma;  // impulse data vector
+  std::vector<Eigen::Vector3d> v_R;      // regularization matrix vector
 
   int num_contacts;
-  int num_rbodies;
-  int num_equations;
+  int num_velocities;
+  int num_problems;
 };
 
 void TestOneStepSap(std::vector<Eigen::MatrixXd>& v_guess,
                     std::vector<SAPCPUData>& v_sap_data,
                     std::vector<double>& v_lambda_m,
-                    std::vector<double>& v_lambda_r, int num_rbodies,
-                    int num_contacts, int num_equations);
+                    std::vector<double>& v_lambda_r, int num_velocities,
+                    int num_contacts, int num_problems);
 
 void TestOneStepSapGPU(std::vector<SAPCPUData>& v_sap_data,
                        std::vector<double>& v_lambda_m,
-                       std::vector<double>& v_lambda_r, int num_rbodies,
-                       int num_contacts, int num_equations);
+                       std::vector<double>& v_lambda_r, int num_velocities,
+                       int num_contacts, int num_problems);

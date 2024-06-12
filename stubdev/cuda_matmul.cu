@@ -109,14 +109,14 @@ __global__ void MatrixMultiply32thdKernel(double* v_A, double* v_B, double* v_C,
 void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
                              std::vector<Eigen::MatrixXd>& v_B,
                              std::vector<Eigen::MatrixXd>& v_C,
-                             int num_equations) {
+                             int num_problems) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
   int K = v_B[0].cols();
 
-  size_t size_vA = num_equations * M * N * sizeof(double);
-  size_t size_vB = num_equations * N * K * sizeof(double);
-  size_t size_vC = num_equations * M * K * sizeof(double);
+  size_t size_vA = num_problems * M * N * sizeof(double);
+  size_t size_vB = num_problems * N * K * sizeof(double);
+  size_t size_vC = num_problems * M * K * sizeof(double);
 
   double* d_vA;
   double* d_vB;
@@ -128,7 +128,7 @@ void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaMalloc((void**)&d_vC, size_vC));
 
   // Copy data to device
-  for (int i = 0; i < num_equations; i++) {
+  for (int i = 0; i < num_problems; i++) {
     HANDLE_ERROR(cudaMemcpy(d_vA + i * M * N, v_A[i].data(),
                             M * N * sizeof(double), cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_vB + i * N * K, v_B[i].data(),
@@ -137,7 +137,7 @@ void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
 
   // Define block and grid sizes
   int threadsPerBlock = 32;
-  int numBlocks = num_equations;
+  int numBlocks = num_problems;
 
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -147,8 +147,8 @@ void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
   int stride = (M + threadsPerBlock - 1) / threadsPerBlock;
   // Launch kernel
   MatrixMultiply32thdKernel<<<numBlocks, threadsPerBlock,
-                              2048 * sizeof(double)>>>(
-      d_vA, d_vB, d_vC, M, N, K, stride, num_equations);
+                              2048 * sizeof(double)>>>(d_vA, d_vB, d_vC, M, N,
+                                                       K, stride, num_problems);
   cudaDeviceSynchronize();
 
   cudaEventRecord(stop);
@@ -161,7 +161,7 @@ void MatrixMultiply32thdHost(std::vector<Eigen::MatrixXd>& v_A,
             << " ms\n";
 
   // Copy result back to host
-  for (int i = 0; i < num_equations; i++) {
+  for (int i = 0; i < num_problems; i++) {
     HANDLE_ERROR(cudaMemcpy(v_C[i].data(), d_vC + i * M * K,
                             M * K * sizeof(double), cudaMemcpyDeviceToHost));
   }
@@ -216,13 +216,13 @@ __global__ void MatrixLinOp32thdKernel(double* v_A, double* v_B, double* v_Res,
 void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
                           std::vector<Eigen::MatrixXd>& v_B,
                           std::vector<Eigen::MatrixXd>& v_Res, LinOpType op,
-                          int num_equations) {
+                          int num_problems) {
   int M = v_A[0].rows();
   int N = v_A[0].cols();
 
-  size_t size_vA = num_equations * M * N * sizeof(double);
-  size_t size_vB = num_equations * M * N * sizeof(double);
-  size_t size_vRes = num_equations * M * N * sizeof(double);
+  size_t size_vA = num_problems * M * N * sizeof(double);
+  size_t size_vB = num_problems * M * N * sizeof(double);
+  size_t size_vRes = num_problems * M * N * sizeof(double);
 
   double* d_vA;
   double* d_vB;
@@ -234,7 +234,7 @@ void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
   HANDLE_ERROR(cudaMalloc((void**)&d_vRes, size_vRes));
 
   // Copy data to device
-  for (int i = 0; i < num_equations; i++) {
+  for (int i = 0; i < num_problems; i++) {
     HANDLE_ERROR(cudaMemcpy(d_vA + i * M * N, v_A[i].data(),
                             M * N * sizeof(double), cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_vB + i * M * N, v_B[i].data(),
@@ -243,7 +243,7 @@ void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
 
   // Define block and grid sizes
   int threadsPerBlock = 32;
-  int numBlocks = num_equations;
+  int numBlocks = num_problems;
 
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -254,7 +254,7 @@ void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
 
   // Launch kernel
   MatrixLinOp32thdKernel<<<numBlocks, threadsPerBlock>>>(
-      d_vA, d_vB, d_vRes, M, N, op, num_strides, num_equations);
+      d_vA, d_vB, d_vRes, M, N, op, num_strides, num_problems);
   cudaDeviceSynchronize();
 
   cudaEventRecord(stop);
@@ -267,7 +267,7 @@ void MatrixLinOp32thdHost(std::vector<Eigen::MatrixXd>& v_A,
             << " ms\n";
 
   // Copy result back to host
-  for (int i = 0; i < num_equations; i++) {
+  for (int i = 0; i < num_problems; i++) {
     HANDLE_ERROR(cudaMemcpy(v_Res[i].data(), d_vRes + i * M * N,
                             M * N * sizeof(double), cudaMemcpyDeviceToHost));
   }

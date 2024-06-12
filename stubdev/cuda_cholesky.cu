@@ -18,13 +18,13 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 
 // Cholesky factorization kernel
 __global__ void CholeskyFactorizationWarpPrimitive(double* M, double* L,
-                                                   size_t num_equations,
+                                                   size_t num_problems,
                                                    size_t n,
                                                    size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
+  if (equ_idx >= num_problems) {
     return;
   }
 
@@ -112,13 +112,12 @@ __device__ void CholeskyFactorizationFunc(double* M, double* L, int equ_idx,
 }
 
 // Cholesky factorization kernel
-__global__ void CholeskyFactorization(double* M, double* L,
-                                      size_t num_equations, size_t n,
-                                      size_t num_stride) {
+__global__ void CholeskyFactorization(double* M, double* L, size_t num_problems,
+                                      size_t n, size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
+  if (equ_idx >= num_problems) {
     return;
   }
 
@@ -156,12 +155,12 @@ __device__ void CholeskySolveForwardFunc(double* L, double* b, double* y,
 
 // Cholesky solve forward substitution kernel
 __global__ void CholeskySolveForward(double* L, double* b, double* x, double* y,
-                                     size_t num_equations, size_t n,
+                                     size_t num_problems, size_t n,
                                      size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
+  if (equ_idx >= num_problems) {
     return;
   }
 
@@ -199,12 +198,12 @@ __device__ void CholeskySolveBackwardFunc(double* L, double* y, double* x,
 
 // Cholesky solve backward substitution kernel
 __global__ void CholeskySolveBackward(double* L, double* b, double* x,
-                                      double* y, size_t num_equations, size_t n,
+                                      double* y, size_t num_problems, size_t n,
                                       size_t num_stride) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
+  if (equ_idx >= num_problems) {
     return;
   }
 
@@ -216,28 +215,26 @@ __global__ void CholeskySolveBackward(double* L, double* b, double* x,
 double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
                    std::vector<Eigen::VectorXd>& b,
                    std::vector<Eigen::VectorXd>& x) {
-  const int num_equations = M.size();
+  const int num_problems = M.size();
   const int n = b[0].size();
 
-  double* x_result = new double[num_equations * n];
+  double* x_result = new double[num_problems * n];
 
   // Allocate device arrays
   double *d_M, *d_b, *d_y, *d_x, *d_L;
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_M, sizeof(double) * num_equations * n * n));
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_L, sizeof(double) * num_equations * n * n));
-  HANDLE_ERROR(cudaMalloc((void**)&d_b, sizeof(double) * num_equations * n));
-  HANDLE_ERROR(cudaMalloc((void**)&d_x, sizeof(double) * num_equations * n));
-  HANDLE_ERROR(cudaMalloc((void**)&d_y, sizeof(double) * num_equations * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_M, sizeof(double) * num_problems * n * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_L, sizeof(double) * num_problems * n * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_b, sizeof(double) * num_problems * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_x, sizeof(double) * num_problems * n));
+  HANDLE_ERROR(cudaMalloc((void**)&d_y, sizeof(double) * num_problems * n));
 
   // Set d_L and d_x to be 0
-  HANDLE_ERROR(cudaMemset(d_L, 0, sizeof(double) * num_equations * n * n));
-  HANDLE_ERROR(cudaMemset(d_x, 1, sizeof(double) * num_equations * n));
-  HANDLE_ERROR(cudaMemset(d_y, 0, sizeof(double) * num_equations * n));
+  HANDLE_ERROR(cudaMemset(d_L, 0, sizeof(double) * num_problems * n * n));
+  HANDLE_ERROR(cudaMemset(d_x, 1, sizeof(double) * num_problems * n));
+  HANDLE_ERROR(cudaMemset(d_y, 0, sizeof(double) * num_problems * n));
 
   // Copy to device
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     HANDLE_ERROR(cudaMemcpy(d_M + i * n * n, M[i].data(),
                             sizeof(double) * n * n, cudaMemcpyHostToDevice));
     HANDLE_ERROR(cudaMemcpy(d_b + i * n, b[i].data(), sizeof(double) * n,
@@ -254,23 +251,23 @@ double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
 
   // Matrix Cholesky factorization
 
-  CholeskyFactorization<<<num_equations, 32>>>(d_M, d_L, num_equations, n,
-                                               num_stride);
+  CholeskyFactorization<<<num_problems, 32>>>(d_M, d_L, num_problems, n,
+                                              num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Matrix Cholesky solve forward
 
-  CholeskySolveForward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y, num_equations,
-                                              n, num_stride);
+  CholeskySolveForward<<<num_problems, 32>>>(d_L, d_b, d_x, d_y, num_problems,
+                                             n, num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Matrix Cholesky solve backward
-  CholeskySolveBackward<<<num_equations, 32>>>(d_L, d_b, d_x, d_y,
-                                               num_equations, n, num_stride);
+  CholeskySolveBackward<<<num_problems, 32>>>(d_L, d_b, d_x, d_y, num_problems,
+                                              n, num_stride);
 
   HANDLE_ERROR(cudaGetLastError());
   HANDLE_ERROR(cudaDeviceSynchronize());
@@ -284,10 +281,10 @@ double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
   std::cout << "Elapsed time for Cholesky Solve: " << milliseconds << " ms\n";
 
   // Copy to host
-  HANDLE_ERROR(cudaMemcpy(x_result, d_x, sizeof(double) * num_equations * n,
+  HANDLE_ERROR(cudaMemcpy(x_result, d_x, sizeof(double) * num_problems * n,
                           cudaMemcpyDeviceToHost));
 
-  for (int i = 0; i < num_equations; ++i) {
+  for (int i = 0; i < num_problems; ++i) {
     Eigen::Map<Eigen::VectorXd> x_result_i(x_result + i * n, n, 1);
     x[i] = x_result_i;
   }

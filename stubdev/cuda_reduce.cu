@@ -29,12 +29,12 @@ __device__ void ReduceByProblemFunc(double* d_vec_in, double* d_vec_out,
 
 // Kernel function serving as a wrapper
 __global__ void ReduceByProblemKernel(double* d_vec_in, double* d_vec_out,
-                                      int num_equations,
+                                      int num_problems,
                                       int items_per_equation) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (equ_idx >= num_equations) {
+  if (equ_idx >= num_problems) {
     return;
   }
 
@@ -46,13 +46,13 @@ __global__ void ReduceByProblemKernel(double* d_vec_in, double* d_vec_out,
 }
 
 void reduce_by_problem(std::vector<double>& vec_in,
-                       std::vector<double>& vec_out, int num_equations,
+                       std::vector<double>& vec_out, int num_problems,
                        int items_per_equation) {
   // Allocate memory on the device
   double* d_vec_in;
   double* d_vec_out;
-  size_t size_vec_in = num_equations * items_per_equation * sizeof(double);
-  size_t size_vec_out = num_equations * sizeof(double);
+  size_t size_vec_in = num_problems * items_per_equation * sizeof(double);
+  size_t size_vec_out = num_problems * sizeof(double);
 
   HANDLE_ERROR(cudaMalloc((void**)&d_vec_in, size_vec_in));
   HANDLE_ERROR(cudaMalloc((void**)&d_vec_out, size_vec_out));
@@ -63,8 +63,8 @@ void reduce_by_problem(std::vector<double>& vec_in,
 
   // Launch kernel
   int stride = (items_per_equation + 32 - 1) / 32;
-  ReduceByProblemKernel<<<num_equations, 32>>>(
-      d_vec_in, d_vec_out, num_equations, items_per_equation);
+  ReduceByProblemKernel<<<num_problems, 32>>>(d_vec_in, d_vec_out, num_problems,
+                                              items_per_equation);
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 
