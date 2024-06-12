@@ -10,25 +10,19 @@ struct ConstraintData {
 };
 
 struct SAPCPUData {
-  Eigen::MatrixXd A;
-  Eigen::MatrixXd v_star;
+  Eigen::MatrixXd dynamics_matrix;  // Dynamics matrix A
+  Eigen::MatrixXd v_star;           // Free motion velocity v*
   Eigen::MatrixXd v_guess;
   ConstraintData constraint_data;
-  std::vector<Eigen::Vector3d> v_gamma;  // impulse data vector
-  std::vector<Eigen::Vector3d> v_R;      // regularization matrix vector
+  std::vector<Eigen::Vector3d> gamma;  // impulse data vector
+  std::vector<Eigen::Vector3d> R;      // regularization matrix vector
 
   int num_contacts;
   int num_velocities;
   int num_problems;
 };
 
-void TestOneStepSap(std::vector<Eigen::MatrixXd>& v_guess,
-                    std::vector<SAPCPUData>& v_sap_data,
-                    std::vector<double>& v_lambda_m,
-                    std::vector<double>& v_lambda_r, int num_velocities,
-                    int num_contacts, int num_problems);
-
-void TestOneStepSapGPU(std::vector<SAPCPUData>& v_sap_data,
-                       std::vector<double>& v_lambda_m,
-                       std::vector<double>& v_lambda_r, int num_velocities,
-                       int num_contacts, int num_problems);
+void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
+                       std::vector<double>& momentum_cost,
+                       std::vector<double>& regularizer_cost,
+                       int num_velocities, int num_contacts, int num_problems);
