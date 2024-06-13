@@ -101,36 +101,45 @@ struct SAPGPUData {
 
   __device__ Eigen::Map<Eigen::MatrixXd> J() {
     int row_size = 3 * num_contacts;
-    int col_size = num_velocities;
+    int col_size = 3 * num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> J() const {
     int row_size = 3 * num_contacts;
-    int col_size = num_velocities;
+    int col_size = 3 * num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
-  __device__ Eigen::Map<Eigen::MatrixXd> G() {
-    int row_size = 3 * num_contacts;
-    int col_size = 3 * num_contacts;
+  __device__ Eigen::Map<Eigen::MatrixXd> G(int constraint_index) {
+    int row_size = 3;
+    int col_size = 3;
     return Eigen::Map<Eigen::MatrixXd>(
-        G_global + blockIdx.x * row_size * col_size, row_size, col_size);
+        G_global + (blockIdx.x * num_contacts + constraint_index) * row_size *
+                       col_size,
+        row_size, col_size);
   }
 
-  __device__ const Eigen::Map<Eigen::MatrixXd> G() const {
-    int row_size = 3 * num_contacts;
-    int col_size = 3 * num_contacts;
+  __device__ const Eigen::Map<Eigen::MatrixXd> G(int constraint_index) const {
+    int row_size = 3;
+    int col_size = 3;
     return Eigen::Map<Eigen::MatrixXd>(
-        G_global + blockIdx.x * row_size * col_size, row_size, col_size);
+        G_global + (blockIdx.x * num_contacts + constraint_index) * row_size *
+                       col_size,
+        row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::Vector3d> gamma(int constraint_index) {
     return Eigen::Map<Eigen::Vector3d>(
         gamma_global + (blockIdx.x * num_contacts + constraint_index) * 3, 3,
         1);
+  }
+
+  __device__ Eigen::Map<Eigen::Vector3d> gamma_full() const {
+    return Eigen::Map<Eigen::Vector3d>(
+        gamma_global + blockIdx.x * num_contacts * 3, 3 * num_contacts, 1);
   }
 
   __device__ Eigen::Map<Eigen::Vector3d> R(int constraint_index) {
@@ -170,6 +179,41 @@ struct SAPGPUData {
         col_size);
   }
 
+  __device__ Eigen::Map<Eigen::MatrixXd> G_J() {
+    int row_size = num_contacts * 3;
+    int col_size = num_velocities * 3;
+    return Eigen::Map<Eigen::MatrixXd>(
+        G_J_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> G_J() const {
+    int row_size = num_contacts * 3;
+    int col_size = num_velocities * 3;
+    return Eigen::Map<Eigen::MatrixXd>(
+        G_J_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
+  __device__ Eigen::Map<Eigen::MatrixXd> H() {
+    int row_size = num_velocities * 3;
+    int col_size = num_velocities * 3;
+    return Eigen::Map<Eigen::MatrixXd>(
+        H_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> H() const {
+    int row_size = num_velocities * 3;
+    int col_size = num_velocities * 3;
+    return Eigen::Map<Eigen::MatrixXd>(
+        H_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
+  __device__ Eigen::Map<Eigen::MatrixXd> neg_grad() {
+    int row_size = num_velocities * 3;
+    int col_size = 1;
+    return Eigen::Map<Eigen::MatrixXd>(
+        neg_grad_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
   __host__ __device__ const int NumVelocities() const { return num_velocities; }
   __host__ __device__ const int NumContacts() const { return num_contacts; }
   __host__ __device__ const int NumProblems() const { return num_problems; }
@@ -188,6 +232,26 @@ struct SAPGPUData {
                num_problems * sizeof(double), cudaMemcpyDeviceToHost);
   }
 
+  void RetriveHessianToCPU(std::vector<Eigen::MatrixXd>& hessian) {
+    hessian.resize(num_problems);
+    for (int i = 0; i < num_problems; i++) {
+      hessian[i].resize(3 * num_velocities, 3 * num_velocities);
+      cudaMemcpy(hessian[i].data(),
+                 H_global + i * 3 * num_velocities * 3 * num_velocities,
+                 3 * num_velocities * 3 * num_velocities * sizeof(double),
+                 cudaMemcpyDeviceToHost);
+    }
+  }
+
+  void RetriveNegGradToCPU(std::vector<Eigen::MatrixXd>& neg_grad) {
+    neg_grad.resize(num_problems);
+    for (int i = 0; i < num_problems; i++) {
+      neg_grad[i].resize(3 * num_velocities, 1);
+      cudaMemcpy(neg_grad[i].data(), neg_grad_global + i * 3 * num_velocities,
+                 3 * num_velocities * sizeof(double), cudaMemcpyDeviceToHost);
+    }
+  }
+
   void MakeSAPGPUData(std::vector<SAPCPUData> data) {
     this->num_contacts = data[0].num_contacts;
     this->num_velocities = data[0].num_velocities;
@@ -203,10 +267,10 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(
         &delta_v_global, num_problems * 3 * num_velocities * sizeof(double)));
 
-    HANDLE_ERROR(cudaMalloc(&J_global, num_problems * num_contacts * 3 *
+    HANDLE_ERROR(cudaMalloc(&J_global, num_problems * num_contacts * 3 * 3 *
                                            num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(&G_global, num_problems * num_contacts * 3 *
-                                           num_contacts * 3 * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(
+        &G_global, num_problems * num_contacts * 3 * 3 * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&gamma_global,
                             num_problems * num_contacts * 3 * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&R_global,
@@ -219,6 +283,13 @@ struct SAPGPUData {
 
     HANDLE_ERROR(
         cudaMalloc(&regularizer_cost_global, num_problems * sizeof(double)));
+
+    HANDLE_ERROR(cudaMalloc(&G_J_global, num_problems * 3 * num_contacts * 3 *
+                                             num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&H_global, num_problems * 3 * num_velocities * 3 *
+                                           num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(
+        &neg_grad_global, num_problems * 3 * num_velocities * sizeof(double)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
@@ -234,14 +305,9 @@ struct SAPGPUData {
           v_guess_global + i * num_velocities * 3, data[i].v_guess.data(),
           num_velocities * 3 * sizeof(double), cudaMemcpyHostToDevice));
       HANDLE_ERROR(
-          cudaMemcpy(J_global + i * num_contacts * 3 * num_velocities,
+          cudaMemcpy(J_global + i * num_contacts * 3 * 3 * num_velocities,
                      data[i].constraint_data.J.data(),
-                     num_contacts * 3 * num_velocities * sizeof(double),
-                     cudaMemcpyHostToDevice));
-      HANDLE_ERROR(
-          cudaMemcpy(G_global + i * num_contacts * 3 * num_contacts * 3,
-                     data[i].constraint_data.G.data(),
-                     num_contacts * 3 * num_contacts * 3 * sizeof(double),
+                     num_contacts * 3 * 3 * num_velocities * sizeof(double),
                      cudaMemcpyHostToDevice));
 
       for (int j = 0; j < num_contacts; j++) {
@@ -250,6 +316,10 @@ struct SAPGPUData {
                                 cudaMemcpyHostToDevice));
         HANDLE_ERROR(cudaMemcpy(R_global + i * num_contacts * 3 + j * 3,
                                 data[i].R[j].data(), 3 * sizeof(double),
+                                cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemcpy(G_global + i * num_contacts * 3 * 3 + j * 3 * 3,
+                                data[i].constraint_data.G[j].data(),
+                                3 * 3 * sizeof(double),
                                 cudaMemcpyHostToDevice));
       }
     }
@@ -270,6 +340,10 @@ struct SAPGPUData {
   double* momentum_cost_global;  // Global memory momentum_cost for all sims
   double*
       regularizer_cost_global;  // Global memory regularizer cost for all sims
+
+  double* G_J_global;
+  double* H_global;
+  double* neg_grad_global;
 
   int num_contacts;
   int num_problems;

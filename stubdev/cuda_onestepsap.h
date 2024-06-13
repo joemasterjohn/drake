@@ -6,7 +6,7 @@
 // define a constraint data structure
 struct ConstraintData {
   Eigen::MatrixXd J;
-  Eigen::MatrixXd G;
+  std::vector<Eigen::MatrixXd> G;
 };
 
 struct SAPCPUData {
@@ -25,4 +25,6 @@ struct SAPCPUData {
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& momentum_cost,
                        std::vector<double>& regularizer_cost,
+                       std::vector<Eigen::MatrixXd>& hessian,
+                       std::vector<Eigen::MatrixXd>& neg_grad,
                        int num_velocities, int num_contacts, int num_problems);
