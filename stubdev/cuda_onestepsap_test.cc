@@ -91,7 +91,8 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
                                                   num_velocities * 3);
     }
     Eigen::MatrixXd H_cpu =
-        sap_cpu_data[i].constraint_data.J.transpose() * G_J_cpu;
+        sap_cpu_data[i].dynamics_matrix +
+        (sap_cpu_data[i].constraint_data.J.transpose() * G_J_cpu);
     EXPECT_LT(abs((H_cpu - hessian[i]).norm()), 1e-10);
   }
 
@@ -109,6 +110,8 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
 
     EXPECT_LT(abs((neg_grad_cpu - neg_grad[i]).norm()), 1e-10);
   }
+
+  // Check - cholesky solve
 }
 
 }  // namespace

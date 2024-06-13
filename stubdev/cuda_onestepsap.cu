@@ -127,6 +127,7 @@ __device__ void CalculateHessian(SAPGPUData* data) {
     if (cur_row < 3 * data->NumVelocities() &&
         cur_col < 3 * data->NumVelocities()) {
       data->H()(cur_row, cur_col) =
+          data->dynamics_matrix()(cur_row, cur_col) +
           data->J().col(cur_row).dot(data->G_J().col(cur_col));
     }
   }
