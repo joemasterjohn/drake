@@ -15,57 +15,57 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 struct SAPGPUData {
   // Mutable get functions
   __device__ Eigen::Map<Eigen::MatrixXd> dynamics_matrix() {
-    int row_size = 3 * num_velocities;
-    int col_size = 3 * num_velocities;
+    int row_size = num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         A_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   // Const get functions
   __device__ const Eigen::Map<Eigen::MatrixXd> dynamics_matrix() const {
-    int row_size = 3 * num_velocities;
-    int col_size = 3 * num_velocities;
+    int row_size = num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         A_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> v_guess() {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         v_guess_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> v_guess() const {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         v_guess_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> v_star() {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         v_star_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> v_star() const {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         v_star_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> velocity_gain() {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_v_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> velocity_gain() const {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_v_global + blockIdx.x * row_size * col_size, row_size, col_size);
@@ -73,27 +73,27 @@ struct SAPGPUData {
 
   __device__ Eigen::Map<Eigen::MatrixXd> velocity_gain_transpose() {
     int row_size = 1;
-    int col_size = 3 * num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_v_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> velocity_gain_transpose() const {
     int row_size = 1;
-    int col_size = 3 * num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_v_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> momentum_gain() {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_p_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> momentum_gain() const {
-    int row_size = 3 * num_velocities;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         delta_p_global + blockIdx.x * row_size * col_size, row_size, col_size);
@@ -101,14 +101,14 @@ struct SAPGPUData {
 
   __device__ Eigen::Map<Eigen::MatrixXd> J() {
     int row_size = 3 * num_contacts;
-    int col_size = 3 * num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> J() const {
     int row_size = 3 * num_contacts;
-    int col_size = 3 * num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
@@ -181,34 +181,34 @@ struct SAPGPUData {
 
   __device__ Eigen::Map<Eigen::MatrixXd> G_J() {
     int row_size = num_contacts * 3;
-    int col_size = num_velocities * 3;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         G_J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> G_J() const {
     int row_size = num_contacts * 3;
-    int col_size = num_velocities * 3;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         G_J_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> H() {
-    int row_size = num_velocities * 3;
-    int col_size = num_velocities * 3;
+    int row_size = num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         H_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ const Eigen::Map<Eigen::MatrixXd> H() const {
-    int row_size = num_velocities * 3;
-    int col_size = num_velocities * 3;
+    int row_size = num_velocities;
+    int col_size = num_velocities;
     return Eigen::Map<Eigen::MatrixXd>(
         H_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
   __device__ Eigen::Map<Eigen::MatrixXd> neg_grad() {
-    int row_size = num_velocities * 3;
+    int row_size = num_velocities;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
         neg_grad_global + blockIdx.x * row_size * col_size, row_size, col_size);
@@ -235,10 +235,10 @@ struct SAPGPUData {
   void RetriveHessianToCPU(std::vector<Eigen::MatrixXd>& hessian) {
     hessian.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
-      hessian[i].resize(3 * num_velocities, 3 * num_velocities);
+      hessian[i].resize(num_velocities, num_velocities);
       cudaMemcpy(hessian[i].data(),
-                 H_global + i * 3 * num_velocities * 3 * num_velocities,
-                 3 * num_velocities * 3 * num_velocities * sizeof(double),
+                 H_global + i * num_velocities * num_velocities,
+                 num_velocities * num_velocities * sizeof(double),
                  cudaMemcpyDeviceToHost);
     }
   }
@@ -246,9 +246,9 @@ struct SAPGPUData {
   void RetriveNegGradToCPU(std::vector<Eigen::MatrixXd>& neg_grad) {
     neg_grad.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
-      neg_grad[i].resize(3 * num_velocities, 1);
-      cudaMemcpy(neg_grad[i].data(), neg_grad_global + i * 3 * num_velocities,
-                 3 * num_velocities * sizeof(double), cudaMemcpyDeviceToHost);
+      neg_grad[i].resize(num_velocities, 1);
+      cudaMemcpy(neg_grad[i].data(), neg_grad_global + i * num_velocities,
+                 num_velocities * sizeof(double), cudaMemcpyDeviceToHost);
     }
   }
 
@@ -258,16 +258,16 @@ struct SAPGPUData {
     this->num_problems = data.size();
 
     // Malloc for all pointers
-    HANDLE_ERROR(cudaMalloc(&A_global, num_problems * 3 * num_velocities * 3 *
+    HANDLE_ERROR(cudaMalloc(&A_global, num_problems * num_velocities *
                                            num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(
-        &v_guess_global, num_problems * 3 * num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(
-        &v_star_global, num_problems * 3 * num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(
-        &delta_v_global, num_problems * 3 * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&v_guess_global,
+                            num_problems * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&v_star_global,
+                            num_problems * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&delta_v_global,
+                            num_problems * num_velocities * sizeof(double)));
 
-    HANDLE_ERROR(cudaMalloc(&J_global, num_problems * num_contacts * 3 * 3 *
+    HANDLE_ERROR(cudaMalloc(&J_global, num_problems * 3 * num_contacts *
                                            num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(
         &G_global, num_problems * num_contacts * 3 * 3 * sizeof(double)));
@@ -276,38 +276,37 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(&R_global,
                             num_problems * num_contacts * 3 * sizeof(double)));
 
-    HANDLE_ERROR(cudaMalloc(
-        &delta_p_global, num_problems * 3 * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&delta_p_global,
+                            num_problems * num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&momentum_cost_global,
                             num_problems * sizeof(double)));  // 1D vector
 
     HANDLE_ERROR(
         cudaMalloc(&regularizer_cost_global, num_problems * sizeof(double)));
 
-    HANDLE_ERROR(cudaMalloc(&G_J_global, num_problems * 3 * num_contacts * 3 *
+    HANDLE_ERROR(cudaMalloc(&G_J_global, num_problems * 3 * num_contacts *
                                              num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(&H_global, num_problems * 3 * num_velocities * 3 *
+    HANDLE_ERROR(cudaMalloc(&H_global, num_problems * num_velocities *
                                            num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(
-        &neg_grad_global, num_problems * 3 * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&neg_grad_global,
+                            num_problems * num_velocities * sizeof(double)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
+      HANDLE_ERROR(cudaMemcpy(A_global + i * num_velocities * num_velocities,
+                              data[i].dynamics_matrix.data(),
+                              num_velocities * num_velocities * sizeof(double),
+                              cudaMemcpyHostToDevice));
       HANDLE_ERROR(
-          cudaMemcpy(A_global + i * 3 * num_velocities * 3 * num_velocities,
-                     data[i].dynamics_matrix.data(),
-                     3 * num_velocities * 3 * num_velocities * sizeof(double),
-                     cudaMemcpyHostToDevice));
+          cudaMemcpy(v_star_global + i * num_velocities, data[i].v_star.data(),
+                     num_velocities * sizeof(double), cudaMemcpyHostToDevice));
       HANDLE_ERROR(cudaMemcpy(
-          v_star_global + i * num_velocities * 3, data[i].v_star.data(),
-          num_velocities * 3 * sizeof(double), cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(
-          v_guess_global + i * num_velocities * 3, data[i].v_guess.data(),
-          num_velocities * 3 * sizeof(double), cudaMemcpyHostToDevice));
+          v_guess_global + i * num_velocities, data[i].v_guess.data(),
+          num_velocities * sizeof(double), cudaMemcpyHostToDevice));
       HANDLE_ERROR(
-          cudaMemcpy(J_global + i * num_contacts * 3 * 3 * num_velocities,
+          cudaMemcpy(J_global + i * 3 * num_contacts * num_velocities,
                      data[i].constraint_data.J.data(),
-                     num_contacts * 3 * 3 * num_velocities * sizeof(double),
+                     3 * num_contacts * num_velocities * sizeof(double),
                      cudaMemcpyHostToDevice));
 
       for (int j = 0; j < num_contacts; j++) {

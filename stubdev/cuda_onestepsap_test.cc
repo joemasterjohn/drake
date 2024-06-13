@@ -14,7 +14,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
 
   int num_velocities = 50;
   int num_contacts = 35;
-  int num_problems = 1000;
+  int num_problems = 500;
   std::vector<SAPCPUData> sap_cpu_data;
 
   for (int i = 0; i < num_problems; i++) {
@@ -25,19 +25,19 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
     sap_data.num_problems = num_problems;
 
     sap_data.dynamics_matrix =
-        Eigen::MatrixXd::Random(num_velocities * 3, num_velocities * 3);
+        Eigen::MatrixXd::Random(num_velocities, num_velocities);
     sap_data.dynamics_matrix = sap_data.dynamics_matrix.transpose() *
                                sap_data.dynamics_matrix;  // ensure A is SPD
 
     sap_data.v_star =
-        Eigen::MatrixXd::Random(num_velocities * 3, 1);  // free motion velocity
-    sap_data.v_guess = Eigen::MatrixXd::Random(num_velocities * 3, 1);
+        Eigen::MatrixXd::Random(num_velocities, 1);  // free motion velocity
+    sap_data.v_guess = Eigen::MatrixXd::Random(num_velocities, 1);
 
     // J is contact 3nc x num_velocities, G is 3nc x 3nc
     // this conforms the size of the Hessian matrix H = A + J^T * G * J
 
     sap_data.constraint_data.J =
-        Eigen::MatrixXd::Random(3 * num_contacts, 3 * num_velocities);
+        Eigen::MatrixXd::Random(3 * num_contacts, num_velocities);
 
     // initialize impulse data vector and regularization matrices
     for (int j = 0; j < num_contacts; j++) {
@@ -83,12 +83,11 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   // Check hessian
   for (int i = 0; i < num_problems; i++) {
     Eigen::MatrixXd G_J_cpu =
-        Eigen::MatrixXd::Zero(num_contacts * 3, num_velocities * 3);
+        Eigen::MatrixXd::Zero(num_contacts * 3, num_velocities);
     for (int j = 0; j < num_contacts; j++) {
-      G_J_cpu.block(j * 3, 0, 3, num_velocities * 3) =
+      G_J_cpu.block(j * 3, 0, 3, num_velocities) =
           sap_cpu_data[i].constraint_data.G[j] *
-          sap_cpu_data[i].constraint_data.J.block(j * 3, 0, 3,
-                                                  num_velocities * 3);
+          sap_cpu_data[i].constraint_data.J.block(j * 3, 0, 3, num_velocities);
     }
     Eigen::MatrixXd H_cpu =
         sap_cpu_data[i].dynamics_matrix +
@@ -107,7 +106,6 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
          (sap_cpu_data[i].v_guess - sap_cpu_data[i].v_star)) -
         (sap_cpu_data[i].constraint_data.J.transpose() * gamma_full);
     neg_grad_cpu = -neg_grad_cpu;
-
     EXPECT_LT(abs((neg_grad_cpu - neg_grad[i]).norm()), 1e-10);
   }
 

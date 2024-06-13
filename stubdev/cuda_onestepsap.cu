@@ -115,17 +115,14 @@ __global__ void CalcRegularizerCostKernel(SAPGPUData* data) {
 }
 
 __device__ void CalculateHessian(SAPGPUData* data) {
-  int num_stride =
-      ((3 * data->NumVelocities() * 3 * data->NumVelocities()) + 31) / 32;
+  int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
   for (int i = 0; i < num_stride; i++) {
     int cur_idx = i * 32 + threadIdx.x;
-    if (cur_idx >= 3 * data->NumVelocities() * 3 * data->NumVelocities())
-      return;
-    int cur_col = cur_idx / (3 * data->NumVelocities());
-    int cur_row = cur_idx % (3 * data->NumVelocities());
+    if (cur_idx >= data->NumVelocities() * data->NumVelocities()) return;
+    int cur_col = cur_idx / (data->NumVelocities());
+    int cur_row = cur_idx % (data->NumVelocities());
 
-    if (cur_row < 3 * data->NumVelocities() &&
-        cur_col < 3 * data->NumVelocities()) {
+    if (cur_row < data->NumVelocities() && cur_col < data->NumVelocities()) {
       data->H()(cur_row, cur_col) =
           data->dynamics_matrix()(cur_row, cur_col) +
           data->J().col(cur_row).dot(data->G_J().col(cur_col));
@@ -147,7 +144,7 @@ __global__ void CalcHessianKernel(SAPGPUData* data) {
     // do a simple matrix multiplication of 3x3 multiplied by 3 by
     // 3*num_velocities
     for (int a = 0; a < 3; a++) {
-      for (int b = 0; b < 3 * data->NumVelocities(); b++) {
+      for (int b = 0; b < data->NumVelocities(); b++) {
         data->G_J()(J_row + a, b) = 0;
         for (int c = 0; c < 3; c++) {
           data->G_J()(J_row + a, b) +=
@@ -169,7 +166,7 @@ __global__ void CalcNegGradKernel(SAPGPUData* data) {
 
   if (equ_idx >= num_problems) return;
 
-  for (int i = threadIdx.x; i < 3 * data->NumVelocities(); i += blockDim.x) {
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
     double sum = 0.0;
     for (int j = 0; j < 3 * data->NumContacts(); j++) {
       sum += data->J()(j, i) * data->gamma_full()(j);
