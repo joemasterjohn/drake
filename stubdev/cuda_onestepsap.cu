@@ -10,8 +10,9 @@
 // OneStepSapGPU Kernels and Functions with new data struct
 // ========================================================================
 
-// Device function to calculate alpha*A + B = C
-// A and B are const inputs, C is mutable.
+// ========================================================================
+// Device Functions
+// ========================================================================
 __device__ void SAXPY(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
                       const Eigen::Map<Eigen::MatrixXd> B,
                       Eigen::Map<Eigen::MatrixXd> C) {
@@ -81,6 +82,26 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   }
 }
 
+__device__ void CalculateHessian(SAPGPUData* data) {
+  int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
+  for (int i = 0; i < num_stride; i++) {
+    int cur_idx = i * 32 + threadIdx.x;
+    if (cur_idx >= data->NumVelocities() * data->NumVelocities()) return;
+    int cur_col = cur_idx / (data->NumVelocities());
+    int cur_row = cur_idx % (data->NumVelocities());
+
+    if (cur_row < data->NumVelocities() && cur_col < data->NumVelocities()) {
+      data->H()(cur_row, cur_col) =
+          data->dynamics_matrix()(cur_row, cur_col) +
+          data->J().col(cur_row).dot(data->G_J().col(cur_col));
+    }
+  }
+}
+
+// ========================================================================
+// Kernels
+// ========================================================================
+
 // Kernel function serving as a wrapper
 __global__ void CalcMomentumCostKernel(SAPGPUData* data) {
   extern __shared__ double sums[];
@@ -112,22 +133,6 @@ __global__ void CalcRegularizerCostKernel(SAPGPUData* data) {
 
   // Calculate regularization cost
   CalcRegularizationCost(data);
-}
-
-__device__ void CalculateHessian(SAPGPUData* data) {
-  int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
-  for (int i = 0; i < num_stride; i++) {
-    int cur_idx = i * 32 + threadIdx.x;
-    if (cur_idx >= data->NumVelocities() * data->NumVelocities()) return;
-    int cur_col = cur_idx / (data->NumVelocities());
-    int cur_row = cur_idx % (data->NumVelocities());
-
-    if (cur_row < data->NumVelocities() && cur_col < data->NumVelocities()) {
-      data->H()(cur_row, cur_col) =
-          data->dynamics_matrix()(cur_row, cur_col) +
-          data->J().col(cur_row).dot(data->G_J().col(cur_col));
-    }
-  }
 }
 
 __global__ void CalcHessianKernel(SAPGPUData* data) {
