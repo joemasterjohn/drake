@@ -28,7 +28,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_cholesky",
-    hdrs = ["cuda_cholesky.h"],
+    hdrs = ["cuda_cholesky.h", "cuda_cholesky.cuh"],
     srcs = ["cuda_cholesky.cu"],
     deps = [
         "//common:essential",
@@ -55,14 +55,11 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_onestepsap",
-    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h", "cuda_matmul.h", "cuda_gauss_seidel.h", "cuda_gpu_collision.h", "cuda_matmul.cuh","cuda_reduce.cuh","cuda_reduce.h","cuda_onestepsap.cuh"],
+    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h","cuda_onestepsap.cuh", "cuda_cholesky.cuh"],
     srcs = ["cuda_onestepsap.cu"],
     deps = [
         "//common:essential",
         ":cuda_cholesky",
-        ":cuda_matmul",
-        ":cuda_gauss_seidel",
-        ":cuda_reduce",
     ],
 )
 
@@ -136,6 +133,7 @@ drake_cc_googletest(
     deps = [
 	"//common:essential",
     ":cuda_onestepsap",
+    ":cuda_cholesky",
     "@gtest//:main",
     "@cuda//:cudart",
     ],

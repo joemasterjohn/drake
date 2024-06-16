@@ -54,11 +54,11 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   std::vector<double> regularizer_cost;
   std::vector<Eigen::MatrixXd> hessian;
   std::vector<Eigen::MatrixXd> neg_grad;
-  momentum_cost.resize(num_problems);
-  regularizer_cost.resize(num_problems * num_contacts);
+  std::vector<Eigen::VectorXd> chol_x;
 
   TestOneStepSapGPU(sap_cpu_data, momentum_cost, regularizer_cost, hessian,
-                    neg_grad, num_velocities, num_contacts, num_problems);
+                    neg_grad, chol_x, num_velocities, num_contacts,
+                    num_problems);
 
   // Check momentum cost
   for (int i = 0; i < num_problems; i++) {
@@ -110,6 +110,10 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   }
 
   // Check - cholesky solve
+  for (int i = 0; i < num_problems; i++) {
+    Eigen::VectorXd x_cpu = hessian[i].ldlt().solve(neg_grad[i]);
+    EXPECT_LT(abs((x_cpu - chol_x[i]).norm()), 1e-10);
+  }
 }
 
 }  // namespace

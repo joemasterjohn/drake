@@ -27,4 +27,5 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& regularizer_cost,
                        std::vector<Eigen::MatrixXd>& hessian,
                        std::vector<Eigen::MatrixXd>& neg_grad,
-                       int num_velocities, int num_contacts, int num_problems);
+                       std::vector<Eigen::VectorXd>& chol_x, int num_velocities,
+                       int num_contacts, int num_problems);

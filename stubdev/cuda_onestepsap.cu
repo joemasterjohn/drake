@@ -1,9 +1,8 @@
 
 #include <iostream>
 
-#include "cuda_matmul.cuh"
+#include "cuda_cholesky.cuh"
 #include "cuda_onestepsap.cuh"
-#include "cuda_reduce.cuh"
 #include <cuda_runtime.h>
 
 // ========================================================================
@@ -109,8 +108,6 @@ __global__ void CalcMomentumCostKernel(SAPGPUData* data) {
   int equ_idx = blockIdx.x;
   int num_problems = data->NumProblems();
 
-  if (equ_idx >= num_problems) return;
-
   // Calculate velocity gain
   SAXPY(-1.0, data->v_star(), data->v_guess(), data->velocity_gain());
 
@@ -129,8 +126,6 @@ __global__ void CalcRegularizerCostKernel(SAPGPUData* data) {
   int num_problems = data->NumProblems();
   int num_contacts = data->NumContacts();
 
-  if (equ_idx >= num_problems) return;
-
   // Calculate regularization cost
   CalcRegularizationCost(data);
 }
@@ -140,8 +135,6 @@ __global__ void CalcHessianKernel(SAPGPUData* data) {
   int equ_idx = blockIdx.x;
   int num_problems = data->NumProblems();
   int num_contacts = data->NumContacts();
-
-  if (equ_idx >= num_problems) return;
 
   // Calculate G*J
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
@@ -163,13 +156,34 @@ __global__ void CalcHessianKernel(SAPGPUData* data) {
   CalculateHessian(data);
 }
 
+__global__ void SAPCholeskySolveKernel(SAPGPUData* data) {
+  int equ_idx = blockIdx.x;
+  int thread_idx = threadIdx.x;
+
+  int num_stride = (data->NumVelocities() + 31) / 32;
+
+  Eigen::Map<Eigen::MatrixXd> d_M = data->H();
+  Eigen::Map<Eigen::MatrixXd> d_L = data->chol_L();
+  Eigen::Map<Eigen::VectorXd> d_b = data->neg_grad();
+  Eigen::Map<Eigen::VectorXd> d_x = data->chol_x();
+  Eigen::Map<Eigen::VectorXd> d_y = data->chol_y();
+
+  CholeskyFactorizationFunc(d_M, d_L, equ_idx, thread_idx,
+                            data->NumVelocities(), num_stride);
+  __syncwarp();
+  CholeskySolveForwardFunc(d_L, d_b, d_y, equ_idx, thread_idx,
+                           data->NumVelocities(), num_stride);
+  __syncwarp();
+  CholeskySolveBackwardFunc(d_L, d_y, d_x, equ_idx, thread_idx,
+                            data->NumVelocities(), num_stride);
+  __syncwarp();
+}
+
 __global__ void CalcNegGradKernel(SAPGPUData* data) {
   extern __shared__ double sums[];
   int equ_idx = blockIdx.x;
   int num_problems = data->NumProblems();
   int num_contacts = data->NumContacts();
-
-  if (equ_idx >= num_problems) return;
 
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
     double sum = 0.0;
@@ -187,7 +201,8 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& regularizer_cost,
                        std::vector<Eigen::MatrixXd>& hessian,
                        std::vector<Eigen::MatrixXd>& neg_grad,
-                       int num_velocities, int num_contacts, int num_problems) {
+                       std::vector<Eigen::VectorXd>& chol_x, int num_velocities,
+                       int num_contacts, int num_problems) {
   std::cout << "TestOneStepSapGPU with GPU called with " << num_problems
             << " problems" << std::endl;
   SAPGPUData sap_gpu_data;
@@ -211,9 +226,6 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 
-  sap_gpu_data.RetriveMomentumCostToCPU(momentum_cost);
-  sap_gpu_data.RetriveRegularizerCostToCPU(regularizer_cost);
-
   // Assemble Hessian
   // Calculate G*J
   CalcHessianKernel<<<num_problems, threadsPerBlock, 2048 * sizeof(double)>>>(
@@ -227,8 +239,15 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 
+  // Cholesky Solve
+  SAPCholeskySolveKernel<<<num_problems, threadsPerBlock>>>(d_sap_gpu_data);
+  HANDLE_ERROR(cudaDeviceSynchronize());
+
+  sap_gpu_data.RetriveMomentumCostToCPU(momentum_cost);
+  sap_gpu_data.RetriveRegularizerCostToCPU(regularizer_cost);
   sap_gpu_data.RetriveHessianToCPU(hessian);
   sap_gpu_data.RetriveNegGradToCPU(neg_grad);
+  sap_gpu_data.RetriveCholXToCPU(chol_x);
 }
 
 // ===========================================================================
