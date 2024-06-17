@@ -251,20 +251,21 @@ struct SAPGPUData {
   __host__ __device__ const int NumContacts() const { return num_contacts; }
   __host__ __device__ const int NumProblems() const { return num_problems; }
 
-  // Retrival functions - copy data back to CPU
+  // Retrival functions - copy Momentum cost data back to CPU
   void RetriveMomentumCostToCPU(std::vector<double>& momentum_cost) {
     momentum_cost.resize(num_problems);
     cudaMemcpy(momentum_cost.data(), momentum_cost_global,
                num_problems * sizeof(double), cudaMemcpyDeviceToHost);
   }
 
-  // Retrival functions - copy data back to CPU
+  // Retrival functions - copy Regularizer cost data back to CPU
   void RetriveRegularizerCostToCPU(std::vector<double>& regularizer_cost) {
     regularizer_cost.resize(num_problems);
     cudaMemcpy(regularizer_cost.data(), regularizer_cost_global,
                num_problems * sizeof(double), cudaMemcpyDeviceToHost);
   }
 
+  // Retrival function - copy Hessian data back to CPU
   void RetriveHessianToCPU(std::vector<Eigen::MatrixXd>& hessian) {
     hessian.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
@@ -276,6 +277,7 @@ struct SAPGPUData {
     }
   }
 
+  // Retrival function - copy Cholesky x data back to CPU
   void RetriveCholXToCPU(std::vector<Eigen::VectorXd>& chol_x) {
     chol_x.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
@@ -285,6 +287,7 @@ struct SAPGPUData {
     }
   }
 
+  // Retrival function - copy negative gradient data back to CPU
   void RetriveNegGradToCPU(std::vector<Eigen::MatrixXd>& neg_grad) {
     neg_grad.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
@@ -398,18 +401,19 @@ struct SAPGPUData {
   double*
       regularizer_cost_global;  // Global memory regularizer cost for all sims
 
-  double* G_J_global;
-  double* H_global;
-  double* neg_grad_global;
+  double* G_J_global;       // Global memory to hold G*J
+  double* H_global;         // Global memory to hold Hessian
+  double* neg_grad_global;  // Global memory to hold negative gradient
 
   // Chlosky solve related variables
-  double* chol_L_global;
-  double* chol_y_global;
-  double* chol_x_global;
+  double*
+      chol_L_global;  // Global memory to hold factorized L matrix in cholesky
+  double* chol_y_global;  // Global memory to hold y in cholesky
+  double* chol_x_global;  // Global memory to hold x in cholesky
 
-  int num_contacts;
-  int num_problems;
-  int num_velocities;
+  int num_contacts;    // Number of contacts
+  int num_problems;    // Number of problems
+  int num_velocities;  // Number of velocities
 };
 
 // ===========================================================================

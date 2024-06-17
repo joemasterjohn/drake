@@ -12,6 +12,9 @@
 // ========================================================================
 // Device Functions
 // ========================================================================
+// Device function to perform SAPXY operation
+// Matrix A, B and C are represented by Eigen::MatrixXd
+// C = alpha * A + B
 __device__ void SAXPY(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
                       const Eigen::Map<Eigen::MatrixXd> B,
                       Eigen::Map<Eigen::MatrixXd> C) {
@@ -81,6 +84,7 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   }
 }
 
+// Contruct Hessian, H = dynamics_matrix + J * G * J^T
 __device__ void CalculateHessian(SAPGPUData* data) {
   int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
   for (int i = 0; i < num_stride; i++) {
@@ -156,6 +160,23 @@ __global__ void CalcHessianKernel(SAPGPUData* data) {
   CalculateHessian(data);
 }
 
+// Calculate -grad
+__global__ void CalcNegGradKernel(SAPGPUData* data) {
+  extern __shared__ double sums[];
+  int equ_idx = blockIdx.x;
+  int num_problems = data->NumProblems();
+  int num_contacts = data->NumContacts();
+
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    double sum = 0.0;
+    for (int j = 0; j < 3 * data->NumContacts(); j++) {
+      sum += data->J()(j, i) * data->gamma_full()(j);
+    }
+    data->neg_grad()(i, 0) = -(data->momentum_gain()(i, 0) - sum);
+  }
+}
+
+// Solve for Hx = -grad
 __global__ void SAPCholeskySolveKernel(SAPGPUData* data) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
@@ -179,23 +200,8 @@ __global__ void SAPCholeskySolveKernel(SAPGPUData* data) {
   __syncwarp();
 }
 
-__global__ void CalcNegGradKernel(SAPGPUData* data) {
-  extern __shared__ double sums[];
-  int equ_idx = blockIdx.x;
-  int num_problems = data->NumProblems();
-  int num_contacts = data->NumContacts();
-
-  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
-    double sum = 0.0;
-    for (int j = 0; j < 3 * data->NumContacts(); j++) {
-      sum += data->J()(j, i) * data->gamma_full()(j);
-    }
-    data->neg_grad()(i, 0) = -(data->momentum_gain()(i, 0) - sum);
-  }
-}
-
 // ==========================================================================
-
+// Driver function to involke
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& momentum_cost,
                        std::vector<double>& regularizer_cost,
@@ -217,7 +223,6 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   int threadsPerBlock = 32;
 
   // Evaluate Cost
-
   CalcMomentumCostKernel<<<num_problems, threadsPerBlock,
                            2048 * sizeof(double)>>>(d_sap_gpu_data);
 
@@ -243,6 +248,7 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   SAPCholeskySolveKernel<<<num_problems, threadsPerBlock>>>(d_sap_gpu_data);
   HANDLE_ERROR(cudaDeviceSynchronize());
 
+  // Transfer back to CPU for gtest validation
   sap_gpu_data.RetriveMomentumCostToCPU(momentum_cost);
   sap_gpu_data.RetriveRegularizerCostToCPU(regularizer_cost);
   sap_gpu_data.RetriveHessianToCPU(hessian);
