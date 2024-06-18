@@ -99,6 +99,20 @@ struct SAPGPUData {
         delta_p_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
+  __device__ Eigen::Map<Eigen::MatrixXd> momentum_gain_transpose() {
+    int row_size = 1;
+    int col_size = num_velocities;
+    return Eigen::Map<Eigen::MatrixXd>(
+        delta_p_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> momentum_gain_transpose() const {
+    int row_size = 1;
+    int col_size = num_velocities;
+    return Eigen::Map<Eigen::MatrixXd>(
+        delta_p_global + blockIdx.x * row_size * col_size, row_size, col_size);
+  }
+
   __device__ Eigen::Map<Eigen::MatrixXd> J() {
     int row_size = 3 * num_contacts;
     int col_size = num_velocities;
@@ -247,6 +261,14 @@ struct SAPGPUData {
         chol_x_global + blockIdx.x * num_velocities, num_velocities);
   }
 
+  __device__ double l_alpha() { return l_alpha_global[blockIdx.x]; }
+
+  __device__ const double l_alpha() const { return l_alpha_global[blockIdx.x]; }
+
+  __device__ double r_alpha() { return r_alpha_global[blockIdx.x]; }
+
+  __device__ const double r_alpha() const { return r_alpha_global[blockIdx.x]; }
+
   __host__ __device__ const int NumVelocities() const { return num_velocities; }
   __host__ __device__ const int NumContacts() const { return num_contacts; }
   __host__ __device__ const int NumProblems() const { return num_problems; }
@@ -344,6 +366,12 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(&chol_x_global,
                             num_problems * num_velocities * sizeof(double)));
 
+    HANDLE_ERROR(cudaMalloc(&dl_eval_global, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&dll_eval_global, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&l_alpha_global, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&r_alpha_global, num_problems * sizeof(double)));
+
+    // Set data to initialized value using cudaMemset
     HANDLE_ERROR(cudaMemset(
         chol_L_global, 0,
         num_problems * num_velocities * num_velocities * sizeof(double)));
@@ -351,6 +379,12 @@ struct SAPGPUData {
                             num_problems * num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMemset(chol_x_global, 0,
                             num_problems * num_velocities * sizeof(double)));
+
+    // Initialize line search parameters, reconsider the necessity
+    HANDLE_ERROR(cudaMemset(dl_eval_global, 0, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMemset(dll_eval_global, 0, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMemset(l_alpha_global, 0, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMemset(r_alpha_global, 0, num_problems * sizeof(double)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
@@ -414,6 +448,18 @@ struct SAPGPUData {
   int num_contacts;    // Number of contacts
   int num_problems;    // Number of problems
   int num_velocities;  // Number of velocities
+
+  // Line search related variables
+  double* dl_eval_global;   // Global memory to evaluate dl/dalpha, this also
+                            // serves as a scratch space during the line search
+  double* dll_eval_global;  // Global memory to evaluate dl2/dalpha2, this also
+                            // serves as a scratch space during the line search
+  double*
+      l_alpha_global;  // Global memory to hold left alpha for line search this
+                       // also serves as a scratch space during the line search
+  double*
+      r_alpha_global;  // Global memory to hold right alpha for line search this
+                       // also serves as a scratch space during the line search
 };
 
 // ===========================================================================

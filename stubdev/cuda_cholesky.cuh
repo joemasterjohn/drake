@@ -15,8 +15,6 @@ __device__ void CholeskyFactorizationFunc(Eigen::Map<Eigen::MatrixXd> M,
     int j = thread_idx + stride * 32;
 
     for (int i = 0; i <= j_up; ++i) {
-      __syncwarp();
-
       if (j < n && i <= j && i == j) {
         double sum = 0.0;
         for (int k = 0; k < i; ++k) {
@@ -34,6 +32,8 @@ __device__ void CholeskyFactorizationFunc(Eigen::Map<Eigen::MatrixXd> M,
         }
         L(j, i) = (M(j, i) - sum) / L(i, i);
       }
+
+      __syncwarp();
     }
   }
 }
