@@ -236,7 +236,9 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
                                      double* sums,
                                      Eigen::Map<Eigen::MatrixXd> dv_alpha,
                                      Eigen::Map<Eigen::MatrixXd> v_alpha,
+                                     Eigen::Map<Eigen::MatrixXd> delta_v_c,
                                      double* dmid_1, double* dmid_2) {
+  // calculate dmid_1 = momentum_gain.transpose() * dv(alpha)
   double res = 0.0;
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     res += 0.5 * data->momentum_gain()(i, 0) * dv_alpha(i, 0);
@@ -253,13 +255,32 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
 
   __syncwarp();
 
-  // TODO: calculate dmid_2
+  // calculate dmid_2 = v_c.transpose() * gamma_full
+  res = 0.0;
+  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+    res += delta_v_c(i, 0) * data->gamma_full()(i);
+  }
+  res += __shfl_down_sync(0xFFFFFFFF, res, 16);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 8);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 4);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 2);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 1);
+
+  __syncwarp();
+
+  if (threadIdx.x == 0) {
+    *dmid_2 = res;
+    *d = *dmid_1 + *dmid_2;
+  }
+
+  __syncwarp();
 }
 
 __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
                                       double* d2, double* sums,
                                       Eigen::Map<Eigen::MatrixXd> dv_alpha,
                                       Eigen::Map<Eigen::MatrixXd> v_alpha,
+                                      Eigen::Map<Eigen::MatrixXd> delta_v_c,
                                       double* ddmid_1, double* ddmid_2) {
   double res = 0.0;
 
@@ -279,7 +300,35 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
 
   __syncwarp();
 
-  // TODO: calculate ddmid_2
+  //  calculate ddmid_2
+  res = 0.0;
+  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+    double vec_0 = delta_v_c(3 * i, 0);
+    double vec_1 = delta_v_c(3 * i + 1, 0);
+    double vec_2 = delta_v_c(3 * i + 2, 0);
+
+    for (int j = 0; j < 3; j++) {
+      // vector formed by [vec_0, vec_1, vec_2] multiply by G[i].col(j)
+      for (int k = 0; k < 3; k++) {
+        res += delta_v_c(3 * i + j) *
+               (vec_0 * data->G(i)(0, k) + vec_1 * data->G(i)(1, k) +
+                vec_2 * data->G(i)(2, k));
+      }
+    }
+  }
+
+  res += __shfl_down_sync(0xFFFFFFFF, res, 16);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 8);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 4);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 2);
+  res += __shfl_down_sync(0xFFFFFFFF, res, 1);
+
+  if (threadIdx.x == 0) {
+    *ddmid_2 = res;
+    *d2 = *ddmid_1 + *ddmid_2;
+  }
+
+  __syncwarp();
 }
 
 __global__ void SAPLineSearchKernel(SAPGPUData* data) {
@@ -296,12 +345,19 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
   // 9 - dmid_2 ((J*dv(alpha)).transpose() * gamma(alpha))
   // 10 - ddmid_1 (dv_alpha.transpose() * momentum_gain)
   // 11 - ddmid_2 (J*dv_alpha).transpose() * G * (J*dv_alpha)
-  // [10, (num_velocities + 10)) - dv(alpha)
-  // [(num_velocities + 10), (2*num_velocities + 10)) - v(alpha)
+  // 12 - prev_alpha (for termination logic)
+  // 13 - flag (0 for termination, 1 for continuation)
+
+  // [14, (num_velocities + 14)) - dv(alpha)
+
+  // [(num_velocities + 14), (2*num_velocities + 14)) - v(alpha)
+
+  // [(2*num_velocities+14),(2*num_velocities+14+3*num_contacts)) -
+  // delta_v_c
 
   extern __shared__ double buff[];
   size_t buff_arr_size = 2;
-  size_t buff_arr_offset = 12;
+  size_t buff_arr_offset = 14;
 
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
@@ -310,7 +366,11 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
     buff[0] = data->l_alpha();
     buff[1] = data->r_alpha();
     buff[2] = (buff[0] + buff[1]) / 2.0;
+    buff[12] = 0.0;
+    buff[13] = 1.0;
   }
+
+  __syncwarp();
 
   double* sums =
       buff + (buff_arr_size * data->NumVelocities() + buff_arr_offset);
@@ -320,27 +380,80 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
       1);  // scratch space, needs to be calculated on the fly
   Eigen::Map<Eigen::MatrixXd> v_alpha(
       buff + buff_arr_offset + data->NumVelocities(), data->NumVelocities(), 1);
+  Eigen::Map<Eigen::MatrixXd> delta_v_c(
+      buff + buff_arr_offset + 2 * data->NumVelocities(),
+      3 * data->NumContacts(), 1);
+
+  double* l_alpha = buff;
+  double* r_alpha = buff + 1;
+  double* mid_alpha = buff + 2;
+  double* fl = buff + 3;
+  double* fr = buff + 4;
+  double* fmid = buff + 5;
+  double* dmid = buff + 6;
+  double* d2mid = buff + 7;
   double* dmid_1 = buff + 8;
   double* dmid_2 = buff + 9;
   double* ddmid_1 = buff + 10;
   double* ddmid_2 = buff + 11;
+  double* prev_alpha = buff + 12;
+  double* flag = buff + 13;
 
-  // TODO: Update G and gamma
+  while (*flag == 1.0) {
+    // evaluate the cost function at l_alpha and r_alpha
+    // TODO: Update G and gamma
+    SAPLineSearchEvalCost(data, buff[0], &buff[3], sums, dv_alpha, v_alpha);
+    // TODO: Update G and gamma
+    SAPLineSearchEvalCost(data, buff[1], &buff[4], sums, dv_alpha, v_alpha);
 
-  // evaluate the cost function at l_alpha and r_alpha
-  SAPLineSearchEvalCost(data, buff[0], &buff[3], sums, dv_alpha, v_alpha);
-  SAPLineSearchEvalCost(data, buff[1], &buff[4], sums, dv_alpha, v_alpha);
+    // we evaluate fmid the last as cache will be left in the global memory
+    // TODO: Update G and gamma
+    SAPLineSearchEvalCost(data, buff[2], &buff[5], sums, dv_alpha, v_alpha);
 
-  // we evaluate fmid the last as cache will be left in the global memory
-  SAPLineSearchEvalCost(data, buff[2], &buff[5], sums, dv_alpha, v_alpha);
+    // derivative evaluation for newton-raphson
+    MMultiply(1.0, data->J(), dv_alpha, delta_v_c, sums);
 
-  // evaluate the first derivative of mid_alpha
-  SAPLineSearchEvalDer(data, buff[2], &buff[6], sums, dv_alpha, v_alpha, dmid_1,
-                       dmid_2);
+    // evaluate the first derivative of mid_alpha
+    SAPLineSearchEvalDer(data, buff[2], &buff[6], sums, dv_alpha, v_alpha,
+                         delta_v_c, dmid_1, dmid_2);
 
-  // evaluate the second derivative of mid_alpha
-  SAPLineSearchEval2Der(data, buff[2], &buff[7], sums, dv_alpha, v_alpha,
-                        ddmid_1, ddmid_2);
+    // evaluate the second derivative of mid_alpha
+    SAPLineSearchEval2Der(data, buff[2], &buff[7], sums, dv_alpha, v_alpha,
+                          delta_v_c, ddmid_1, ddmid_2);
+
+    if (threadIdx.x == 0) {
+      // bisect if newton out of range
+      if ((((*mid_alpha) - (*r_alpha)) * (*dmid) - (*fmid)) *
+              ((*mid_alpha - *l_alpha) * (*dmid) - (*fmid)) >
+          0.0) {
+        *(prev_alpha) = *(mid_alpha);
+
+        if ((*fmid) * (*fl) < 0.0) {
+          *r_alpha = *mid_alpha;
+        } else {
+          *l_alpha = *mid_alpha;
+        }
+
+        // update *mid_alpha
+        *mid_alpha = (*l_alpha + *r_alpha) / 2.0;
+      } else {
+        // newton is in range
+        *(prev_alpha) = *(mid_alpha);
+
+        // calculate descent distance
+        double dx = *fmid / *dmid;
+        // update *mid_alpha
+        *mid_alpha -= dx;
+      }
+
+      // assumption: assume machine prescision
+      if (abs(*prev_alpha - *mid_alpha) == 0) {
+        *flag = 0.0;
+      }
+    }
+  }
+
+  __syncwarp();
 }
 
 // ==========================================================================
@@ -401,8 +514,10 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   // Line search
   // call search kernel - find mid, eval der, 2der, control logic
   // the final goal is to return an updated x
-  SAPLineSearchKernel<<<num_problems, threadsPerBlock, 8192 * sizeof(double)>>>(
+  std::cout << "kernel call" << std::endl;
+  SAPLineSearchKernel<<<num_problems, threadsPerBlock, 4096 * sizeof(double)>>>(
       d_sap_gpu_data);
+  std::cout << "kernel end" << std::endl;
   HANDLE_ERROR(cudaDeviceSynchronize());
 }
 
