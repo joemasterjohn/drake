@@ -12,7 +12,7 @@
 // ========================================================================
 // Device Functions
 // ========================================================================
-// Device function to perform SAPXY operation
+// Device helper function to perform SAPXY operation
 // Matrix A, B and C are represented by Eigen::MatrixXd
 // C = alpha * A + B
 __device__ void SAXPY(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
@@ -36,7 +36,7 @@ __device__ void SAXPY(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
   }
 }
 
-// Device function to calculate alpha*(A*B) = C
+// Device helper function to calculate alpha*(A*B) = C
 // A and B are const inputs, C is mutable.
 __device__ void MMultiply(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
                           const Eigen::Map<Eigen::MatrixXd> B,
@@ -79,9 +79,14 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
+
+  __syncwarp();
+
   if (threadIdx.x == 0) {
     data->regularizer_cost()(0, 0) = sum;
   }
+
+  __syncwarp();
 }
 
 // Contruct Hessian, H = dynamics_matrix + J * G * J^T
@@ -89,58 +94,54 @@ __device__ void CalculateHessian(SAPGPUData* data) {
   int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
   for (int i = 0; i < num_stride; i++) {
     int cur_idx = i * 32 + threadIdx.x;
-    if (cur_idx >= data->NumVelocities() * data->NumVelocities()) return;
-    int cur_col = cur_idx / (data->NumVelocities());
-    int cur_row = cur_idx % (data->NumVelocities());
+    if (cur_idx < data->NumVelocities() * data->NumVelocities()) {
+      int cur_col = cur_idx / (data->NumVelocities());
+      int cur_row = cur_idx % (data->NumVelocities());
 
-    if (cur_row < data->NumVelocities() && cur_col < data->NumVelocities()) {
-      data->H()(cur_row, cur_col) =
-          data->dynamics_matrix()(cur_row, cur_col) +
-          data->J().col(cur_row).dot(data->G_J().col(cur_col));
+      if (cur_row < data->NumVelocities() && cur_col < data->NumVelocities()) {
+        data->H()(cur_row, cur_col) =
+            data->dynamics_matrix()(cur_row, cur_col) +
+            data->J().col(cur_row).dot(data->G_J().col(cur_col));
+      }
     }
   }
 }
 
+// Calculate momentum gain and momentum cost
+// This function will overwrite the global memory
+// This function assumes the v_guess is properly set and assumes it is the input
 __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
   // Calculate velocity gain
   SAXPY(-1.0, data->v_star(), data->v_guess(), data->velocity_gain());
+
+  __syncwarp();
 
   // Calculate momentum gain
   MMultiply(1.0, data->dynamics_matrix(), data->velocity_gain(),
             data->momentum_gain(), sums);
 
+  __syncwarp();
+
   // Calculate momentum cost
   MMultiply(0.5, data->velocity_gain_transpose(), data->momentum_gain(),
             data->momentum_cost(), sums);
+
+  __syncwarp();
 }
 
-// ========================================================================
-// Kernels
-// ========================================================================
+// Calculate for the search direction, this direction will then be scaled by
+// alpha in the line search section
+__device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
+  int equ_idx = blockIdx.x;
+  int thread_idx = threadIdx.x;
 
-// Kernel function serving as a wrapper
-__global__ void CalcMomentumCostKernel(SAPGPUData* data) {
-  extern __shared__ double sums[];
-
+  // Calculate Momentum Cost
   CalcMomentumCost(data, sums);
-}
 
-__global__ void CalcRegularizerCostKernel(SAPGPUData* data) {
-  extern __shared__ double sums[];
-  int equ_idx = blockIdx.x;
-  int num_problems = data->NumProblems();
-  int num_contacts = data->NumContacts();
-
-  // Calculate regularization cost
+  // Calculate Regularization Cost
   CalcRegularizationCost(data);
-}
 
-__global__ void CalcHessianKernel(SAPGPUData* data) {
-  extern __shared__ double sums[];
-  int equ_idx = blockIdx.x;
-  int num_problems = data->NumProblems();
-  int num_contacts = data->NumContacts();
-
+  // Calculate and assemble Hessian
   // Calculate G*J
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     int J_row = i * 3;
@@ -157,16 +158,11 @@ __global__ void CalcHessianKernel(SAPGPUData* data) {
     }
   }
 
-  // Calculate data->H() = J_transpose * (G*J)
-  CalculateHessian(data);
-}
+  __syncwarp();
 
-// Calculate -grad
-__global__ void CalcNegGradKernel(SAPGPUData* data) {
-  extern __shared__ double sums[];
-  int equ_idx = blockIdx.x;
-  int num_problems = data->NumProblems();
-  int num_contacts = data->NumContacts();
+  CalculateHessian(data);
+
+  // Calculate negative gradient
 
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
     double sum = 0.0;
@@ -175,12 +171,10 @@ __global__ void CalcNegGradKernel(SAPGPUData* data) {
     }
     data->neg_grad()(i, 0) = -(data->momentum_gain()(i, 0) - sum);
   }
-}
 
-// Solve for Hx = -grad
-__global__ void SAPCholeskySolveKernel(SAPGPUData* data) {
-  int equ_idx = blockIdx.x;
-  int thread_idx = threadIdx.x;
+  __syncwarp();
+
+  // Cholesky Factorization and Solve for search direction
 
   int num_stride = (data->NumVelocities() + 31) / 32;
 
@@ -201,9 +195,7 @@ __global__ void SAPCholeskySolveKernel(SAPGPUData* data) {
   __syncwarp();
 }
 
-// ==========================================================================
-// Scratch space starting Jun 17
-// Note that eval cost will overwrite all cost-related values in global memory
+// Device function to evaluate the cost function at alpha
 __device__ void SAPLineSearchEvalCost(SAPGPUData* data, double alpha, double* f,
                                       double* sums,
                                       Eigen::Map<Eigen::MatrixXd> dv_alpha,
@@ -232,6 +224,8 @@ __device__ void SAPLineSearchEvalCost(SAPGPUData* data, double alpha, double* f,
   __syncwarp();
 }
 
+// Device function to evaluate the 1st derivative of the cost function w.r.t.
+// alpha
 __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
                                      double* sums,
                                      Eigen::Map<Eigen::MatrixXd> dv_alpha,
@@ -276,6 +270,8 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
   __syncwarp();
 }
 
+// Device function to evaluate the 2nd derivative of the cost function w.r.t.
+// alpha
 __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
                                       double* d2, double* sums,
                                       Eigen::Map<Eigen::MatrixXd> dv_alpha,
@@ -331,7 +327,7 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   __syncwarp();
 }
 
-__global__ void SAPLineSearchKernel(SAPGPUData* data) {
+__device__ void SAPLineSearch(SAPGPUData* data, double* buff) {
   // scratch space for each block (each problem)
   // 0 - l_alpha
   // 1 - r_alpha
@@ -354,8 +350,6 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
 
   // [(2*num_velocities+14),(2*num_velocities+14+3*num_contacts)) -
   // delta_v_c
-
-  extern __shared__ double buff[];
   size_t buff_arr_size = 2;
   size_t buff_arr_offset = 14;
 
@@ -399,6 +393,7 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
   double* prev_alpha = buff + 12;
   double* flag = buff + 13;
 
+  // SAP line search loop
   while (*flag == 1.0) {
     // evaluate the cost function at l_alpha and r_alpha
     // TODO: Update G and gamma
@@ -456,8 +451,61 @@ __global__ void SAPLineSearchKernel(SAPGPUData* data) {
   __syncwarp();
 }
 
+// ========================================================================
+// Kernels
+// ========================================================================
+
+__global__ void SolveWithGuessImplKernel(SAPGPUData* data) {
+  extern __shared__ double sums[];
+
+  // SAP Iteration flag
+  double* flag = sums + 1;
+  double* first_iter = sums + 2;
+  Eigen::Map<Eigen::MatrixXd> prev_v_guess(
+      sums + 2, data->NumVelocities(),
+      1);  // previous v_guess, used for termination logic
+
+  if (threadIdx.x == 0) *flag = 1.0;  // thtread 0 initializes the flag
+
+  // SAP Iteration loop
+  while (*flag == 1.0) {
+    // calculate search direction
+    // we add offset to shared memory to avoid SoveWithGuessImplKernel
+    // __shared__ varibales being overwritten
+    CalcSearchDirection(data, sums + 2 + data->NumVelocities());
+
+    __syncwarp();
+
+    // perform line search
+    // we add offset to shared memory to avoid SoveWithGuessImplKernel
+    // __shared__ varibales being overwritten
+    SAPLineSearch(data, sums + 2 + data->NumVelocities());
+
+    __syncwarp();
+
+    // Thread 0 registers first results or check residual if the current
+    // iteration is not 0, if necessary, continue
+    if (threadIdx.x == 0) {
+      if (*first_iter == 0.0) {
+        *first_iter = 1.0;
+      } else {
+        // TODO: check tolerance
+        // now set it to a very large value so that the program cam properly
+        // terminate
+        double tolerance = 10000.0;
+        if (data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0) <=
+            tolerance) {
+          *flag = 0.0;
+        }
+      }
+    }
+
+    __syncwarp();
+  }
+}
+
 // ==========================================================================
-// Driver function to involke
+// Driver function to invoke the SAP solve
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& momentum_cost,
                        std::vector<double>& regularizer_cost,
@@ -478,30 +526,9 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   int threadsPerBlock = 32;
 
-  // Evaluate Cost
-  CalcMomentumCostKernel<<<num_problems, threadsPerBlock,
-                           2048 * sizeof(double)>>>(d_sap_gpu_data);
+  SolveWithGuessImplKernel<<<num_problems, threadsPerBlock,
+                             4096 * sizeof(double)>>>(d_sap_gpu_data);
 
-  CalcRegularizerCostKernel<<<num_problems, threadsPerBlock,
-                              2048 * sizeof(double)>>>(d_sap_gpu_data);
-
-  HANDLE_ERROR(cudaDeviceSynchronize());
-
-  // Assemble Hessian
-  // Calculate G*J
-  CalcHessianKernel<<<num_problems, threadsPerBlock, 2048 * sizeof(double)>>>(
-      d_sap_gpu_data);
-
-  HANDLE_ERROR(cudaDeviceSynchronize());
-
-  // Assemble -grad
-  CalcNegGradKernel<<<num_problems, threadsPerBlock, 2048 * sizeof(double)>>>(
-      d_sap_gpu_data);
-
-  HANDLE_ERROR(cudaDeviceSynchronize());
-
-  // Cholesky Solve
-  SAPCholeskySolveKernel<<<num_problems, threadsPerBlock>>>(d_sap_gpu_data);
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Transfer back to CPU for gtest validation
@@ -510,15 +537,6 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   sap_gpu_data.RetriveHessianToCPU(hessian);
   sap_gpu_data.RetriveNegGradToCPU(neg_grad);
   sap_gpu_data.RetriveCholXToCPU(chol_x);
-
-  // Line search
-  // call search kernel - find mid, eval der, 2der, control logic
-  // the final goal is to return an updated x
-  std::cout << "kernel call" << std::endl;
-  SAPLineSearchKernel<<<num_problems, threadsPerBlock, 4096 * sizeof(double)>>>(
-      d_sap_gpu_data);
-  std::cout << "kernel end" << std::endl;
-  HANDLE_ERROR(cudaDeviceSynchronize());
 }
 
 // ===========================================================================
