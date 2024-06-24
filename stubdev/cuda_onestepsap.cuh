@@ -319,6 +319,15 @@ struct SAPGPUData {
     }
   }
 
+  void RetriveVGuessToCPU(std::vector<Eigen::MatrixXd>& v_solved) {
+    v_solved.resize(num_problems);
+    for (int i = 0; i < num_problems; i++) {
+      v_solved[i].resize(num_velocities, 1);
+      cudaMemcpy(v_solved[i].data(), v_guess_global + i * num_velocities,
+                 num_velocities * sizeof(double), cudaMemcpyDeviceToHost);
+    }
+  }
+
   void MakeSAPGPUData(std::vector<SAPCPUData> data) {
     this->num_contacts = data[0].num_contacts;
     this->num_velocities = data[0].num_velocities;
