@@ -43,7 +43,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
     for (int j = 0; j < num_contacts; j++) {
       sap_data.gamma.push_back(Eigen::Vector3d::Zero(3, 1));
       sap_data.R.push_back(Eigen::Vector3d::Random(3, 1));
-      Eigen::MatrixXd G_temp = Eigen::MatrixXd::Random(3, 3);
+      Eigen::MatrixXd G_temp = Eigen::MatrixXd::Zero(3, 3);
       sap_data.constraint_data.G.push_back(G_temp.transpose() * G_temp);
     }
 

@@ -126,10 +126,6 @@ __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
   MMultiply(0.5, data->velocity_gain_transpose(), data->momentum_gain(),
             data->momentum_cost(), sums);
 
-  if (threadIdx.x == 0) {
-    printf("Momentum Cost: %f\n", data->momentum_cost()(0, 0));
-  }
-
   __syncwarp();
 }
 
@@ -274,7 +270,6 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
 
   if (threadIdx.x == 0) {
     d_temp = res;
-    printf("alpha: %f, res: %f\n", alpha, res);
   }
 
   __syncwarp();
@@ -444,83 +439,105 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
   // TODO: replace this while loop to a for loop
   // SAP line search loop
-  while (flag == 1.0) {
-    if (threadIdx.x == 0) {
-      double root_guess = 0.0;
-      bool newton_is_slow = false;
-      double dx_negative = 0.0;
+  // TODO: set max_iteration somewhere else
+  int max_iteration = 100;
+  for (int i = 0; i < max_iteration; i++) {
+    if (flag == 1.0) {
+      if (threadIdx.x == 0) {
+        double root_guess = 0.0;
+        bool newton_is_slow = false;
+        double dx_negative = 0.0;
 
-      if (first_iter == 0.0) {
-        newton_is_slow = 2.0 * abs(d_guess) > abs(d2_guess * dx_negative_prev);
-      } else {
-        newton_is_slow = false;
-        first_iter = 0.0;
-      }
+        if (first_iter == 0.0) {
+          newton_is_slow =
+              2.0 * abs(d_guess) > abs(d2_guess * dx_negative_prev);
+        } else {
+          newton_is_slow = false;
+          first_iter = 0.0;
+        }
 
-      // return logic
-      if (abs(d_guess) < 1e-6) {
-        flag = 0.0;
-      }
+        // return logic
+        if (abs(d_guess) < 1e-6) {
+          flag = 0.0;
+        }
 
-      if (abs(guess_alpha - 1.0) <= 1e-6 || abs(guess_alpha - 0.0) <= 1e-6) {
-        flag = 0.0;
-      }
+        if (abs(guess_alpha - 1.0) <= 1e-6 || abs(guess_alpha - 0.0) <= 1e-6) {
+          flag = 0.0;
+        }
 
-      // TODO: remove this debugging output
-      printf("l_alpha: %f, r_alpha: %f, guess: %f, d_guess: %f \n", l_alpha,
-             r_alpha, guess_alpha, d_guess);
-      if (newton_is_slow) {
-        dx_negative = 0.5 * (l_alpha - r_alpha);
-        root_guess = l_alpha - dx_negative;
-      } else {
-        dx_negative = d_guess / d2_guess;
-        root_guess = guess_alpha - dx_negative;
-        // newton_is_out_of_range
-        if (root_guess < l_alpha || root_guess > r_alpha) {
+        // TODO: remove this debugging output
+        // printf("l_alpha: %f, r_alpha: %f, guess: %f, d_guess: %f \n",
+        // l_alpha,
+        //        r_alpha, guess_alpha, d_guess);
+        if (newton_is_slow) {
           dx_negative = 0.5 * (l_alpha - r_alpha);
           root_guess = l_alpha - dx_negative;
+        } else {
+          dx_negative = d_guess / d2_guess;
+          root_guess = guess_alpha - dx_negative;
+          // newton_is_out_of_range
+          if (root_guess < l_alpha || root_guess > r_alpha) {
+            dx_negative = 0.5 * (l_alpha - r_alpha);
+            root_guess = l_alpha - dx_negative;
+          }
+        }
+
+        // update guess_alpha
+        // record dx_negative at this iteration
+        guess_alpha = root_guess;
+        dx_negative_prev = dx_negative;
+      }
+
+      // we evaluate fguess the last as cache will be left in the global memory
+      // TODO: Update G and gamma
+      SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
+                            v_guess_prev);
+      MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
+      SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
+                           delta_p);
+      // evaluate the second derivative of guess_alpha
+      SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha,
+                            delta_v_c, delta_p);
+
+      __syncwarp();
+
+      // based on eval, shrink the interval
+      // update l_alpha and r_alpha to update intervals
+      if (threadIdx.x == 0) {
+        // printf(" dl*d_guess: %f, dr*d_guess: %f \n", d_l * d_guess,
+        //        d_r * d_guess);
+        if (d_l * d_guess > 0.0) {
+          l_alpha = guess_alpha;
+          f_l = f_guess;
+          d_l = d_guess;
+        } else {
+          r_alpha = guess_alpha;
+          f_r = f_guess;
+          d_r = d_guess;
         }
       }
 
-      // update guess_alpha
-      // record dx_negative at this iteration
-      guess_alpha = root_guess;
-      dx_negative_prev = dx_negative;
+      __syncwarp();
     }
-
-    // we evaluate fguess the last as cache will be left in the global memory
-    // TODO: Update G and gamma
-    SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
-                          v_guess_prev);
-    MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
-    SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
-                         delta_p);
-    // evaluate the second derivative of guess_alpha
-    SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha, delta_v_c,
-                          delta_p);
-
-    __syncwarp();
-
-    // based on eval, shrink the interval
-    // update l_alpha and r_alpha to update intervals
-    if (threadIdx.x == 0) {
-      // printf(" dl*d_guess: %f, dr*d_guess: %f \n", d_l * d_guess,
-      //        d_r * d_guess);
-      if (d_l * d_guess > 0.0) {
-        l_alpha = guess_alpha;
-        f_l = f_guess;
-        d_l = d_guess;
-      } else {
-        r_alpha = guess_alpha;
-        f_r = f_guess;
-        d_r = d_guess;
-      }
-    }
-
-    __syncwarp();
   }
 
   return guess_alpha;
+}
+
+// device function to evaluate the 2-norm of the neg_grad for each iteration
+// this is used to termination logic: ||delta_l_p|| < epsilon_alpha + epsilon_r
+__device__ double NegGradCostEval(SAPGPUData* data) {
+  double sum = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    sum += data->neg_grad()(i, 0) * data->neg_grad()(i, 0);
+  }
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
+
+  return sum;
 }
 
 // ========================================================================
@@ -542,7 +559,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     first_iter = 1.0;
   }
 
-  // TODO: replace this while loop to a for loop
+  // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
   while (flag == 1.0) {
     // calculate search direction
@@ -559,6 +576,9 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 
     __syncwarp();
 
+    double neg_grad_norm = NegGradCostEval(data);
+    if (threadIdx.x == 0) printf("neg_grad_norm: %f\n", neg_grad_norm);
+
     // Thread 0 registers first results or check residual if the current
     // iteration is not 0, if necessary, continue
     if (threadIdx.x == 0) {
@@ -568,8 +588,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         // TODO: check tolerance
         // now the tolerance is fixed and set to 1e-6
         double tolerance = 1e-6;
-        if (data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0) <=
-            tolerance) {
+        if (neg_grad_norm <= tolerance) {
           flag = 0.0;
         }
       }
@@ -590,6 +609,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       for (int i = 0; i < data->NumVelocities(); i++) {
         printf("%f\n", data->v_star()(i, 0));
       }
+      printf("this is a step of cholsolve\n");
+      printf("alpha at this step is %f\n", alpha);
     }
 
     __syncwarp();
