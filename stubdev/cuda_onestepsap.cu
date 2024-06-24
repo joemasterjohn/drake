@@ -330,13 +330,11 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
     double vec_1 = delta_v_c(3 * i + 1, 0);
     double vec_2 = delta_v_c(3 * i + 2, 0);
 
-    for (int j = 0; j < 3; j++) {
-      // vector formed by [vec_0, vec_1, vec_2] multiply by G[i].col(j)
-      for (int k = 0; k < 3; k++) {
-        res += delta_v_c(3 * i + j) *
-               (vec_0 * data->G(i)(0, k) + vec_1 * data->G(i)(1, k) +
-                vec_2 * data->G(i)(2, k));
-      }
+    // vector formed by [vec_0, vec_1, vec_2] multiply by G[i].col(j)
+    for (int k = 0; k < 3; k++) {
+      res += delta_v_c(3 * i + k, 0) *
+             (vec_0 * data->G(i)(0, k) + vec_1 * data->G(i)(1, k) +
+              vec_2 * data->G(i)(2, k));
     }
   }
 
@@ -345,6 +343,8 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   res += __shfl_down_sync(0xFFFFFFFF, res, 4);
   res += __shfl_down_sync(0xFFFFFFFF, res, 2);
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
+
+  __syncwarp();
 
   if (threadIdx.x == 0) {
     d_temp += res;
