@@ -40,8 +40,8 @@ __device__ void CholeskyFactorizationFunc(Eigen::Map<Eigen::MatrixXd> M,
 
 // Device function to perform forward substitution
 __device__ void CholeskySolveForwardFunc(Eigen::Map<Eigen::MatrixXd> L,
-                                         Eigen::Map<Eigen::VectorXd> b,
-                                         Eigen::Map<Eigen::VectorXd> y,
+                                         Eigen::Map<Eigen::MatrixXd> b,
+                                         Eigen::Map<Eigen::MatrixXd> y,
                                          int equ_idx, int thread_idx, size_t n,
                                          size_t num_stride) {
   for (int stride = 0; stride < num_stride; stride++) {
@@ -52,12 +52,12 @@ __device__ void CholeskySolveForwardFunc(Eigen::Map<Eigen::MatrixXd> L,
     double sum = 0.0;
     for (int i = 0; i <= j_up; ++i) {
       if (j < n && i <= j && i == j) {
-        y(j) = (b(j) - sum) / L(j, j);
+        y(j, 0) = (b(j) - sum) / L(j, j);
       }
       __syncwarp();
 
       if (j < n && i <= j && i < j) {
-        sum += L(j, i) * y(i);
+        sum += L(j, i) * y(i, 0);
       }
 
       __syncwarp();
@@ -67,8 +67,8 @@ __device__ void CholeskySolveForwardFunc(Eigen::Map<Eigen::MatrixXd> L,
 
 // Device function to perform backward substitution
 __device__ void CholeskySolveBackwardFunc(Eigen::Map<Eigen::MatrixXd> L,
-                                          Eigen::Map<Eigen::VectorXd> y,
-                                          Eigen::Map<Eigen::VectorXd> x,
+                                          Eigen::Map<Eigen::MatrixXd> y,
+                                          Eigen::Map<Eigen::MatrixXd> x,
                                           int equ_idx, int thread_idx, size_t n,
                                           size_t num_stride) {
   for (int stride = 0; stride < num_stride; stride++) {
@@ -78,12 +78,12 @@ __device__ void CholeskySolveBackwardFunc(Eigen::Map<Eigen::MatrixXd> L,
     double sum = 0.0;
     for (int i = n - 1; i >= j_down; --i) {
       if (j >= 0 && i >= j && i == j) {
-        x(j) = (y(j) - sum) / L(j, j);
+        x(j, 0) = (y(j, 0) - sum) / L(j, j);
       }
       __syncwarp();
 
       if (j >= 0 && i >= j && i > j) {
-        sum += L(i, j) * x(i);
+        sum += L(i, j) * x(i, 0);
       }
 
       __syncwarp();

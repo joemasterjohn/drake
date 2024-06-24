@@ -26,9 +26,9 @@ __global__ void CholeskySolveKernel(double* M, double* L, double* b, double* x,
 
   Eigen::Map<Eigen::MatrixXd> d_M(M + equ_idx * n * n, n, n);
   Eigen::Map<Eigen::MatrixXd> d_L(L + equ_idx * n * n, n, n);
-  Eigen::Map<Eigen::VectorXd> d_b(b + equ_idx * n, n, 1);
-  Eigen::Map<Eigen::VectorXd> d_x(x + equ_idx * n, n, 1);
-  Eigen::Map<Eigen::VectorXd> d_y(y + equ_idx * n, n, 1);
+  Eigen::Map<Eigen::MatrixXd> d_b(b + equ_idx * n, n, 1);
+  Eigen::Map<Eigen::MatrixXd> d_x(x + equ_idx * n, n, 1);
+  Eigen::Map<Eigen::MatrixXd> d_y(y + equ_idx * n, n, 1);
 
   int num_stride = (n + 31) / 32;
 
@@ -42,8 +42,8 @@ __global__ void CholeskySolveKernel(double* M, double* L, double* b, double* x,
 
 // Main solve function - including memory allocation, copy, and kernel calls
 double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
-                   std::vector<Eigen::VectorXd>& b,
-                   std::vector<Eigen::VectorXd>& x) {
+                   std::vector<Eigen::MatrixXd>& b,
+                   std::vector<Eigen::MatrixXd>& x) {
   const int num_problems = M.size();
   const int n = b[0].size();
 
@@ -96,7 +96,7 @@ double MatrixSolve(std::vector<Eigen::MatrixXd>& M,
                           cudaMemcpyDeviceToHost));
 
   for (int i = 0; i < num_problems; ++i) {
-    Eigen::Map<Eigen::VectorXd> x_result_i(x_result + i * n, n, 1);
+    Eigen::Map<Eigen::MatrixXd> x_result_i(x_result + i * n, n, 1);
     x[i] = x_result_i;
   }
 

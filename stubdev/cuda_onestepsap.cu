@@ -126,6 +126,10 @@ __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
   MMultiply(0.5, data->velocity_gain_transpose(), data->momentum_gain(),
             data->momentum_cost(), sums);
 
+  if (threadIdx.x == 0) {
+    printf("Momentum Cost: %f\n", data->momentum_cost()(0, 0));
+  }
+
   __syncwarp();
 }
 
@@ -180,9 +184,9 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
 
   Eigen::Map<Eigen::MatrixXd> d_M = data->H();
   Eigen::Map<Eigen::MatrixXd> d_L = data->chol_L();
-  Eigen::Map<Eigen::VectorXd> d_b = data->neg_grad();
-  Eigen::Map<Eigen::VectorXd> d_x = data->chol_x();
-  Eigen::Map<Eigen::VectorXd> d_y = data->chol_y();
+  Eigen::Map<Eigen::MatrixXd> d_b = data->neg_grad();
+  Eigen::Map<Eigen::MatrixXd> d_x = data->chol_x();
+  Eigen::Map<Eigen::MatrixXd> d_y = data->chol_y();
 
   CholeskyFactorizationFunc(d_M, d_L, equ_idx, thread_idx,
                             data->NumVelocities(), num_stride);
@@ -196,16 +200,41 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
 }
 
 // Device function to evaluate the cost function at alpha
-__device__ void SAPLineSearchEvalCost(SAPGPUData* data, double alpha, double* f,
-                                      double* sums,
-                                      Eigen::Map<Eigen::MatrixXd> dv_alpha,
-                                      Eigen::Map<Eigen::MatrixXd> v_alpha) {
-  Eigen::Map<Eigen::MatrixXd> x_dir(data->chol_x().data(),
-                                    data->NumVelocities(), 1);
-  SAXPY(alpha, x_dir, data->v_guess(), v_alpha);
+__device__ void SAPLineSearchEvalCost(
+    SAPGPUData* data, double alpha, double& f, double* sums,
+    Eigen::Map<Eigen::MatrixXd> v_alpha,
+    Eigen::Map<Eigen::MatrixXd> v_guess_prev) {
+  SAXPY(alpha, data->chol_x(), v_guess_prev, v_alpha);
 
-  if (threadIdx.x < data->NumVelocities()) {
-    data->v_guess()(threadIdx.x, 0) = v_alpha(threadIdx.x, 0);
+  // if (threadIdx.x == 0) {
+  //   printf("====================================\n");
+  //   printf("v_guess_prev:\n");
+  //   for (int i = 0; i < v_guess_prev.rows(); i++) {
+  //     printf(" %f\n", v_guess_prev(i, 0));
+  //   }
+
+  //   printf("v_alpha:\n");
+  //   for (int i = 0; i < v_alpha.rows(); i++) {
+  //     printf(" %f\n", v_alpha(i, 0));
+  //   }
+
+  //   printf("chol_x:\n");
+  //   for (int i = 0; i < data->chol_x().rows(); i++) {
+  //     printf(" %f\n", data->chol_x()(i, 0));
+  //   }
+
+  //   printf("v star:\n");
+  //   for (int i = 0; i < data->v_star().rows(); i++) {
+  //     printf(" %f\n", data->v_star()(i, 0));
+  //   }
+  // }
+
+  __syncwarp();
+
+  if (threadIdx.x == 0) {
+    for (int i = 0; i < data->NumVelocities(); i++) {
+      data->v_guess()(i, 0) = v_alpha(i, 0);
+    }
   }
   __syncwarp();
 
@@ -218,7 +247,7 @@ __device__ void SAPLineSearchEvalCost(SAPGPUData* data, double alpha, double* f,
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    *f = data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
+    f = data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
   }
 
   __syncwarp();
@@ -226,16 +255,16 @@ __device__ void SAPLineSearchEvalCost(SAPGPUData* data, double alpha, double* f,
 
 // Device function to evaluate the 1st derivative of the cost function w.r.t.
 // alpha
-__device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
+__device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
                                      double* sums,
-                                     Eigen::Map<Eigen::MatrixXd> dv_alpha,
                                      Eigen::Map<Eigen::MatrixXd> v_alpha,
                                      Eigen::Map<Eigen::MatrixXd> delta_v_c,
-                                     double* dmid_1, double* dmid_2) {
-  // calculate dmid_1 = momentum_gain.transpose() * dv(alpha)
+                                     Eigen::Map<Eigen::MatrixXd> delta_p) {
+  // chol_x(search direction) * momentum_gain(computed in eval device function)
   double res = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-    res += 0.5 * data->momentum_gain()(i, 0) * dv_alpha(i, 0);
+  double d_temp = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    res += data->chol_x()(i, 0) * data->momentum_gain()(i, 0);
   }
   res += __shfl_down_sync(0xFFFFFFFF, res, 16);
   res += __shfl_down_sync(0xFFFFFFFF, res, 8);
@@ -244,12 +273,14 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
 
   if (threadIdx.x == 0) {
-    *dmid_1 = res;
+    d_temp = res;
+    printf("alpha: %f, res: %f\n", alpha, res);
   }
 
   __syncwarp();
 
-  // calculate dmid_2 = v_c.transpose() * gamma_full
+  // TODO: check formulation
+  // ((J*dv(alpha)).transpose() * gamma(alpha))
   res = 0.0;
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     res += delta_v_c(i, 0) * data->gamma_full()(i);
@@ -263,8 +294,8 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    *dmid_2 = res;
-    *d = *dmid_1 + *dmid_2;
+    d_temp += res;
+    d = d_temp;
   }
 
   __syncwarp();
@@ -273,16 +304,16 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double* d,
 // Device function to evaluate the 2nd derivative of the cost function w.r.t.
 // alpha
 __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
-                                      double* d2, double* sums,
-                                      Eigen::Map<Eigen::MatrixXd> dv_alpha,
+                                      double& d2, double* sums,
                                       Eigen::Map<Eigen::MatrixXd> v_alpha,
                                       Eigen::Map<Eigen::MatrixXd> delta_v_c,
-                                      double* ddmid_1, double* ddmid_2) {
+                                      Eigen::Map<Eigen::MatrixXd> delta_p) {
   double res = 0.0;
+  double d_temp = 0.0;
 
-  // calculate ddmid_1 = dv_alpha.transpose() * momentum_gain
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-    res += dv_alpha(i, 0) * data->momentum_gain()(i, 0);
+  // chol_x(search direction) * delta_p (A * chol_x (search direction))
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    res += data->chol_x()(i, 0) * delta_p(i, 0);  // change this momentum gain
   }
   res += __shfl_down_sync(0xFFFFFFFF, res, 16);
   res += __shfl_down_sync(0xFFFFFFFF, res, 8);
@@ -291,12 +322,13 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
 
   if (threadIdx.x == 0) {
-    *ddmid_1 = res;
+    d_temp = res;
   }
 
   __syncwarp();
 
-  //  calculate ddmid_2
+  // TODO: check formulation
+  // (J*dv_alpha).transpose() * G * (J*dv_alpha)
   res = 0.0;
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     double vec_0 = delta_v_c(3 * i, 0);
@@ -320,155 +352,199 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
 
   if (threadIdx.x == 0) {
-    *ddmid_2 = res;
-    *d2 = *ddmid_1 + *ddmid_2;
+    d_temp += res;
+    d2 = d_temp;
   }
 
   __syncwarp();
 }
 
-__device__ void SAPLineSearch(SAPGPUData* data, double* buff) {
-  // scratch space for each block (each problem)
-  // 0 - l_alpha
-  // 1 - r_alpha
-  // 2 - mid_alpha
-  // 3 - fl
-  // 4 - fr
-  // 5 - fmid
-  // 6 - dmid
-  // 7 - d2mid
-  // 8 - dmid_1 (momentum_gain.transpose() * dv(alpha))
-  // 9 - dmid_2 ((J*dv(alpha)).transpose() * gamma(alpha))
-  // 10 - ddmid_1 (dv_alpha.transpose() * momentum_gain)
-  // 11 - ddmid_2 (J*dv_alpha).transpose() * G * (J*dv_alpha)
-  // 12 - prev_alpha (for termination logic)
-  // 13 - flag (0 for termination, 1 for continuation)
+__device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
+  // scratch space for each problem (per block)
 
-  // [14, (num_velocities + 14)) - dv(alpha)
-
-  // [(num_velocities + 14), (2*num_velocities + 14)) - v(alpha)
-
-  // [(2*num_velocities+14),(2*num_velocities+14+3*num_contacts)) -
-  // delta_v_c
-  size_t buff_arr_size = 2;
-  size_t buff_arr_offset = 14;
+  size_t buff_arr_offset = 14;  // 14 doubles for local variables
 
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
 
-  if (thread_idx == 0) {
-    buff[0] = data->l_alpha();
-    buff[1] = data->r_alpha();
-    buff[2] = (buff[0] + buff[1]) / 2.0;
-    buff[12] = 0.0;
-    buff[13] = 1.0;
-  }
-
   __syncwarp();
 
-  double* sums =
-      buff + (buff_arr_size * data->NumVelocities() + buff_arr_offset);
+  double* sums = buff + buff_arr_offset + 3 * data->NumVelocities() +
+                 3 * data->NumContacts();
 
-  Eigen::Map<Eigen::MatrixXd> dv_alpha(
-      buff + buff_arr_offset, data->NumVelocities(),
-      1);  // scratch space, needs to be calculated on the fly
-  Eigen::Map<Eigen::MatrixXd> v_alpha(
-      buff + buff_arr_offset + data->NumVelocities(), data->NumVelocities(), 1);
+  Eigen::Map<Eigen::MatrixXd> v_alpha(buff + buff_arr_offset,
+                                      data->NumVelocities(), 1);
   Eigen::Map<Eigen::MatrixXd> delta_v_c(
-      buff + buff_arr_offset + 2 * data->NumVelocities(),
+      buff + buff_arr_offset + 1 * data->NumVelocities(),
       3 * data->NumContacts(), 1);
+  Eigen::Map<Eigen::MatrixXd> delta_p(buff + buff_arr_offset +
+                                          1 * data->NumVelocities() +
+                                          3 * data->NumContacts(),
+                                      data->NumVelocities(), 1);
+  Eigen::Map<Eigen::MatrixXd> v_guess_prev(buff + buff_arr_offset +
+                                               2 * data->NumVelocities() +
+                                               3 * data->NumContacts(),
+                                           data->NumVelocities(), 1);
 
-  double* l_alpha = buff;
-  double* r_alpha = buff + 1;
-  double* mid_alpha = buff + 2;
-  double* fl = buff + 3;
-  double* fr = buff + 4;
-  double* fmid = buff + 5;
-  double* dmid = buff + 6;
-  double* d2mid = buff + 7;
-  double* dmid_1 = buff + 8;
-  double* dmid_2 = buff + 9;
-  double* ddmid_1 = buff + 10;
-  double* ddmid_2 = buff + 11;
-  double* prev_alpha = buff + 12;
-  double* flag = buff + 13;
+  double& l_alpha = buff[0];      // alpha left bound
+  double& r_alpha = buff[1];      // alpha right bound
+  double& guess_alpha = buff[2];  // alpha guess value
+  double& f_l = buff[3];          // evaluated function val at l_alpha
+  double& f_r = buff[4];          // evaluated function val at r_alpha
+  double& f_guess = buff[5];      // evaluated function val at guess_alpha
 
-  // SAP line search loop
-  while (*flag == 1.0) {
-    // evaluate the cost function at l_alpha and r_alpha
-    // TODO: Update G and gamma
-    SAPLineSearchEvalCost(data, buff[0], &buff[3], sums, dv_alpha, v_alpha);
-    // TODO: Update G and gamma
-    SAPLineSearchEvalCost(data, buff[1], &buff[4], sums, dv_alpha, v_alpha);
+  double& d_l = buff[6];       // derivative at l_alpha
+  double& d_r = buff[7];       // derivative at r_alpha
+  double& d_guess = buff[8];   // derivative at guess_alpha
+  double& d2_guess = buff[9];  // 2nd derivative at guess_alpha
 
-    // we evaluate fmid the last as cache will be left in the global memory
-    // TODO: Update G and gamma
-    SAPLineSearchEvalCost(data, buff[2], &buff[5], sums, dv_alpha, v_alpha);
+  double& prev_alpha = buff[10];        // previous alpha record
+  double& dx_negative_prev = buff[11];  // previous x_negative record
+  double& flag = buff[12];              // loop flag
+  double& first_iter = buff[13];        // first iteration flag
 
-    // derivative evaluation for newton-raphson
-    MMultiply(1.0, data->J(), dv_alpha, delta_v_c, sums);
-
-    // evaluate the first derivative of mid_alpha
-    SAPLineSearchEvalDer(data, buff[2], &buff[6], sums, dv_alpha, v_alpha,
-                         delta_v_c, dmid_1, dmid_2);
-
-    // evaluate the second derivative of mid_alpha
-    SAPLineSearchEval2Der(data, buff[2], &buff[7], sums, dv_alpha, v_alpha,
-                          delta_v_c, ddmid_1, ddmid_2);
-
-    if (threadIdx.x == 0) {
-      // bisect if newton out of range
-      if ((((*mid_alpha) - (*r_alpha)) * (*dmid) - (*fmid)) *
-              ((*mid_alpha - *l_alpha) * (*dmid) - (*fmid)) >
-          0.0) {
-        *(prev_alpha) = *(mid_alpha);
-
-        if ((*fmid) * (*fl) < 0.0) {
-          *r_alpha = *mid_alpha;
-        } else {
-          *l_alpha = *mid_alpha;
-        }
-
-        // update *mid_alpha
-        *mid_alpha = (*l_alpha + *r_alpha) / 2.0;
-      } else {
-        // newton is in range
-        *(prev_alpha) = *(mid_alpha);
-
-        // calculate descent distance
-        double dx = *fmid / *dmid;
-        // update *mid_alpha
-        *mid_alpha -= dx;
-      }
-
-      // assumption: assume machine prescision
-      if (abs(*prev_alpha - *mid_alpha) == 0) {
-        *flag = 0.0;
-      }
+  // scratch space variable initialization
+  if (thread_idx == 0) {
+    l_alpha = 0.0;
+    r_alpha = 1.0;
+    guess_alpha = (l_alpha + r_alpha) / 2.0;
+    flag = 1.0;
+    first_iter = 1.0;
+    for (int i = 0; i < data->NumVelocities(); i++) {
+      v_guess_prev(i, 0) = data->v_guess()(i, 0);
     }
   }
 
   __syncwarp();
+
+  // evaluate the cost function at l_alpha and r_alpha
+  // TODO: Update G and gamma
+  SAPLineSearchEvalCost(data, l_alpha, f_l, sums, v_alpha, v_guess_prev);
+  MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
+  MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
+  SAPLineSearchEvalDer(data, l_alpha, d_l, sums, v_alpha, delta_v_c, delta_p);
+
+  // TODO: Update G and gamma
+  SAPLineSearchEvalCost(data, r_alpha, f_r, sums, v_alpha, v_guess_prev);
+  MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
+  MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
+  SAPLineSearchEvalDer(data, r_alpha, d_r, sums, v_alpha, delta_v_c, delta_p);
+
+  // we evaluate fmid the last as cache will be left in the global memory
+  // TODO: Update G and gamma
+  SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
+                        v_guess_prev);
+  MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
+  MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
+  SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
+                       delta_p);
+  // evaluate the second derivative of mid_alpha
+  SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha, delta_v_c,
+                        delta_p);
+
+  // TODO: replace this while loop to a for loop
+  // SAP line search loop
+  while (flag == 1.0) {
+    if (threadIdx.x == 0) {
+      double root_guess = 0.0;
+      bool newton_is_slow = false;
+      double dx_negative = 0.0;
+
+      if (first_iter == 0.0) {
+        newton_is_slow = 2.0 * abs(d_guess) > abs(d2_guess * dx_negative_prev);
+      } else {
+        newton_is_slow = false;
+        first_iter = 0.0;
+      }
+
+      // return logic
+      if (abs(d_guess) < 1e-6) {
+        flag = 0.0;
+      }
+
+      if (abs(guess_alpha - 1.0) <= 1e-6 || abs(guess_alpha - 0.0) <= 1e-6) {
+        flag = 0.0;
+      }
+
+      // TODO: remove this debugging output
+      printf("l_alpha: %f, r_alpha: %f, guess: %f, d_guess: %f \n", l_alpha,
+             r_alpha, guess_alpha, d_guess);
+      if (newton_is_slow) {
+        dx_negative = 0.5 * (l_alpha - r_alpha);
+        root_guess = l_alpha - dx_negative;
+      } else {
+        dx_negative = d_guess / d2_guess;
+        root_guess = guess_alpha - dx_negative;
+        // newton_is_out_of_range
+        if (root_guess < l_alpha || root_guess > r_alpha) {
+          dx_negative = 0.5 * (l_alpha - r_alpha);
+          root_guess = l_alpha - dx_negative;
+        }
+      }
+
+      // update guess_alpha
+      // record dx_negative at this iteration
+      guess_alpha = root_guess;
+      dx_negative_prev = dx_negative;
+    }
+
+    // we evaluate fguess the last as cache will be left in the global memory
+    // TODO: Update G and gamma
+    SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
+                          v_guess_prev);
+    MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
+    SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
+                         delta_p);
+    // evaluate the second derivative of guess_alpha
+    SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha, delta_v_c,
+                          delta_p);
+
+    __syncwarp();
+
+    // based on eval, shrink the interval
+    // update l_alpha and r_alpha to update intervals
+    if (threadIdx.x == 0) {
+      // printf(" dl*d_guess: %f, dr*d_guess: %f \n", d_l * d_guess,
+      //        d_r * d_guess);
+      if (d_l * d_guess > 0.0) {
+        l_alpha = guess_alpha;
+        f_l = f_guess;
+        d_l = d_guess;
+      } else {
+        r_alpha = guess_alpha;
+        f_r = f_guess;
+        d_r = d_guess;
+      }
+    }
+
+    __syncwarp();
+  }
+
+  return guess_alpha;
 }
 
 // ========================================================================
 // Kernels
 // ========================================================================
 
-__global__ void SolveWithGuessImplKernel(SAPGPUData* data) {
+__global__ void SolveWithGuessKernel(SAPGPUData* data) {
   extern __shared__ double sums[];
 
   // SAP Iteration flag
-  double* flag = sums + 1;
-  double* first_iter = sums + 2;
+  double& flag = sums[0];
+  double& first_iter = sums[1];
   Eigen::Map<Eigen::MatrixXd> prev_v_guess(
       sums + 2, data->NumVelocities(),
       1);  // previous v_guess, used for termination logic
 
-  if (threadIdx.x == 0) *flag = 1.0;  // thtread 0 initializes the flag
+  if (threadIdx.x == 0) {
+    flag = 1.0;  // thread 0 initializes the flag
+    first_iter = 1.0;
+  }
 
+  // TODO: replace this while loop to a for loop
   // SAP Iteration loop
-  while (*flag == 1.0) {
+  while (flag == 1.0) {
     // calculate search direction
     // we add offset to shared memory to avoid SoveWithGuessImplKernel
     // __shared__ varibales being overwritten
@@ -479,29 +555,49 @@ __global__ void SolveWithGuessImplKernel(SAPGPUData* data) {
     // perform line search
     // we add offset to shared memory to avoid SoveWithGuessImplKernel
     // __shared__ varibales being overwritten
-    SAPLineSearch(data, sums + 2 + data->NumVelocities());
+    double alpha = SAPLineSearch(data, sums + 2 + data->NumVelocities());
 
     __syncwarp();
 
     // Thread 0 registers first results or check residual if the current
     // iteration is not 0, if necessary, continue
     if (threadIdx.x == 0) {
-      if (*first_iter == 0.0) {
-        *first_iter = 1.0;
+      if (first_iter == 1.0) {
+        first_iter = 0.0;
       } else {
         // TODO: check tolerance
-        // now set it to a very large value so that the program cam properly
-        // terminate
-        double tolerance = 10000.0;
+        // now the tolerance is fixed and set to 1e-6
+        double tolerance = 1e-6;
         if (data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0) <=
             tolerance) {
-          *flag = 0.0;
+          flag = 0.0;
         }
+      }
+
+      // assign previous
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        prev_v_guess(i, 0) = data->v_guess()(i, 0);
+      }
+
+      // debugging output print v_alpha
+      printf("v_alpha: \n");
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        printf("%f\n", data->v_guess()(i, 0));
+      }
+
+      // debugging output print v_star
+      printf("v_star: \n");
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        printf("%f\n", data->v_star()(i, 0));
       }
     }
 
     __syncwarp();
   }
+
+  // TODO: remove this debugging output
+  if (threadIdx.x == 0) printf("SAP Converged!\n");
+  __syncwarp();
 }
 
 // ==========================================================================
@@ -511,7 +607,7 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<double>& regularizer_cost,
                        std::vector<Eigen::MatrixXd>& hessian,
                        std::vector<Eigen::MatrixXd>& neg_grad,
-                       std::vector<Eigen::VectorXd>& chol_x, int num_velocities,
+                       std::vector<Eigen::MatrixXd>& chol_x, int num_velocities,
                        int num_contacts, int num_problems) {
   std::cout << "TestOneStepSapGPU with GPU called with " << num_problems
             << " problems" << std::endl;
@@ -526,8 +622,8 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   int threadsPerBlock = 32;
 
-  SolveWithGuessImplKernel<<<num_problems, threadsPerBlock,
-                             4096 * sizeof(double)>>>(d_sap_gpu_data);
+  SolveWithGuessKernel<<<num_problems, threadsPerBlock,
+                         4096 * sizeof(double)>>>(d_sap_gpu_data);
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 

@@ -221,9 +221,9 @@ struct SAPGPUData {
         H_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
-  __device__ Eigen::Map<Eigen::VectorXd> neg_grad() {
-    return Eigen::Map<Eigen::VectorXd>(
-        neg_grad_global + blockIdx.x * num_velocities, num_velocities);
+  __device__ Eigen::Map<Eigen::MatrixXd> neg_grad() {
+    return Eigen::Map<Eigen::MatrixXd>(
+        neg_grad_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
   // Cholesky solve related functions
@@ -241,24 +241,24 @@ struct SAPGPUData {
         chol_L_global + blockIdx.x * row_size * col_size, row_size, col_size);
   }
 
-  __device__ Eigen::Map<Eigen::VectorXd> chol_y() {
-    return Eigen::Map<Eigen::VectorXd>(
-        chol_y_global + blockIdx.x * num_velocities, num_velocities);
+  __device__ Eigen::Map<Eigen::MatrixXd> chol_y() {
+    return Eigen::Map<Eigen::MatrixXd>(
+        chol_y_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
-  __device__ const Eigen::Map<Eigen::VectorXd> chol_y() const {
-    return Eigen::Map<Eigen::VectorXd>(
-        chol_y_global + blockIdx.x * num_velocities, num_velocities);
+  __device__ const Eigen::Map<Eigen::MatrixXd> chol_y() const {
+    return Eigen::Map<Eigen::MatrixXd>(
+        chol_y_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
-  __device__ Eigen::Map<Eigen::VectorXd> chol_x() {
-    return Eigen::Map<Eigen::VectorXd>(
-        chol_x_global + blockIdx.x * num_velocities, num_velocities);
+  __device__ Eigen::Map<Eigen::MatrixXd> chol_x() {
+    return Eigen::Map<Eigen::MatrixXd>(
+        chol_x_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
-  __device__ const Eigen::Map<Eigen::VectorXd> chol_x() const {
-    return Eigen::Map<Eigen::VectorXd>(
-        chol_x_global + blockIdx.x * num_velocities, num_velocities);
+  __device__ const Eigen::Map<Eigen::MatrixXd> chol_x() const {
+    return Eigen::Map<Eigen::MatrixXd>(
+        chol_x_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
   __device__ double l_alpha() { return l_alpha_global[blockIdx.x]; }
@@ -300,10 +300,10 @@ struct SAPGPUData {
   }
 
   // Retrival function - copy Cholesky x data back to CPU
-  void RetriveCholXToCPU(std::vector<Eigen::VectorXd>& chol_x) {
+  void RetriveCholXToCPU(std::vector<Eigen::MatrixXd>& chol_x) {
     chol_x.resize(num_problems);
     for (int i = 0; i < num_problems; i++) {
-      chol_x[i].resize(num_velocities);
+      chol_x[i].resize(num_velocities, 1);
       cudaMemcpy(chol_x[i].data(), chol_x_global + i * num_velocities,
                  num_velocities * sizeof(double), cudaMemcpyDeviceToHost);
     }
