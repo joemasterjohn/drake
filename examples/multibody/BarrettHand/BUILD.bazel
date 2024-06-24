@@ -1,0 +1,40 @@
+load(
+    "//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+filegroup(
+    name = "models",
+    srcs = glob([
+        "**/*.sdf",
+        "**/*.obj",
+        "**/*.mtl",
+        "**/*.vtk",
+    ]),
+    visibility = [
+        "//:__pkg__",
+        "//bindings/pydrake/multibody:__pkg__",
+    ],
+)
+
+drake_cc_binary(
+    name = "gears_example",
+    srcs = ["gears_example.cc"],
+    data = [":models"],
+    deps = [
+        "//common:find_resource",
+        "//multibody/parsing:parser",
+        "//systems/framework:diagram_builder",
+        "//systems/analysis:simulator",
+        "//systems/primitives:trajectory_source",
+        "//common/trajectories:piecewise_polynomial",
+        "//geometry:meshcat_visualizer",
+        "//geometry:meshcat",
+        "//multibody/meshcat:contact_visualizer",
+        "//multibody/plant:multibody_plant_config_functions",
+        "//visualization:visualization_config_functions",
+        "@gflags//:gflags",
+    ],
+)
