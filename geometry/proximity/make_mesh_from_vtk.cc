@@ -60,7 +60,7 @@ std::vector<T> MakePressureFromVtkFile(const std::filesystem::path& filename) {
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    (&MakeVolumeMeshFromVtk<T>, &MakePressureFromVtkFile<T>))
+    (&MakeVolumeMeshFromVtk<T>, &MakePressureFromVtkFile<T>));
 
 }  // namespace internal
 }  // namespace geometry

@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<sdf version="1.7" xmlns:drake="drake.mit.edu">
+  <model name="obstacles">
+    <link name="obstacle">
+      <pose>-0.05 0 0.075  0 0 0</pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>1</mass>
+        <inertia>
+          <ixx> 1.5625e-7 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 9.3828125e-5 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 9.3828125e-5 </izz>
+        </inertia>
+      </inertial>
+      <visual name="obstacle_visual">
+        <pose>0 0 0 1.570796 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.06</length>
+          </cylinder>
+        </geometry>
+    	  <material>
+	        <diffuse>0.8 0.0 0.0</diffuse>
+        </material>
+      </visual>
+      <collision name="obstacle_collision">
+        <pose>0 0 0 1.570796 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.02</radius>
+            <length>0.06</length>
+          </cylinder>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 1.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 100 </drake:hunt_crossley_dissipation>
+	        <drake:mesh_resolution_hint> 0.01 </drake:mesh_resolution_hint>
+          <drake:mu_dynamic> 1.5 </drake:mu_dynamic>
+          <drake:mu_static> 1.5 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+    <joint name="obstacle_weld" type="fixed">
+      <parent>world</parent>
+      <child>obstacle</child>
+      <!-- Pose X_CJ of the joint frame J in frame C of the child link. -->
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+  </model>
+</sdf>

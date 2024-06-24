@@ -1,0 +1,381 @@
+<?xml version="1.0"?>
+<sdf version="1.7" xmlns:drake="drake.mit.edu">
+  <model name="BarrettHand">
+    <link name="spur">
+      <pose>0.0 0 0.0174 3.14159265358979311599 0 0</pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>0.003</mass>
+        <inertia>
+          <ixx> 1.33e-5 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 2.535e-5 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 1.33e-5 </izz>
+        </inertia>
+      </inertial>
+      <visual name="spur_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>spur.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="spur_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>spur.vtk</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 5.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic> 0.0558 </drake:mu_dynamic>
+          <drake:mu_static> 0.0558 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+    <link name="finger">
+      <pose>-0.05 0 0.01725 0 0 0</pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx> 1.5625e-7 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 9.3828125e-5 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 9.3828125e-5 </izz>
+        </inertia>
+      </inertial>
+      <visual name="finger_visual">
+        <pose>0 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.0125</radius>
+            <length>0.075</length>
+          </cylinder>
+        </geometry>
+      </visual>
+      <collision name="finger_collision">
+        <pose>0 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.0125</radius>
+            <length>0.075</length>
+          </cylinder>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 1.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+	        <drake:mesh_resolution_hint> 0.00625 </drake:mesh_resolution_hint>
+          <drake:mu_dynamic> 1.5 </drake:mu_dynamic>
+          <drake:mu_static> 1.5 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+
+    </link>
+    <joint name="finger_weld" type="fixed">
+      <parent>spur</parent>
+      <child>finger</child>
+      <!-- Pose X_CJ of the joint frame J in frame C of the child link. -->
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+    <joint name="spur_world" type="revolute">
+      <child>spur</child>
+      <parent>world</parent>
+      <pose> 0 0 0 0 0 0 </pose>
+      <axis>
+        <xyz>0 1 0</xyz>
+	<limit>
+	  <lower>-inf</lower>
+	  <upper>0</upper>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+    <link name="worm">
+      <pose>0 0 0 3.14159265358979311599 0 0</pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>0.001</mass>
+        <inertia>
+          <ixx> 1.25e-6 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 1.825e-6 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 1.825e-6 </izz>
+        </inertia>
+      </inertial>
+      <visual name="worm_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>worm.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="worm_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>worm.vtk</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 5.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic> 0.0552 </drake:mu_dynamic>
+          <drake:mu_static> 0.0552 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="worm_screw_visual">
+        <pose>0.019 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>screw.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <!--
+      <collision name="worm_screw_collision">
+        <pose>0.019 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>screw.vtk</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 5.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic> 0 </drake:mu_dynamic>
+	        <drake:mu_static> 0 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+      -->
+      <visual name="worm_washer_visual">
+        <!--<pose>0.01475 0 0 0 1.570796 0</pose>-->
+	      <!-- Shift the washer a bit down the threads. -->
+	      <pose>0.01420 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.004</radius>
+            <length>0.0015</length>
+          </cylinder>
+        </geometry>
+	<material>
+	  <diffuse>0.886275 0.180392 0.886275</diffuse>
+        </material>
+      </visual>
+      <collision name="worm_washer_collision">
+        <!--<pose>0.01475 0 0 0 1.570796 0</pose>-->
+	<!-- Shift the washer a bit down the threads. -->
+	<pose>0.01420 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.004</radius>
+            <length>0.0015</length>
+          </cylinder>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 1.0e6 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+	  <drake:mesh_resolution_hint> 0.002 </drake:mesh_resolution_hint>
+          <drake:mu_dynamic> 2 </drake:mu_dynamic>
+          <drake:mu_static> 2 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+      <visual name="worm_rod_visual">
+	<pose>0 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.0025</radius>
+            <length>0.028</length>
+          </cylinder>
+        </geometry>
+	<material>
+	  <diffuse>0.121569 0.654902 0.129412</diffuse>
+        </material>
+      </visual>
+    </link>
+    <joint name="worm_world" type="revolute">
+      <child>worm</child>
+      <parent>world</parent>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+    <link name="nut_gear">
+      <pose>0.0165 0 0 0 0 0 </pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>0.0008</mass>
+        <inertia>
+          <ixx> 1.25e-8 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 7e-9 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 7e-9 </izz>
+        </inertia>
+      </inertial>
+      <visual name="nut_gear_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>nut_gear.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="nut_gear_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>nut_gear.vtk</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 5.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic> 2 </drake:mu_dynamic>
+          <drake:mu_static> 2 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+    <joint name="nut_gear_worm" type="screw">
+      <child>nut_gear</child>
+      <parent>worm</parent>
+      <screw_thread_pitch>0.0005</screw_thread_pitch>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+    <link name="nut_gear_stopper">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>1</mass>
+        <inertia>
+          <ixx> 1 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 1 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 1 </izz>
+        </inertia>
+      </inertial>
+     <visual name="nut_gear_stopper_visual">
+	   <pose>0.022 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.004</radius>
+            <length>0.0015</length>
+          </cylinder>
+        </geometry>
+	<material>
+	  <diffuse>0.886275 0.180392 0.886275</diffuse>
+        </material>
+      </visual>
+      <collision name="nut_gear_stopper_collision">
+	    <pose>0.022 0 0 0 1.570796 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.004</radius>
+            <length>0.0015</length>
+          </cylinder>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 1.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+	  <drake:mesh_resolution_hint> 0.002 </drake:mesh_resolution_hint>
+          <drake:mu_dynamic> 1.5 </drake:mu_dynamic>
+          <drake:mu_static> 1.5 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+    <joint name="nut_gear_stopper_weld" type="fixed">
+      <parent>world</parent>
+      <child>nut_gear_stopper</child>
+      <pose>0 0 0 0 0 0</pose>
+    </joint>
+
+    <link name="motor_gear">
+      <pose>0.018 0.005674 -0.00508 0 0 0 </pose>
+      <inertial>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+        <mass>0.001</mass>
+        <inertia>
+          <ixx> 2.798978e-9 </ixx>
+          <ixy> 0.0 </ixy>
+          <ixz> 0.0 </ixz>
+          <iyy> 5.4828223e-9 </iyy>
+          <iyz> 0.0 </iyz>
+          <izz> 5.4828223e-9 </izz>
+        </inertia>
+      </inertial>
+      <visual name="motor_gear_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>motor_gear.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="motor_gear_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>motor_gear.vtk</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <drake:proximity_properties>
+          <drake:compliant_hydroelastic/>
+          <drake:hydroelastic_modulus> 5.0e8 </drake:hydroelastic_modulus>
+          <drake:hunt_crossley_dissipation> 10 </drake:hunt_crossley_dissipation>
+          <drake:mu_dynamic> 0 </drake:mu_dynamic>
+          <drake:mu_static> 0 </drake:mu_static>
+        </drake:proximity_properties>
+      </collision>
+    </link>
+    <joint name="motor_gear_world" type="revolute">
+      <child>motor_gear</child>
+      <parent>world</parent>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <effort>0.018</effort>
+        </limit>
+      </axis>
+      <drake:controller_gains p="1e-17" d="1000" />
+    </joint>
+ 
+  </model>
+</sdf>
