@@ -11,34 +11,11 @@ load(
     "drake_cc_googletest",
 )
 
-nvcc_library(
-    name = "cuda_sample",
-    hdrs = ["cuda_sample.h"],
-    srcs = ["cuda_sample.cu"],
-)
-
-nvcc_library(
-    name = "cuda_gauss_seidel",
-    hdrs = ["cuda_gauss_seidel.h"],
-    srcs = ["cuda_gauss_seidel.cu"],
-    deps = [
-        "//common:essential",
-    ],
-)
 
 nvcc_library(
     name = "cuda_cholesky",
     hdrs = ["cuda_cholesky.h", "cuda_cholesky.cuh"],
     srcs = ["cuda_cholesky.cu"],
-    deps = [
-        "//common:essential",
-    ],
-)
-
-nvcc_library(
-    name = "cuda_matmul",
-    hdrs = ["cuda_matmul.h","cuda_matmul.cuh",],
-    srcs = ["cuda_matmul.cu"],
     deps = [
         "//common:essential",
     ],
@@ -63,35 +40,6 @@ nvcc_library(
     ],
 )
 
-nvcc_library(
-    name = "cuda_reduce",
-    hdrs = ["cuda_reduce.h"],
-    srcs = ["cuda_reduce.cu"],
-    deps = [
-        "//common:essential",
-    ],
-)
-
-drake_cc_googletest(
-    name = "cuda_sample_test",
-    srcs = ["cuda_sample_test.cc"],
-    tags = ["cuda"],
-    deps = [
-        ":cuda_sample",
-        "@gtest//:main",
-    ],
-)
-
-drake_cc_googletest(
-    name = "cuda_gauss_seidel_test",
-    srcs = ["cuda_gauss_seidel_test.cc"],
-    tags = ["cuda"],
-    deps = [
-	"//common:essential",
-        ":cuda_gauss_seidel",
-        "@gtest//:main",
-    ],
-)
 
 drake_cc_googletest(
     name = "cuda_cholesky_test",
@@ -115,16 +63,6 @@ drake_cc_googletest(
     ],
 )
 
-drake_cc_googletest(
-    name = "cuda_matmul_test",
-    srcs = ["cuda_matmul_test.cc"],
-    tags = ["cuda"],
-    deps = [
-	"//common:essential",
-        ":cuda_matmul",
-        "@gtest//:main",
-    ],
-)
 
 drake_cc_googletest(
     name = "cuda_onestepsap_test",
@@ -136,17 +74,5 @@ drake_cc_googletest(
     ":cuda_cholesky",
     "@gtest//:main",
     "@cuda//:cudart",
-    ],
-)
-
-
-drake_cc_googletest(
-    name = "cuda_reduce_test",
-    srcs = ["cuda_reduce_test.cc"],
-    tags = ["cuda"],
-    deps = [
-	"//common:essential",
-    ":cuda_reduce",
-    "@gtest//:main",
     ],
 )
