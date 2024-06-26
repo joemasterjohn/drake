@@ -25,6 +25,10 @@ GTEST_TEST(KernelTest, GPU_Collision) {
       h_spheres[i * numSpheres + j].center(2) =
           3.0 * (h_spheres[i * numSpheres + j].center(2) + 1.0) - 1.5;
       h_spheres[i * numSpheres + j].radius = 0.5;
+
+      // initialize velocity randomly for each sphere
+      // the x,y, and z components of the velocity are in the range of [-1, 1]
+      h_spheres[i * numSpheres + j].velocity = Eigen::Vector3d::Random();
     }
   }
 
@@ -32,8 +36,7 @@ GTEST_TEST(KernelTest, GPU_Collision) {
   CollisionData h_collisionMatrixSpheres[numProblems * numSpheres * numSpheres];
 
   // Run the GPU collision engine
-  CollisionEngine(h_spheres, numProblems, numSpheres,
-                   h_collisionMatrixSpheres);
+  CollisionEngine(h_spheres, numProblems, numSpheres, h_collisionMatrixSpheres);
 
   // Print out the results
   for (int i = 0; i < numProblems; i++) {
@@ -97,6 +100,24 @@ GTEST_TEST(KernelTest, GPU_Collision) {
             }
             std::cout << std::endl;
           }
+
+          std::cout << "Sphere " << j << " velocity: ("
+                    << h_spheres[i * numSpheres + j].velocity(0) << ", "
+                    << h_spheres[i * numSpheres + j].velocity(1) << ", "
+                    << h_spheres[i * numSpheres + j].velocity(2) << ")"
+                    << std::endl;
+
+          std::cout << "Sphere " << k << " velocity: ("
+                    << h_spheres[i * numSpheres + k].velocity(0) << ", "
+                    << h_spheres[i * numSpheres + k].velocity(1) << ", "
+                    << h_spheres[i * numSpheres + k].velocity(2) << ")"
+                    << std::endl;
+
+          std::cout << "Normal Relative Velocity: "
+                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
+                                                j * numSpheres + k]
+                           .vn
+                    << std::endl;
 
           std::cout << "====================================" << std::endl;
         }

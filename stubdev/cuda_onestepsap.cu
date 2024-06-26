@@ -22,7 +22,7 @@ __device__ void SAXPY(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
   int row = A.rows();
   int col = A.cols();
 
-  int num_strides = (A.rows() + 31) / 32;
+  int num_strides = (A.rows() * A.cols() + 31) / 32;
 
   for (int i = 0; i < num_strides; i++) {
     int cur_idx = i * 32 + thread_idx;
@@ -289,7 +289,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    d_temp += res;
+    d_temp -= res;
     d = d_temp;
   }
 
@@ -488,6 +488,8 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         dx_negative_prev = dx_negative;
       }
 
+      __syncwarp();
+
       // we evaluate fguess the last as cache will be left in the global memory
       // TODO: Update G and gamma
       SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
@@ -631,7 +633,6 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 
 // ==========================================================================
 // Driver Functions
-// ==========================================================================
 // This function is used in the unit test to perform a complete SAP solve,
 // including search direction calculation and line search
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,

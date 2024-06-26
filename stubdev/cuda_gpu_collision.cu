@@ -17,8 +17,8 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 // =====================
 
 // Device function to check Sphere-Sphere collision
-__host__ __device__ CollisionData CheckSphereCollision(const Sphere& a,
-                                                       const Sphere& b) {
+__device__ CollisionData CheckSphereCollision(const Sphere& a,
+                                              const Sphere& b) {
   CollisionData data = {
       false, {0, 0, 0}, {0, 0, 0}, 0, Eigen::Matrix3d::Zero()};
 
@@ -57,15 +57,19 @@ __host__ __device__ CollisionData CheckSphereCollision(const Sphere& a,
     y_hat.normalize();
     Eigen::Vector3d x_hat = y_hat.cross(data.nhat_BA_W);
 
-    data.R(0, 0) = x_hat(0);
-    data.R(0, 1) = x_hat(1);
-    data.R(0, 2) = x_hat(2);
-    data.R(1, 0) = y_hat(0);
-    data.R(1, 1) = y_hat(1);
-    data.R(1, 2) = y_hat(2);
-    data.R(2, 0) = data.nhat_BA_W(0);
-    data.R(2, 1) = data.nhat_BA_W(1);
-    data.R(2, 2) = data.nhat_BA_W(2);
+    data.R(0, 0) = x_hat(0);           // x of x-axis
+    data.R(0, 1) = x_hat(1);           // y of x-axis
+    data.R(0, 2) = x_hat(2);           // z of x-axis
+    data.R(1, 0) = y_hat(0);           // x of y-axis
+    data.R(1, 1) = y_hat(1);           // y of y-axis
+    data.R(1, 2) = y_hat(2);           // z of y-axis
+    data.R(2, 0) = data.nhat_BA_W(0);  // x of z-axis
+    data.R(2, 1) = data.nhat_BA_W(1);  // y of z-axis
+    data.R(2, 2) = data.nhat_BA_W(2);  // z of z-axis
+
+    data.vn = (a.velocity - b.velocity).dot(data.nhat_BA_W);
+  } else {
+    data.isColliding = false;
   }
 
   return data;
@@ -74,22 +78,23 @@ __host__ __device__ CollisionData CheckSphereCollision(const Sphere& a,
 // Kernel to detect collisions between Spheres
 __global__ void DetectSphereCollisions(const Sphere* spheres, int numProblems,
                                        int numSpheres,
-                                       CollisionData* collisionMatrix,
-                                       int offset) {
-  int idx = threadIdx.x + offset;
+                                       CollisionData* collisionMatrix) {
+  int idx = threadIdx.x;
   int p_idx = blockIdx.x;
 
-  if (idx >= numSpheres) return;
-  if (p_idx >= numProblems) return;
+  int num_stride = numSpheres / 32 + 1;
 
-  for (int j = idx; j < numSpheres; j++) {
-    if (idx != j) {
-      collisionMatrix[(p_idx * numSpheres * numSpheres) + idx * numSpheres +
-                      j] =
-          CheckSphereCollision(spheres[p_idx * numSpheres + idx],
-                               spheres[p_idx * numSpheres + j]);
+  for (int j = idx; j < numSpheres; j += blockDim.x) {
+    if (j < numSpheres) {
+      for (int k = j + 1; k < numSpheres; k++) {
+        collisionMatrix[(p_idx * numSpheres * numSpheres) + j * numSpheres +
+                        k] =
+            CheckSphereCollision(spheres[p_idx * numSpheres + j],
+                                 spheres[p_idx * numSpheres + k]);
+      }
     }
   }
+  __syncwarp();
 }
 
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
@@ -112,14 +117,9 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   // Kernel launches
   int threadsPerBlock = 32;
   int blocksPerGridSpheres = numProblems;
-
-  int offset = 0;
-  while (offset < numSpheres) {
-    DetectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
-        d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, offset);
-    offset += 32;
-    HANDLE_ERROR(cudaDeviceSynchronize());
-  }
+  DetectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
+      d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres);
+  HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Copy results back to host
   HANDLE_ERROR(
