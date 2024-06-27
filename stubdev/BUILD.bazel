@@ -40,6 +40,17 @@ nvcc_library(
     ],
 )
 
+nvcc_library(
+    name = "cuda_onestepsap_vd",
+    hdrs = ["cuda_onestepsap_vd.h", "cuda_cholesky.h","cuda_onestepsap_vd.cuh", "cuda_cholesky.cuh"],
+    srcs = ["cuda_onestepsap_vd.cu"],
+    deps = [
+        "//common:essential",
+        ":cuda_cholesky",
+    ],
+)
+
+
 
 drake_cc_googletest(
     name = "cuda_cholesky_test",
@@ -76,3 +87,17 @@ drake_cc_googletest(
     "@cuda//:cudart",
     ],
 )
+
+drake_cc_googletest(
+    name = "cuda_onestepsap_test_vd",
+    srcs = ["cuda_onestepsap_test_vd.cc"],
+    tags = ["cuda"],
+    deps = [
+	"//common:essential",
+    ":cuda_onestepsap_vd",
+    ":cuda_cholesky",
+    "@gtest//:main",
+    "@cuda//:cudart",
+    ],
+)
+
