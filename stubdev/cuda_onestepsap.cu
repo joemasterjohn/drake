@@ -8,7 +8,8 @@
 #define alpha_max 1.5
 #define max_iteration 100
 #define f_tolerance 1.0e-8
-
+#define abs_tolerance 1.0e-14
+#define rel_tolerance 1.0e-6
 // ========================================================================
 // OneStepSapGPU Kernels and Functions with new data struct
 // ========================================================================
@@ -275,7 +276,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
   if (threadIdx.x == 0) {
     d_temp = res;
   }
-  Residual __syncwarp();
+  __syncwarp();
 
   // TODO: check formulation
   // ((J*dv(alpha)).transpose() * gamma(alpha))
@@ -546,6 +547,72 @@ __device__ double NegGradCostEval(SAPGPUData* data) {
   return sum;
 }
 
+// device function to evaluate outer loop stopping criteria residual
+__device__ void CalcStoppingCriteriaResidual(SAPGPUData* data,
+                                             double& momentum_residue,
+                                             double& momentum_scale) {
+  // calculate p_tilde^2 term
+  double p_tilde_2 = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    p_tilde_2 +=
+        ((data->dynamics_matrix()(i, i) / sqrt(data->dynamics_matrix()(i, i))) *
+         data->v_guess()(i, 0)) *
+        ((data->dynamics_matrix()(i, i) / sqrt(data->dynamics_matrix()(i, i))) *
+         data->v_guess()(i, 0));
+  }
+
+  p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 16);
+  p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 8);
+  p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 4);
+  p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 2);
+  p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 1);
+
+  __syncwarp();
+
+  // calculate j_tilde^2 term
+  double j_tilde_2 = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    double temp = 0.0;
+    for (int j = 0; j < 3 * data->NumContacts(); j++) {
+      temp += data->J()(j, i) * data->gamma_full()(j);
+    }
+    j_tilde_2 += (1 / sqrt(data->dynamics_matrix()(i, i))) *
+                 (1 / sqrt(data->dynamics_matrix()(i, i))) * temp * temp;
+  }
+
+  j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 16);
+  j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 8);
+  j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 4);
+  j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 2);
+  j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 1);
+
+  __syncwarp();
+
+  // calculate ell_grad_tilde^2 term
+  double ell_grad_tilde_2 = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    ell_grad_tilde_2 +=
+        (-data->neg_grad()(i, 0) * (1 / sqrt(data->dynamics_matrix()(i, i)))) *
+        (-data->neg_grad()(i, 0) * (1 / sqrt(data->dynamics_matrix()(i, i))));
+  }
+
+  ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 16);
+  ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 8);
+  ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 4);
+  ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 2);
+  ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 1);
+
+  __syncwarp();
+
+  // calculate momentum residue
+  if (threadIdx.x == 0) {
+    momentum_residue = sqrt(ell_grad_tilde_2);
+    momentum_scale = max(sqrt(p_tilde_2), sqrt(j_tilde_2));
+  }
+
+  __syncwarp();
+}
+
 // ========================================================================
 // Kernels
 // ========================================================================
@@ -564,6 +631,9 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
   // SAP Iteration flag
   double& flag = sums[0];
   double& first_iter = sums[1];
+  double& momentum_residue = sums[2];
+  double& momentum_scale = sums[3];
+
   Eigen::Map<Eigen::MatrixXd> prev_v_guess(
       sums + 2, data->NumVelocities(),
       1);  // previous v_guess, used for termination logic
@@ -593,16 +663,19 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     double neg_grad_norm = NegGradCostEval(data);
     if (threadIdx.x == 0) printf("neg_grad_norm: %f\n", neg_grad_norm);
 
+    __syncwarp();
+
+    // calculate momentum residule and momentum scale
+    CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
+
     // Thread 0 registers first results or check residual if the current
     // iteration is not 0, if necessary, continue
     if (threadIdx.x == 0) {
       if (first_iter == 1.0) {
         first_iter = 0.0;
       } else {
-        // TODO: check tolerance
-        // now the tolerance is fixed and set to 1e-6
-        double tolerance = 1e-6;
-        if (neg_grad_norm <= tolerance) {
+        if (momentum_residue <=
+            abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
         }
       }
