@@ -360,8 +360,9 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
   // TODO: check formulation
   // ((J*dv(alpha)).transpose() * gamma(alpha))
   res = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts() * 3; i += blockDim.x) {
-    res += delta_v_c(i, 0) * data->gamma_full()(i);
+  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+    res += delta_v_c.block<3, 1>(3 * i, 0).dot(data->gamma(i));
+    // res += delta_v_c(i, 0) * data->gamma_full()(i);
   }
   res += __shfl_down_sync(0xFFFFFFFF, res, 16);
   res += __shfl_down_sync(0xFFFFFFFF, res, 8);
@@ -456,7 +457,7 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
 __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   // scratch space for each problem (per block)
 
-  size_t buff_arr_offset = 15;  // 15 doubles for local variables
+  size_t buff_arr_offset = 14;  // 14 doubles for local variables
 
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
@@ -492,11 +493,10 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   double& d_guess = buff[8];   // derivative at guess_alpha
   double& d2_guess = buff[9];  // 2nd derivative at guess_alpha
 
-  double& prev_alpha = buff[10];        // previous alpha record
-  double& dx_negative = buff[11];       // x_negative in the current iteration
-  double& dx_negative_prev = buff[12];  // previous x_negative record
-  double& flag = buff[13];              // loop flag
-  double& first_iter = buff[14];        // first iteration flag
+  double& prev_alpha = buff[10];   // previous alpha record
+  double& dx_negative = buff[11];  // x_negative in the current iteration
+  double& flag = buff[12];         // loop flag
+  double& first_iter = buff[13];   // first iteration flag
 
   // scratch space variable initialization
   if (thread_idx == 0) {
@@ -505,7 +505,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     guess_alpha = (l_alpha + r_alpha) / 2.0;
     flag = 1.0;
     first_iter = 1.0;
-    dx_negative_prev = 0.0;
     for (int i = 0; i < data->NumVelocities(); i++) {
       v_guess_prev(i, 0) = data->v_guess()(i, 0);
     }
@@ -544,7 +543,7 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     }
   }
 
-  // we evaluate fmid the last as cache will be left in the global memory
+  // we evaluate fguess the last as cache will be left in the global memory
   // TODO: Update G and gamma
   SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
                         v_guess_prev);
@@ -564,26 +563,24 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   for (int i = 0; i < max_iteration; i++) {
     if (flag == 1.0) {
       if (threadIdx.x == 0) {
-        double root_guess = 0.0;
         bool newton_is_slow = false;
 
-        if (first_iter == 0.0) {
-          newton_is_slow =
-              2.0 * abs(d_guess) > abs(d2_guess * dx_negative_prev);
-        } else {
-          newton_is_slow = false;
-          first_iter = 0.0;
-        }
-
-        dx_negative_prev = dx_negative;
-
         // return logic
-        if (abs(dx_negative_prev) <= f_tolerance * guess_alpha) {
-          flag = 0.0;
+        if (first_iter == 0.0) {
+          if (abs(dx_negative) <= f_tolerance * guess_alpha) {
+            flag = 0.0;
+          }
         }
 
         if (abs(d_guess) <= f_tolerance) {
           flag = 0.0;
+        }
+
+        if (first_iter == 0.0) {
+          newton_is_slow = 2.0 * abs(d_guess) > abs(d2_guess * dx_negative);
+        } else {
+          newton_is_slow = false;
+          first_iter = 0.0;
         }
 
         // TODO: remove this debugging output
@@ -593,22 +590,18 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         if (newton_is_slow) {
           printf("do bisec, newton is slow\n");
           dx_negative = 0.5 * (l_alpha - r_alpha);
-          root_guess = l_alpha - dx_negative;
+          guess_alpha = l_alpha - dx_negative;
         } else {
           printf("do newton\n");
           dx_negative = d_guess / d2_guess;
-          root_guess = guess_alpha - dx_negative;
+          guess_alpha = guess_alpha - dx_negative;
           // newton_is_out_of_range
-          if (root_guess < l_alpha || root_guess > r_alpha) {
+          if (guess_alpha < l_alpha || guess_alpha > r_alpha) {
             printf("newton oob do bisec!\n");
             dx_negative = 0.5 * (l_alpha - r_alpha);
-            root_guess = l_alpha - dx_negative;
+            guess_alpha = l_alpha - dx_negative;
           }
         }
-
-        // update guess_alpha
-        // record dx_negative at this iteration
-        guess_alpha = root_guess;
       }
 
       __syncwarp();
@@ -632,7 +625,7 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         // printf("dx_negative_prev: %.10f \n", dx_negative_prev);
         printf("bracket [l: %.16lf guess: %.16lf r: %.16lf] \n", l_alpha,
                guess_alpha, r_alpha);
-        printf("f(bracket): [f(l): %.16lf f(guess): %.16lf f(r): %.16lf] \n",
+        printf("f(bracket): [f(l): %.16lf f(guess): %.16lf f(r): %.16lf] \n\n",
                d_l, d_guess, d_r);
       }
 
