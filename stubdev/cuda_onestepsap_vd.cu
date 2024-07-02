@@ -10,6 +10,8 @@
 #define f_tolerance 1.0e-8
 #define abs_tolerance 1.0e-14
 #define rel_tolerance 1.0e-6
+#define cost_abs_tolerance 1.0e-15
+#define cost_rel_tolerance 1.0e-8
 
 // ========================================================================
 // OneStepSapGPU Kernels and Functions with new data struct
@@ -174,6 +176,28 @@ __device__ void UpdateGammaG(SAPGPUData* data) {
   __syncwarp();
 }
 
+__device__ void CalculateDlDalpha0(SAPGPUData* data, double* sums) {
+  double sum = 0.0;
+  for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
+    sum += (-data->neg_grad()(i, 0)) * data->chol_x()(i, 0);
+  }
+
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
+  sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
+
+  __syncwarp();
+
+  if (threadIdx.x == 0) {
+    data->dl_dalpha0()(0, 0) = sum;
+    printf("inside sum: %.16lf \n", sum);
+  }
+
+  __syncwarp();
+}
+
 // Calculate for the search direction, this direction will then be scaled by
 // alpha in the line search section
 __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
@@ -238,6 +262,13 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
   __syncwarp();
   CholeskySolveBackwardFunc(d_L, d_y, d_x, equ_idx, thread_idx,
                             data->NumVelocities(), num_stride);
+  __syncwarp();
+
+  // Calculate the dl_dalpha0 for each problem
+  // dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
+  // also -neg_grad.dot(chol_x)
+  CalculateDlDalpha0(data, sums);
+
   __syncwarp();
 }
 
@@ -329,7 +360,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
   // TODO: check formulation
   // ((J*dv(alpha)).transpose() * gamma(alpha))
   res = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+  for (int i = threadIdx.x; i < data->NumContacts() * 3; i += blockDim.x) {
     res += delta_v_c(i, 0) * data->gamma_full()(i);
   }
   res += __shfl_down_sync(0xFFFFFFFF, res, 16);
@@ -341,8 +372,14 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    d_temp -= res;
+    d_temp = d_temp - res;
     d = d_temp;
+    // d = d_temp / (-data->dl_dalpha0()(0, 0));
+
+    // printf("==============================\n");
+    // printf("d: %.10lf \n", d);
+    // printf("data->dl_dalpha0()(0, 0): %.10lf \n", data->dl_dalpha0()(0, 0));
+    // printf("==============================\n");
   }
 
   __syncwarp();
@@ -405,6 +442,12 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   if (threadIdx.x == 0) {
     d_temp += res;
     d2 = d_temp;
+    // d2 = d_temp / (-data->dl_dalpha0()(0, 0));
+
+    // printf("==============================\n");
+    // printf("d2: %.10lf \n", d2);
+    // printf("data->dl_dalpha0()(0, 0): %.10lf \n", data->dl_dalpha0()(0, 0));
+    // printf("==============================\n");
   }
 
   __syncwarp();
@@ -413,7 +456,7 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
 __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   // scratch space for each problem (per block)
 
-  size_t buff_arr_offset = 15;  // 14 doubles for local variables
+  size_t buff_arr_offset = 15;  // 15 doubles for local variables
 
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
@@ -486,6 +529,20 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   SAPLineSearchEvalDer(data, r_alpha, d_r, sums, v_alpha, delta_v_c, delta_p);
 
   __syncwarp();
+
+  // return logic: early accept
+  if (threadIdx.x == 0) {
+    if (d_r <= 0.0) {
+      guess_alpha = r_alpha;
+      flag = 0.0;
+    }
+
+    if (-data->dl_dalpha0()(0, 0) <
+        cost_abs_tolerance + cost_rel_tolerance * f_r) {
+      guess_alpha = 1.0;
+      flag = 0.0;
+    }
+  }
 
   // we evaluate fmid the last as cache will be left in the global memory
   // TODO: Update G and gamma
@@ -570,8 +627,8 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
       __syncwarp();
 
       if (threadIdx.x == 0) {
-        printf("d_guess: %.10lf \n", d_guess);
-        printf("d2_guess: %.10lf \n", d2_guess);
+        printf("d_guess: %.16lf \n", d_guess);
+        printf("d2_guess: %.16lf \n", d2_guess);
         // printf("dx_negative_prev: %.10f \n", dx_negative_prev);
         printf("bracket [l: %.16lf guess: %.16lf r: %.16lf] \n", l_alpha,
                guess_alpha, r_alpha);
@@ -706,9 +763,10 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
   double& first_iter = sums[1];
   double& momentum_residue = sums[2];
   double& momentum_scale = sums[3];
+  double& ell_previous = sums[4];
 
   Eigen::Map<Eigen::MatrixXd> prev_v_guess(
-      sums + 4, data->NumVelocities(),
+      sums + 5, data->NumVelocities(),
       1);  // previous v_guess, used for termination logic
 
   if (threadIdx.x == 0) {
@@ -723,7 +781,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     // we add offset to shared memory to avoid SoveWithGuessImplKernel
     // __shared__ varibales being overwritten
     CalcSearchDirection(data,
-                        sums + sizeof(double) * (4 + data->NumVelocities()));
+                        sums + sizeof(double) * (5 + data->NumVelocities()));
 
     __syncwarp();
 
@@ -731,12 +789,17 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     // we add offset to shared memory to avoid SoveWithGuessImplKernel
     // __shared__ varibales being overwritten
     double alpha = SAPLineSearch(
-        data, sums + sizeof(double) * (4 + data->NumVelocities()));
+        data, sums + sizeof(double) * (5 + data->NumVelocities()));
 
     __syncwarp();
 
     double neg_grad_norm = NegGradCostEval(data);
-    if (threadIdx.x == 0) printf("neg_grad_norm: %.10f\n", neg_grad_norm);
+    if (threadIdx.x == 0) {
+      // print out neg_grad
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        printf("neg_grad: %.10f\n", data->neg_grad()(i, 0));
+      }
+    }
 
     __syncwarp();
 
@@ -756,11 +819,26 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       if (first_iter == 1.0) {
         first_iter = 0.0;
       } else {
+        // momentum residue check
         if (momentum_residue <=
             abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
         }
+
+        // cost criteria check
+        double ell = data->momentum_cost()(0, 0) +
+                     data->regularizer_cost()(0, 0);  // current cost
+        double ell_scale = 0.5 * (abs(ell) + abs(ell_previous));
+        double ell_decrement = std::abs(ell_previous - ell);
+        if (ell_decrement <
+                cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
+            alpha > 0.5) {
+          flag = 0.0;
+        }
       }
+
+      ell_previous =
+          data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
 
       // assign previous
       for (int i = 0; i < data->NumVelocities(); i++) {
