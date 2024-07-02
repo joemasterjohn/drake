@@ -7,10 +7,7 @@
 namespace drake {
 namespace geometry {
 namespace internal {
-
 namespace {
-
-// Test instantiation of VolumeMeshTopology of a geometry M and inspecting its
 // components.
 GTEST_TEST(VolumeMeshTopologyTest, TestVolumeMeshTopology) {
   // A trivial volume mesh comprises of two tetrahedral elements with
