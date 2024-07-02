@@ -31,7 +31,7 @@ struct MeshTraits;
 
 template <typename T>
 struct MeshTraits<TriangleSurfaceMesh<T>> {
-  static constexpr int kMaxElementPerBvhLeaf = 3;
+  static constexpr int kMaxElementPerBvhLeaf = 1;
 };
 
 template <typename T>

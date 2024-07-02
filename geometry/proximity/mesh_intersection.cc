@@ -81,6 +81,7 @@ void ClipPolygonByHalfSpace(const std::vector<Vector3<T>>& input_vertices_F,
   // Note: this is the inner loop of a modified Sutherland-Hodgman algorithm for
   // clipping a polygon.
   output_vertices_F->clear();
+
   // Note: This code is correct for size < 3, but pointless so we make no effort
   // to support it or test it.
   const int size = static_cast<int>(input_vertices_F.size());

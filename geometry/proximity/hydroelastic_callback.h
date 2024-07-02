@@ -152,15 +152,39 @@ std::unique_ptr<ContactSurface<T>> DispatchCompliantCompliantCalculation(
     HydroelasticContactRepresentation representation) {
   DRAKE_DEMAND(!compliant0_F.is_half_space() && !compliant1_G.is_half_space());
 
+  // const VolumeMeshFieldLinear<double, double>& field0_F =
+  //     compliant0_F.pressure_field();
+  // const Bvh<Obb, VolumeMesh<double>>& bvh0_F = compliant0_F.bvh();
+  // const VolumeMeshFieldLinear<double, double>& field1_G =
+  //     compliant1_G.pressure_field();
+  // const Bvh<Obb, VolumeMesh<double>>& bvh1_G = compliant1_G.bvh();
+
+  // return ComputeContactSurfaceFromCompliantVolumes(
+  //     id0, field0_F, bvh0_F, X_WF, id1, field1_G, bvh1_G, X_WG,
+  //     representation);
+
+  // TODO(joemasterjohn): Switch between the different implementations here.
   const VolumeMeshFieldLinear<double, double>& field0_F =
       compliant0_F.pressure_field();
-  const Bvh<Obb, VolumeMesh<double>>& bvh0_F = compliant0_F.bvh();
+  const Bvh<Obb, TriangleSurfaceMesh<double>>& bvh0_F =
+      compliant0_F.bvh_surface_mesh();
+  const std::vector<int>& element_mapping_F =
+      compliant0_F.element_index_mapping();
+  const VolumeMeshTopology<double>& mesh_topology_F =
+      compliant0_F.mesh_topology();
   const VolumeMeshFieldLinear<double, double>& field1_G =
       compliant1_G.pressure_field();
-  const Bvh<Obb, VolumeMesh<double>>& bvh1_G = compliant1_G.bvh();
+  const Bvh<Obb, TriangleSurfaceMesh<double>>& bvh1_G =
+      compliant1_G.bvh_surface_mesh();
+  const std::vector<int>& element_mapping_G =
+      compliant1_G.element_index_mapping();
+  const VolumeMeshTopology<double>& mesh_topology_G =
+      compliant1_G.mesh_topology();
 
-  return ComputeContactSurfaceFromCompliantVolumes(
-      id0, field0_F, bvh0_F, X_WF, id1, field1_G, bvh1_G, X_WG, representation);
+  return ComputeContactSurfaceFromCompliantVolumesWithTopology(
+      id0, field0_F, bvh0_F, element_mapping_F, mesh_topology_F, X_WF, id1,
+      field1_G, bvh1_G, element_mapping_G, mesh_topology_G, X_WG,
+      representation);
 }
 
 /* Calculates the contact surface (if it exists) between two potentially
