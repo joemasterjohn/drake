@@ -10,7 +10,7 @@
 #define f_tolerance 1.0e-8
 #define abs_tolerance 1.0e-14
 #define rel_tolerance 1.0e-6
-#define cost_abs_tolerance 1.0e-15
+#define cost_abs_tolerance 1.0e-30
 #define cost_rel_tolerance 1.0e-8
 
 // ========================================================================
@@ -332,8 +332,8 @@ __device__ void SAPLineSearchEvalCost(
 
 // Device function to evaluate the 1st derivative of the cost function w.r.t.
 // alpha
-__device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
-                                     double* sums,
+__device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha,
+                                     double& dell_dalpha, double* sums,
                                      Eigen::Map<Eigen::MatrixXd> v_alpha,
                                      Eigen::Map<Eigen::MatrixXd> delta_v_c,
                                      Eigen::Map<Eigen::MatrixXd> delta_p) {
@@ -374,7 +374,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
 
   if (threadIdx.x == 0) {
     d_temp = d_temp - res;
-    d = d_temp;
+    dell_dalpha = d_temp;
     // d = d_temp / (-data->dl_dalpha0()(0, 0));
 
     // printf("==============================\n");
@@ -389,7 +389,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha, double& d,
 // Device function to evaluate the 2nd derivative of the cost function w.r.t.
 // alpha
 __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
-                                      double& d2, double* sums,
+                                      double& d2ell_dalpha2, double* sums,
                                       Eigen::Map<Eigen::MatrixXd> v_alpha,
                                       Eigen::Map<Eigen::MatrixXd> delta_v_c,
                                       Eigen::Map<Eigen::MatrixXd> delta_p) {
@@ -442,7 +442,7 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
 
   if (threadIdx.x == 0) {
     d_temp += res;
-    d2 = d_temp;
+    d2ell_dalpha2 = d_temp;
     // d2 = d_temp / (-data->dl_dalpha0()(0, 0));
 
     // printf("==============================\n");
@@ -481,17 +481,19 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
                                                3 * data->NumContacts(),
                                            data->NumVelocities(), 1);
 
-  double& l_alpha = buff[0];      // alpha left bound
-  double& r_alpha = buff[1];      // alpha right bound
-  double& guess_alpha = buff[2];  // alpha guess value
-  double& f_l = buff[3];          // evaluated function val at l_alpha
-  double& f_r = buff[4];          // evaluated function val at r_alpha
-  double& f_guess = buff[5];      // evaluated function val at guess_alpha
+  double& alpha_l = buff[0];      // alpha left bound
+  double& alpha_r = buff[1];      // alpha right bound
+  double& alpha_guess = buff[2];  // alpha guess value
+  double& ell_l = buff[3];        // evaluated function val at alpha_l
+  double& ell_r = buff[4];        // evaluated function val at alpha_r
+  double& ell_guess = buff[5];    // evaluated function val at alpha_guess
 
-  double& d_l = buff[6];       // derivative at l_alpha
-  double& d_r = buff[7];       // derivative at r_alpha
-  double& d_guess = buff[8];   // derivative at guess_alpha
-  double& d2_guess = buff[9];  // 2nd derivative at guess_alpha
+  double& dell_dalpha_l = buff[6];  // derivative at alpha_l w.r.t. alpha
+  double& dell_dalpha_r = buff[7];  // derivative at alpha_r w.r.t. alpha
+  double& dell_dalpha_guess =
+      buff[8];  // derivative at alpha_guess w.r.t. alpha
+  double& d2ell_dalpha2_guess =
+      buff[9];  // 2nd derivative at alpha_guess w.r.t. alpha
 
   double& prev_alpha = buff[10];   // previous alpha record
   double& dx_negative = buff[11];  // x_negative in the current iteration
@@ -500,9 +502,9 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
   // scratch space variable initialization
   if (thread_idx == 0) {
-    l_alpha = 0.0;
-    r_alpha = alpha_max;
-    guess_alpha = (l_alpha + r_alpha) / 2.0;
+    alpha_l = 0.0;
+    alpha_r = alpha_max;
+    alpha_guess = (alpha_l + alpha_r) / 2.0;
     flag = 1.0;
     first_iter = 1.0;
     for (int i = 0; i < data->NumVelocities(); i++) {
@@ -512,48 +514,50 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
   __syncwarp();
 
-  // evaluate the cost function at l_alpha and r_alpha
+  // evaluate the cost function at alpha_l and alpha_r
   // TODO: Update G and gamma
-  SAPLineSearchEvalCost(data, l_alpha, f_l, sums, v_alpha, v_guess_prev);
+  SAPLineSearchEvalCost(data, alpha_l, ell_l, sums, v_alpha, v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
   MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
-  SAPLineSearchEvalDer(data, l_alpha, d_l, sums, v_alpha, delta_v_c, delta_p);
+  SAPLineSearchEvalDer(data, alpha_l, dell_dalpha_l, sums, v_alpha, delta_v_c,
+                       delta_p);
 
   __syncwarp();
 
   // TODO: Update G and gamma
-  SAPLineSearchEvalCost(data, r_alpha, f_r, sums, v_alpha, v_guess_prev);
+  SAPLineSearchEvalCost(data, alpha_r, ell_r, sums, v_alpha, v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
   MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
-  SAPLineSearchEvalDer(data, r_alpha, d_r, sums, v_alpha, delta_v_c, delta_p);
+  SAPLineSearchEvalDer(data, alpha_r, dell_dalpha_r, sums, v_alpha, delta_v_c,
+                       delta_p);
 
   __syncwarp();
 
   // return logic: early accept
   if (threadIdx.x == 0) {
-    if (d_r <= 0.0) {
-      guess_alpha = r_alpha;
+    if (dell_dalpha_r <= 0.0) {
+      alpha_guess = alpha_r;
       flag = 0.0;
     }
 
     if (-data->dl_dalpha0()(0, 0) <
-        cost_abs_tolerance + cost_rel_tolerance * f_r) {
-      guess_alpha = 1.0;
+        cost_abs_tolerance + cost_rel_tolerance * ell_r) {
+      alpha_guess = 1.0;
       flag = 0.0;
     }
   }
 
-  // we evaluate fguess the last as cache will be left in the global memory
+  // we evaluate ell_guess the last as cache will be left in the global memory
   // TODO: Update G and gamma
-  SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
+  SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
                         v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
   MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
-  SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
-                       delta_p);
-  // evaluate the second derivative of mid_alpha
-  SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha, delta_v_c,
-                        delta_p);
+  SAPLineSearchEvalDer(data, alpha_guess, dell_dalpha_guess, sums, v_alpha,
+                       delta_v_c, delta_p);
+  // evaluate the second derivative of alpha_guess
+  SAPLineSearchEval2Der(data, alpha_guess, d2ell_dalpha2_guess, sums, v_alpha,
+                        delta_v_c, delta_p);
 
   __syncwarp();
 
@@ -567,39 +571,36 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
         // return logic
         if (first_iter == 0.0) {
-          if (abs(dx_negative) <= f_tolerance * guess_alpha) {
+          if (abs(dx_negative) <= f_tolerance * alpha_guess) {
             flag = 0.0;
           }
         }
 
-        if (abs(d_guess) <= f_tolerance) {
+        if (abs(dell_dalpha_guess) <= f_tolerance) {
           flag = 0.0;
         }
 
         if (first_iter == 0.0) {
-          newton_is_slow = 2.0 * abs(d_guess) > abs(d2_guess * dx_negative);
+          newton_is_slow = 2.0 * abs(dell_dalpha_guess) >
+                           abs(d2ell_dalpha2_guess * dx_negative);
         } else {
           newton_is_slow = false;
           first_iter = 0.0;
         }
 
-        // TODO: remove this debugging output
-        // printf("l_alpha: %f, r_alpha: %f, guess: %f, d_guess: %f \n",
-        // l_alpha,
-        //        r_alpha, guess_alpha, d_guess);
         if (newton_is_slow) {
           printf("do bisec, newton is slow\n");
-          dx_negative = 0.5 * (l_alpha - r_alpha);
-          guess_alpha = l_alpha - dx_negative;
+          dx_negative = 0.5 * (alpha_l - alpha_r);
+          alpha_guess = alpha_l - dx_negative;
         } else {
           printf("do newton\n");
-          dx_negative = d_guess / d2_guess;
-          guess_alpha = guess_alpha - dx_negative;
+          dx_negative = dell_dalpha_guess / d2ell_dalpha2_guess;
+          alpha_guess = alpha_guess - dx_negative;
           // newton_is_out_of_range
-          if (guess_alpha < l_alpha || guess_alpha > r_alpha) {
+          if (alpha_guess < alpha_l || alpha_guess > alpha_r) {
             printf("newton oob do bisec!\n");
-            dx_negative = 0.5 * (l_alpha - r_alpha);
-            guess_alpha = l_alpha - dx_negative;
+            dx_negative = 0.5 * (alpha_l - alpha_r);
+            alpha_guess = alpha_l - dx_negative;
           }
         }
       }
@@ -608,42 +609,42 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
       // we evaluate fguess the last as cache will be left in the global memory
       // TODO: Update G and gamma
-      SAPLineSearchEvalCost(data, guess_alpha, f_guess, sums, v_alpha,
+      SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
                             v_guess_prev);
       MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
-      SAPLineSearchEvalDer(data, guess_alpha, d_guess, sums, v_alpha, delta_v_c,
-                           delta_p);
-      // evaluate the second derivative of guess_alpha
-      SAPLineSearchEval2Der(data, guess_alpha, d2_guess, sums, v_alpha,
-                            delta_v_c, delta_p);
+      SAPLineSearchEvalDer(data, alpha_guess, dell_dalpha_guess, sums, v_alpha,
+                           delta_v_c, delta_p);
+      // evaluate the second derivative of alpha_guess
+      SAPLineSearchEval2Der(data, alpha_guess, d2ell_dalpha2_guess, sums,
+                            v_alpha, delta_v_c, delta_p);
 
       __syncwarp();
 
       if (threadIdx.x == 0) {
-        printf("d_guess: %.16lf \n", d_guess);
-        printf("d2_guess: %.16lf \n", d2_guess);
+        printf("d_guess: %.16lf \n", dell_dalpha_guess);
+        printf("d2_guess: %.16lf \n", d2ell_dalpha2_guess);
         // printf("dx_negative_prev: %.10f \n", dx_negative_prev);
-        printf("bracket [l: %.16lf guess: %.16lf r: %.16lf] \n", l_alpha,
-               guess_alpha, r_alpha);
+        printf("bracket [l: %.16lf guess: %.16lf r: %.16lf] \n", alpha_l,
+               alpha_guess, alpha_r);
         printf("f(bracket): [f(l): %.16lf f(guess): %.16lf f(r): %.16lf] \n\n",
-               d_l, d_guess, d_r);
+               dell_dalpha_l, dell_dalpha_guess, dell_dalpha_r);
       }
 
       __syncwarp();
 
       // based on eval, shrink the interval
-      // update l_alpha and r_alpha to update intervals
+      // update alpha_l and alpha_r to update intervals
       if (threadIdx.x == 0) {
         // printf(" dl*d_guess: %f, dr*d_guess: %f \n", d_l * d_guess,
         //        d_r * d_guess);
-        if (d_l * d_guess > 0.0) {
-          l_alpha = guess_alpha;
-          f_l = f_guess;
-          d_l = d_guess;
+        if (dell_dalpha_l * dell_dalpha_guess > 0.0) {
+          alpha_l = alpha_guess;
+          ell_l = ell_guess;
+          dell_dalpha_l = dell_dalpha_guess;
         } else {
-          r_alpha = guess_alpha;
-          f_r = f_guess;
-          d_r = d_guess;
+          alpha_r = alpha_guess;
+          ell_r = ell_guess;
+          dell_dalpha_r = dell_dalpha_guess;
         }
       }
 
@@ -652,7 +653,7 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     }
   }
 
-  return guess_alpha;
+  return alpha_guess;
 }
 
 // device function to evaluate the 2-norm of the neg_grad for each iteration
@@ -736,6 +737,7 @@ __device__ void CalcStoppingCriteriaResidual(SAPGPUData* data,
 
   __syncwarp();
 }
+
 // ========================================================================
 // Kernels
 // ========================================================================
