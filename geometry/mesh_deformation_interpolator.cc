@@ -138,7 +138,7 @@ DrivenTriangleMesh MakeDrivenSurfaceMesh(
   std::vector<int> surface_to_volume_vertices;
   TriangleSurfaceMesh<double> triangle_mesh =
       ConvertVolumeToSurfaceMeshWithBoundaryVertices(
-          control_mesh, &surface_to_volume_vertices);
+          control_mesh, &surface_to_volume_vertices, nullptr);
   VertexSampler sampler{std::move(surface_to_volume_vertices), control_mesh};
   return DrivenTriangleMesh(
       std::variant<BarycentricInterpolator, VertexSampler>(std::move(sampler)),
