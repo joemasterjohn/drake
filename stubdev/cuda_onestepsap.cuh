@@ -193,6 +193,22 @@ struct SAPGPUData {
         col_size);
   }
 
+  __device__ Eigen::Map<Eigen::MatrixXd> dl_dalpha0() {
+    int row_size = 1;
+    int col_size = 1;
+    return Eigen::Map<Eigen::MatrixXd>(
+        dl_dalpha0_global + blockIdx.x * row_size * col_size, row_size,
+        col_size);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> dl_dalpha0() const {
+    int row_size = 1;
+    int col_size = 1;
+    return Eigen::Map<Eigen::MatrixXd>(
+        dl_dalpha0_global + blockIdx.x * row_size * col_size, row_size,
+        col_size);
+  }
+
   __device__ Eigen::Map<Eigen::MatrixXd> G_J() {
     int row_size = num_contacts * 3;
     int col_size = num_velocities;
@@ -366,6 +382,7 @@ struct SAPGPUData {
                                            num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&neg_grad_global,
                             num_problems * num_velocities * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc(&dl_dalpha0_global, num_problems * sizeof(double)));
 
     HANDLE_ERROR(cudaMalloc(
         &chol_L_global,
@@ -443,6 +460,7 @@ struct SAPGPUData {
   double* momentum_cost_global;  // Global memory momentum_cost for all sims
   double*
       regularizer_cost_global;  // Global memory regularizer cost for all sims
+  double* dl_dalpha0_global;  // Global memory dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
 
   double* G_J_global;       // Global memory to hold G*J
   double* H_global;         // Global memory to hold Hessian
