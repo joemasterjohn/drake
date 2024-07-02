@@ -11,7 +11,9 @@
 #define abs_tolerance 1.0e-14
 #define rel_tolerance 1.0e-6
 #define cost_abs_tolerance 1.0e-30
-#define cost_rel_tolerance 1.0e-8
+#define cost_rel_tolerance 1.0e-15
+#define stiffness 1e4
+#define velocity_limit 6.0
 
 // ========================================================================
 // OneStepSapGPU Kernels and Functions with new data struct
@@ -86,9 +88,9 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     // sum += 0.5 * data->gamma(i).dot(data->R(i).cwiseProduct(data->gamma(i)));
     // TODOVD: restore this
-    double delta_v_pen = data->v_guess()(0, 0) - 6.0;
+    double delta_v_pen = data->v_guess()(0, 0) - velocity_limit;
     if (delta_v_pen < 0) delta_v_pen = 0;
-    sum += delta_v_pen * delta_v_pen * 20.0 / 2;
+    sum += delta_v_pen * delta_v_pen * stiffness / 2;
   }
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
@@ -148,12 +150,12 @@ __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
 // Depends on vc (constraint velocity) already being computed.
 __device__ void UpdateGammaG(SAPGPUData* data) {
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-    double delta_v_pen = data->v_guess()(0, 0) - 6.0;
+    double delta_v_pen = data->v_guess()(0, 0) - velocity_limit;
     if (delta_v_pen < 0.0) {
       delta_v_pen = 0.0;
     }
 
-    double gamma_pen = -20.0 * delta_v_pen;
+    double gamma_pen = -stiffness * delta_v_pen;
     data->gamma(i)(0) = 0;
     data->gamma(i)(1) = 0;
     data->gamma(i)(2) = gamma_pen;
@@ -168,9 +170,9 @@ __device__ void UpdateGammaG(SAPGPUData* data) {
     data->G(i)(2, 1) = 0;
 
     double hsf = delta_v_pen;
-    if (hsf >= 0.0) hsf = 1.0;
+    if (hsf > 0.0) hsf = 1.0;
 
-    data->G(i)(2, 2) = hsf * 20.0;
+    data->G(i)(2, 2) = hsf * stiffness;
   }
 
   __syncwarp();
@@ -211,6 +213,43 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
   // Calculate Regularization Cost
   CalcRegularizationCost(data);
 
+  if (threadIdx.x == 0) {
+    printf("v_guess: \n");
+    for (int i = 0; i < data->NumVelocities(); i++) {
+      printf(" %f", data->v_guess()(i, 0));
+    }
+    printf("\n");
+
+    printf("gamma: \n");
+    for (int i = 0; i < data->NumContacts(); i++) {
+      printf(" %f %f %f", data->gamma(i)(0), data->gamma(i)(1),
+             data->gamma(i)(2));
+    }
+
+    printf("\n");
+
+    printf("G: \n");
+    for (int i = 0; i < data->NumContacts(); i++) {
+      for (int j = 0; j < 3; j++) {
+        for (int k = 0; k < 3; k++) {
+          printf(" %f", data->G(i)(j, k));
+        }
+        printf("\n");
+      }
+    }
+
+    printf("J: \n");
+    for (int i = 0; i < 3 * data->NumContacts(); i++) {
+      for (int j = 0; j < data->NumVelocities(); j++) {
+        printf(" %f", data->J()(i, j));
+      }
+      printf("\n");
+    }
+
+    printf("Momentum Cost: %f\n", data->momentum_cost()(0, 0));
+    printf("Regularization Cost: %f\n", data->regularizer_cost()(0, 0));
+  }
+
   // Calculate and assemble Hessian
   // Calculate G*J
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
@@ -231,6 +270,25 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
   __syncwarp();
 
   CalculateHessian(data);
+
+  // print hessian
+  if (threadIdx.x == 0) {
+    printf("Hessian: \n");
+    for (int i = 0; i < data->NumVelocities(); i++) {
+      for (int j = 0; j < data->NumVelocities(); j++) {
+        printf(" %f", data->H()(i, j));
+      }
+      printf("\n");
+    }
+
+    printf("A:\n");
+    for (int i = 0; i < data->NumVelocities(); i++) {
+      for (int j = 0; j < data->NumVelocities(); j++) {
+        printf(" %f", data->dynamics_matrix()(i, j));
+      }
+      printf("\n");
+    }
+  }
 
   // Calculate negative gradient
 
@@ -515,7 +573,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
   __syncwarp();
 
   // evaluate the cost function at alpha_l and alpha_r
-  // TODO: Update G and gamma
   SAPLineSearchEvalCost(data, alpha_l, ell_l, sums, v_alpha, v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
   MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
@@ -524,7 +581,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
   __syncwarp();
 
-  // TODO: Update G and gamma
   SAPLineSearchEvalCost(data, alpha_r, ell_r, sums, v_alpha, v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
   MMultiply(1.0, data->dynamics_matrix(), data->chol_x(), delta_p, sums);
@@ -538,17 +594,18 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (dell_dalpha_r <= 0.0) {
       alpha_guess = alpha_r;
       flag = 0.0;
+      printf("TERMINATE - early accept, no root in bracket \n");
     }
 
     if (-data->dl_dalpha0()(0, 0) <
         cost_abs_tolerance + cost_rel_tolerance * ell_r) {
       alpha_guess = 1.0;
       flag = 0.0;
+      printf("TERMINATE - early accept, der too small \n");
     }
   }
 
   // we evaluate ell_guess the last as cache will be left in the global memory
-  // TODO: Update G and gamma
   SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
                         v_guess_prev);
   MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
@@ -568,17 +625,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (flag == 1.0) {
       if (threadIdx.x == 0) {
         bool newton_is_slow = false;
-
-        // return logic
-        if (first_iter == 0.0) {
-          if (abs(dx_negative) <= f_tolerance * alpha_guess) {
-            flag = 0.0;
-          }
-        }
-
-        if (abs(dell_dalpha_guess) <= f_tolerance) {
-          flag = 0.0;
-        }
 
         if (first_iter == 0.0) {
           newton_is_slow = 2.0 * abs(dell_dalpha_guess) >
@@ -608,7 +654,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
       __syncwarp();
 
       // we evaluate fguess the last as cache will be left in the global memory
-      // TODO: Update G and gamma
       SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
                             v_guess_prev);
       MMultiply(1.0, data->J(), data->chol_x(), delta_v_c, sums);
@@ -645,6 +690,21 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
           alpha_r = alpha_guess;
           ell_r = ell_guess;
           dell_dalpha_r = dell_dalpha_guess;
+        }
+      }
+
+      if (threadIdx.x == 0) {
+        // return logic
+        if (first_iter == 0.0) {
+          if (abs(dx_negative) <= f_tolerance * alpha_guess) {
+            flag = 0.0;
+            printf("TERMINATE - bracket within tolerance \n");
+          }
+        }
+
+        if (abs(dell_dalpha_guess) <= f_tolerance) {
+          flag = 0.0;
+          printf("TERMINATE - root within tolerance \n");
         }
       }
 
@@ -792,7 +852,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     if (threadIdx.x == 0) {
       // print out neg_grad
       for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("neg_grad: %.10f\n", data->neg_grad()(i, 0));
+        printf("neg_grad: %.16lf\n", data->neg_grad()(i, 0));
       }
     }
 
@@ -804,8 +864,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     __syncwarp();
 
     if (threadIdx.x == 0) {
-      printf("momentum_residue: %.10f\n", momentum_residue);
-      printf("momentum_scale: %.10f\n", momentum_scale);
+      printf("momentum_residue: %.16f\n", momentum_residue);
+      printf("momentum_scale: %.16f\n", momentum_scale);
     }
 
     // Thread 0 registers first results or check residual if the current
@@ -818,6 +878,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         if (momentum_residue <=
             abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
+          printf("OUTER LOOP TERMINATE - momentum residue\n");
         }
 
         // cost criteria check
@@ -829,36 +890,37 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
                 cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
             alpha > 0.5) {
           flag = 0.0;
+          printf("OUTER LOOP TERMINATE - cost criteria\n");
         }
       }
 
       ell_previous =
           data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
 
+      printf("search direction: \n");
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        printf("%.16f\n", data->chol_x()(i, 0));
+      }
+
+      // debugging output print v_alpha
+      printf("v after line search: \n");
+      for (int i = 0; i < data->NumVelocities(); i++) {
+        printf("%.16f\n", data->v_guess()(i, 0));
+      }
+
+      printf("tot ell: \n");
+      printf("%.16f\n",
+             data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0));
+
+      printf("this is a step of cholsolve\n");
+      printf("alpha at this step is %.10f\n", alpha);
+      printf("=====================================================\n");
+      printf("\n\n");
+
       // assign previous
       for (int i = 0; i < data->NumVelocities(); i++) {
         prev_v_guess(i, 0) = data->v_guess()(i, 0);
       }
-
-      // debugging output print v_alpha
-      printf("v_alpha: \n");
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("%.10f\n", data->v_guess()(i, 0));
-      }
-
-      // debugging output print v_star
-      printf("v_star: \n");
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("%.10f\n", data->v_star()(i, 0));
-      }
-
-      printf("chol_x: \n");
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("%.10f\n", data->chol_x()(i, 0));
-      }
-
-      printf("this is a step of cholsolve\n");
-      printf("alpha at this step is %.10f\n", alpha);
     }
 
     __syncwarp();
