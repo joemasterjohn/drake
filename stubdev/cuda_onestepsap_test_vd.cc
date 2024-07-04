@@ -30,7 +30,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
 
     Eigen::Matrix<double, 2, 1> vector(8, 3);
     sap_data.v_star = vector;
-    Eigen::Matrix<double, 2, 1> vector2(5, 3);
+    Eigen::Matrix<double, 2, 1> vector2(10, 5);
     sap_data.v_guess = vector2;
 
     // J is contact 3nc x num_velocities, G is 3nc x 3nc

@@ -11,7 +11,7 @@
 #define abs_tolerance 1.0e-14
 #define rel_tolerance 1.0e-6
 #define cost_abs_tolerance 1.0e-30
-#define cost_rel_tolerance 1.0e-8
+#define cost_rel_tolerance 1.0e-15
 
 // ========================================================================
 // OneStepSapGPU Kernels and Functions with new data struct
@@ -469,12 +469,14 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (dell_dalpha_r <= 0.0) {
       alpha_guess = alpha_r;
       flag = 0.0;
+      printf("TERMINATE - early accept, no root in bracket \n");
     }
 
     if (-data->dl_dalpha0()(0, 0) <
         cost_abs_tolerance + cost_rel_tolerance * ell_r) {
       alpha_guess = 1.0;
       flag = 0.0;
+      printf("TERMINATE - early accept, der too small \n");
     }
   }
 
@@ -497,17 +499,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (flag == 1.0) {
       if (threadIdx.x == 0) {
         bool newton_is_slow = false;
-
-        // return logic
-        if (first_iter == 0.0) {
-          if (abs(dx_negative) <= f_tolerance * alpha_guess) {
-            flag = 0.0;
-          }
-        }
-
-        if (abs(dell_dalpha_guess) <= f_tolerance) {
-          flag = 0.0;
-        }
 
         if (first_iter == 0.0) {
           newton_is_slow = 2.0 * abs(dell_dalpha_guess) >
@@ -556,8 +547,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
       // based on eval, shrink the interval
       // update l_alpha and r_alpha to update intervals
       if (threadIdx.x == 0) {
-        // printf(" dl*d_guess: %f, dr*d_guess: %f \n", d_l * d_guess,
-        //        d_r * d_guess);
         if (dell_dalpha_l * dell_dalpha_guess > 0.0) {
           alpha_l = alpha_guess;
           ell_l = ell_guess;
@@ -566,6 +555,21 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
           alpha_r = alpha_guess;
           ell_r = ell_guess;
           dell_dalpha_r = dell_dalpha_guess;
+        }
+      }
+
+      if (threadIdx.x == 0) {
+        // return logic
+        if (first_iter == 0.0) {
+          if (abs(dx_negative) <= f_tolerance * alpha_guess) {
+            flag = 0.0;
+            printf("TERMINATE - bracket within tolerance \n");
+          }
+        }
+
+        if (abs(dell_dalpha_guess) <= f_tolerance) {
+          flag = 0.0;
+          printf("TERMINATE - root within tolerance \n");
         }
       }
 
@@ -718,6 +722,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         if (momentum_residue <=
             abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
+          printf("OUTER LOOP TERMINATE - momentum residue\n");
         }
 
         // cost criteria check
@@ -729,6 +734,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
                 cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
             alpha > 0.5) {
           flag = 0.0;
+          printf("OUTER LOOP TERMINATE - cost criteria\n");
         }
       }
 
@@ -740,17 +746,6 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         prev_v_guess(i, 0) = data->v_guess()(i, 0);
       }
 
-      // debugging output print v_alpha
-      printf("v_alpha: \n");
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("%f\n", data->v_guess()(i, 0));
-      }
-
-      // debugging output print v_star
-      printf("v_star: \n");
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        printf("%f\n", data->v_star()(i, 0));
-      }
       printf("this is a step of cholsolve\n");
       printf("alpha at this step is %f\n", alpha);
     }
