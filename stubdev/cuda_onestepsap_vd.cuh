@@ -10,7 +10,7 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 }
 
 #define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
-//
+
 // define a SAP data strucutre
 struct SAPGPUData {
   // Mutable get functions
@@ -277,6 +277,14 @@ struct SAPGPUData {
         chol_x_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
+  __device__ int& line_search_termination() {
+    return line_search_termination_global[blockIdx.x];
+  }
+
+  __device__ int& sap_termination() {
+    return sap_termination_global[blockIdx.x];
+  }
+
   __device__ double l_alpha() { return l_alpha_global[blockIdx.x]; }
 
   __device__ const double l_alpha() const { return l_alpha_global[blockIdx.x]; }
@@ -396,6 +404,11 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(&l_alpha_global, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&r_alpha_global, num_problems * sizeof(double)));
 
+    HANDLE_ERROR(cudaMalloc(&line_search_termination_global,
+                            num_problems * sizeof(int)));
+    HANDLE_ERROR(
+        cudaMalloc(&sap_termination_global, num_problems * sizeof(int)));
+
     // Set data to initialized value using cudaMemset
     HANDLE_ERROR(cudaMemset(
         chol_L_global, 0,
@@ -410,6 +423,12 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMemset(dll_eval_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(l_alpha_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(r_alpha_global, 0, num_problems * sizeof(double)));
+
+    // Initialize termination conditions
+    HANDLE_ERROR(cudaMemset(line_search_termination_global, 0,
+                            num_problems * sizeof(int)));
+    HANDLE_ERROR(
+        cudaMemset(sap_termination_global, 0, num_problems * sizeof(int)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
@@ -486,6 +505,32 @@ struct SAPGPUData {
   double*
       r_alpha_global;  // Global memory to hold right alpha for line search this
                        // also serves as a scratch space during the line search
+
+  // JZ: The termination condition variables record the termination condition
+  // for line search and sap iterations, the conditions are indexed as
+  // following:
+  //
+  // Line Search:
+  // 0 - invalid (the condition is initialized to 0, if line search terminates
+  // and program is executed correctly, this value should not be 0)
+  // 1 - early accept, no root in bracket (derivative at alpha=alpha_max is
+  // negative)
+  // 2 - early accept, derivative is too small
+  // 3 - accept, bracket is within tolerance
+  // 4 - accept, root is within tolerance
+  // 5 - no accept, maximum iteration reached
+  //
+  // SAP (Outer Loop Iteration):
+  // 0 - invalid (the condition is initialized to 0, if sap terminates and
+  // program is executed correctly, this value should not be 0)
+  // 1 - accept, momentum residual is within tolerance
+  // 2 - accept, cost criteria is within tolerance
+  // 3 - no accept, maximum iteration reached
+  int* line_search_termination_global;  // Global memory to hold line search
+                                        // termination condition (1 int per
+                                        // problem)
+  int* sap_termination_global;  // Global memory to hold sap solver termination
+                                // condition (1 int per problem)
 };
 
 // ===========================================================================

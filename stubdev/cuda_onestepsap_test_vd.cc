@@ -15,7 +15,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
 
   int num_velocities = 2;
   int num_contacts = 1;
-  int num_problems = 1;
+  int num_problems = 4;
   std::vector<SAPCPUData> sap_cpu_data;
 
   for (int i = 0; i < num_problems; i++) {
@@ -28,10 +28,31 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
     sap_data.dynamics_matrix =
         Eigen::MatrixXd::Identity(num_velocities, num_velocities);
 
-    Eigen::Matrix<double, 2, 1> vector(8, 3);
-    sap_data.v_star = vector;
-    Eigen::Matrix<double, 2, 1> vector2(10, 5);
-    sap_data.v_guess = vector2;
+    if (i == 0) {
+      // i == 0: feasible region, far
+      Eigen::Matrix<double, 2, 1> vector(8, 3);
+      sap_data.v_star = vector;
+      Eigen::Matrix<double, 2, 1> vector2(5, 10);
+      sap_data.v_guess = vector2;
+    } else if (i == 1) {
+      // i == 1: feasible region, close
+      Eigen::Matrix<double, 2, 1> vector(8, 3);
+      sap_data.v_star = vector;
+      Eigen::Matrix<double, 2, 1> vector2(5, 3);
+      sap_data.v_guess = vector2;
+    } else if (i == 2) {
+      // i == 2: infeasible region, far
+      Eigen::Matrix<double, 2, 1> vector(8, 3);
+      sap_data.v_star = vector;
+      Eigen::Matrix<double, 2, 1> vector2(10, 10);
+      sap_data.v_guess = vector2;
+    } else {
+      // i == 3: infeasible region, close
+      Eigen::Matrix<double, 2, 1> vector(8, 3);
+      sap_data.v_star = vector;
+      Eigen::Matrix<double, 2, 1> vector2(9, 3);
+      sap_data.v_guess = vector2;
+    }
 
     // J is contact 3nc x num_velocities, G is 3nc x 3nc
     // this conforms the size of the Hessian matrix H = A + J^T * G * J
@@ -60,7 +81,7 @@ GTEST_TEST(KernelTest, OneStepSAP_GPU) {
   // Check v_solved
   for (int i = 0; i < num_problems; i++) {
     Eigen::Matrix<double, 2, 1> v_solved_cpu(6, 3);
-    EXPECT_LT(abs((v_solved_cpu - v_solved[i]).norm()), 1e-1);
+    EXPECT_LT(abs((v_solved_cpu - v_solved[i]).norm()), 1e-2);
   }
 }
 

@@ -594,6 +594,7 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (dell_dalpha_r <= 0.0) {
       alpha_guess = alpha_r;
       flag = 0.0;
+      data->line_search_termination() = 1;
       printf("TERMINATE - early accept, no root in bracket \n");
     }
 
@@ -601,9 +602,12 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         cost_abs_tolerance + cost_rel_tolerance * ell_r) {
       alpha_guess = 1.0;
       flag = 0.0;
+      data->line_search_termination() = 2;
       printf("TERMINATE - early accept, der too small \n");
     }
   }
+
+  __syncwarp();
 
   // we evaluate ell_guess the last as cache will be left in the global memory
   SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
@@ -698,12 +702,14 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         if (first_iter == 0.0) {
           if (abs(dx_negative) <= f_tolerance * alpha_guess) {
             flag = 0.0;
+            data->line_search_termination() = 3;
             printf("TERMINATE - bracket within tolerance \n");
           }
         }
 
         if (abs(dell_dalpha_guess) <= f_tolerance) {
           flag = 0.0;
+          data->line_search_termination() = 4;
           printf("TERMINATE - root within tolerance \n");
         }
       }
@@ -712,6 +718,12 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
       __syncwarp();
     }
   }
+
+  if (threadIdx.x == 0 && flag == 1.0) {
+    data->line_search_termination() = 5;
+  }
+
+  __syncwarp();
 
   return alpha_guess;
 }
@@ -878,6 +890,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         if (momentum_residue <=
             abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
+          data->sap_termination() = 1;
           printf("OUTER LOOP TERMINATE - momentum residue\n");
         }
 
@@ -890,6 +903,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
                 cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
             alpha > 0.5) {
           flag = 0.0;
+          data->sap_termination() = 2;
           printf("OUTER LOOP TERMINATE - cost criteria\n");
         }
       }
@@ -926,8 +940,6 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     __syncwarp();
   }
 
-  // TODO: remove this debugging output
-  if (threadIdx.x == 0) printf("SAP Converged!\n");
   __syncwarp();
 }
 
