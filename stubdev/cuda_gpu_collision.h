@@ -23,12 +23,20 @@ struct Sphere {
 struct CollisionData {
   bool isColliding;
   Eigen::Vector3d p_WC;       // Collision point on object A
-  Eigen::Vector3d nhat_BA_W;  // Collision normal
+  Eigen::Vector3d nhat_BA_W;  // Collision normal, we follow the convention,
+                              // pointing from B to A
 
   double phi0;        // overlap distance
   Eigen::Matrix3d R;  // rotation matrix
+  Eigen::Vector3d
+      gamma;  // contact impulse, expressed in local frame, we follow the
+              // convention, gamma is applied on A, then -gamma is applied on B
+  Eigen::Vector3d gamma_W;  // contact impulse, expressed in world frame, we
+                            // follow the convention, gamma is applied on A,
+                            // then -gamma is applied on B
 
-  double vn;  // normal relative velocity
+  double vn;  // normal relative velocity, positive if two spheres approaching,
+              // negative if separating; on the direction of contact normal
 
   // variables for current step
 
@@ -39,6 +47,8 @@ struct CollisionData {
 // Collision check
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      const int numSpheres,
-                     CollisionData* h_collisionMatrixSpheres);
+                     CollisionData* h_collisionMatrixSpheres,
+                     double* h_jacobian, double* h_gamma,
+                     int* h_num_collisions);
 
 void EvaluateAntiderivative(CollisionData* h_collisionMatrixSpheres);
