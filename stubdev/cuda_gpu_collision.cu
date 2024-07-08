@@ -179,16 +179,46 @@ __global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
   __syncwarp();
 }
 
+__global__ void ConstructDynamicMatrixVelocityVector(
+    const Sphere* spheres, int numProblems, int numSpheres,
+    double* d_dynamic_matrix, double* d_velocity_vector) {
+  int idx = threadIdx.x;
+  int p_idx = blockIdx.x;
+
+  Eigen::Map<Eigen::MatrixXd> dynamic_matrix(
+      d_dynamic_matrix + blockIdx.x * numSpheres * 3 * numSpheres * 3,
+      numSpheres * 3, numSpheres * 3);
+  Eigen::Map<Eigen::VectorXd> velocity_vector(
+      d_velocity_vector + blockIdx.x * numSpheres * 3, numSpheres * 3, 1);
+
+  for (int j = idx; j < numSpheres; j += blockDim.x) {
+    if (j < numSpheres) {
+      dynamic_matrix.block<3, 3>(j * 3, j * 3) =
+          spheres[p_idx * numSpheres + j].mass *
+          Eigen::MatrixXd::Identity(3, 3);
+      velocity_vector.block<3, 1>(j * 3, 0) =
+          spheres[p_idx * numSpheres + j].velocity;
+    }
+  }
+
+  __syncwarp();
+}
+
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      const int numSpheres,
                      CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, double* h_gamma,
-                     int* h_num_collisions) {
+                     double* h_jacobian, double* h_gamma, int* h_num_collisions,
+                     double* h_dynamic_matrix, double* h_velocity_vector) {
   // Device memory allocations
   Sphere* d_spheres;
   CollisionData* d_collisionMatrixSpheres;
-  double* d_jacobian;
+
   int* d_num_collisions;
+  double* d_jacobian;
+  double* d_dynamic_matrix;  // for now, we deal with 3DOF per body, so A matrix
+                             // is 3*numsphere x 3*numsphere
+  double* d_velocity_vector;  // for now, we deal with 3DOF per body, so
+                              // velocity vector is 3*numsphere x 1
   double* d_gamma;
 
   HANDLE_ERROR(cudaMalloc((void**)&d_spheres,
@@ -203,6 +233,11 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                                                 numSpheres * numSpheres * 3));
   HANDLE_ERROR(
       cudaMalloc((void**)&d_num_collisions, numProblems * sizeof(int)));
+  HANDLE_ERROR(cudaMalloc(
+      (void**)&d_dynamic_matrix,
+      numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3));
+  HANDLE_ERROR(cudaMalloc((void**)&d_velocity_vector,
+                          numProblems * sizeof(double) * numSpheres * 3));
 
   // Copy data to device
   HANDLE_ERROR(cudaMemcpy(d_spheres, h_spheres,
@@ -216,6 +251,11 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   HANDLE_ERROR(cudaMemset(d_num_collisions, 0, numProblems * sizeof(int)));
   HANDLE_ERROR(cudaMemset(
       d_gamma, 0, numProblems * sizeof(double) * numSpheres * numSpheres * 3));
+  HANDLE_ERROR(cudaMemset(
+      d_dynamic_matrix, 0,
+      numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3));
+  HANDLE_ERROR(cudaMemset(d_velocity_vector, 0,
+                          numProblems * sizeof(double) * numSpheres * 3));
 
   // Kernel launches
   int threadsPerBlock = 32;
@@ -228,6 +268,13 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   ConstructJacobianGamma<<<blocksPerGridSpheres, threadsPerBlock>>>(
       d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, d_jacobian,
       d_gamma, d_num_collisions);
+  HANDLE_ERROR(cudaDeviceSynchronize());
+
+  // Construct Dynamic matrix
+  ConstructDynamicMatrixVelocityVector<<<blocksPerGridSpheres,
+                                         threadsPerBlock>>>(
+      d_spheres, numProblems, numSpheres, d_dynamic_matrix, d_velocity_vector);
+  HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Copy results back to host
   HANDLE_ERROR(
@@ -244,6 +291,13 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                  cudaMemcpyDeviceToHost));
   HANDLE_ERROR(cudaMemcpy(h_num_collisions, d_num_collisions,
                           numProblems * sizeof(int), cudaMemcpyDeviceToHost));
+  HANDLE_ERROR(
+      cudaMemcpy(h_dynamic_matrix, d_dynamic_matrix,
+                 numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3,
+                 cudaMemcpyDeviceToHost));
+  HANDLE_ERROR(cudaMemcpy(h_velocity_vector, d_velocity_vector,
+                          numProblems * sizeof(double) * numSpheres * 3,
+                          cudaMemcpyDeviceToHost));
 
   // Free device memory
   cudaFree(d_spheres);

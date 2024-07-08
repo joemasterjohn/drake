@@ -11,6 +11,7 @@
 struct Sphere {
   Eigen::Vector3d center;
   double radius;
+  double mass;
 
   Eigen::Vector3d velocity;
 
@@ -48,7 +49,7 @@ struct CollisionData {
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      const int numSpheres,
                      CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, double* h_gamma,
-                     int* h_num_collisions);
+                     double* h_jacobian, double* h_gamma, int* h_num_collisions,
+                     double* h_dynamic_matrix, double* h_velocity_vector);
 
 void EvaluateAntiderivative(CollisionData* h_collisionMatrixSpheres);

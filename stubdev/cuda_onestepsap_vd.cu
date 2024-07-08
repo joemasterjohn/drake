@@ -194,7 +194,6 @@ __device__ void CalculateDlDalpha0(SAPGPUData* data, double* sums) {
 
   if (threadIdx.x == 0) {
     data->dl_dalpha0()(0, 0) = sum;
-    printf("inside sum: %.16lf \n", sum);
   }
 
   __syncwarp();
@@ -938,6 +937,11 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     }
 
     __syncwarp();
+
+    // update iteration counter
+    if (threadIdx.x == 0) {
+      data->sap_iteration_counter()++;
+    }
   }
 
   __syncwarp();
@@ -949,7 +953,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 // including search direction calculation and line search
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<Eigen::MatrixXd>& v_solved,
-                       int num_velocities, int num_contacts, int num_problems) {
+                       std::vector<int>& iteration_counter, int num_velocities,
+                       int num_contacts, int num_problems) {
   std::cout << "TestOneStepSapGPU with GPU called with " << num_problems
             << " problems" << std::endl;
 
@@ -977,6 +982,7 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   sap_gpu_data_solve.RetriveVGuessToCPU(v_solved);
+  sap_gpu_data_solve.RetrieveIterationCounterToCPU(iteration_counter);
 }
 
 // This function is used in the unit test to confirm the cost evaluation and the
@@ -987,6 +993,8 @@ void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                                 std::vector<Eigen::MatrixXd>& hessian,
                                 std::vector<Eigen::MatrixXd>& neg_grad,
                                 std::vector<Eigen::MatrixXd>& chol_x,
+                                std::vector<Eigen::MatrixXd>& chol_l,
+                                std::vector<Eigen::MatrixXd>& G,
                                 int num_velocities, int num_contacts,
                                 int num_problems) {
   SAPGPUData sap_gpu_data_dir;  // GPU data struct instance for validation of
@@ -1015,6 +1023,8 @@ void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   sap_gpu_data_dir.RetriveHessianToCPU(hessian);
   sap_gpu_data_dir.RetriveNegGradToCPU(neg_grad);
   sap_gpu_data_dir.RetriveCholXToCPU(chol_x);
+  sap_gpu_data_dir.RetriveCholLToCPU(chol_l);
+  sap_gpu_data_dir.RetriveGToCPU(G);
 }
 
 // ===========================================================================

@@ -10,7 +10,7 @@ namespace {
 
 GTEST_TEST(KernelTest, GPU_Collision) {
   const int numSpheres = 10;
-  const int numProblems = 5;
+  const int numProblems = 1;
 
   // initialize the problem input spheres_vec, within a box of size 4x4x4, all
   // radius 0.5
@@ -33,6 +33,7 @@ GTEST_TEST(KernelTest, GPU_Collision) {
       // initialize material properties
       h_spheres[i * numSpheres + j].stiffness = 10.0;
       h_spheres[i * numSpheres + j].damping = 0.1;
+      h_spheres[i * numSpheres + j].mass = 0.05;
     }
   }
 
@@ -43,15 +44,43 @@ GTEST_TEST(KernelTest, GPU_Collision) {
   double* h_gamma = new double[numProblems * (numSpheres * numSpheres * 3)];
   int* h_num_collisions = new int[numProblems];
 
+  double* h_dynamic_matrix =
+      new double[numProblems * numSpheres * 3 * numSpheres * 3];
+  double* h_velocity_vector = new double[numProblems * numSpheres * 3];
+
   // Run the GPU collision engine
   CollisionEngine(h_spheres, numProblems, numSpheres, h_collisionMatrixSpheres,
-                  h_jacobian, h_gamma, h_num_collisions);
+                  h_jacobian, h_gamma, h_num_collisions, h_dynamic_matrix,
+                  h_velocity_vector);
 
   // Print out the results
   for (int i = 0; i < numProblems; i++) {
     std::cout << "Problem " << i << ":" << std::endl;
     std::cout << "Number of valid collisions: " << h_num_collisions[i]
               << std::endl;
+
+    // print out dynamic matrix and velcity vector
+    Eigen::Map<Eigen::MatrixXd> dynamic_matrix(
+        h_dynamic_matrix + i * numSpheres * 3 * numSpheres * 3, numSpheres * 3,
+        numSpheres * 3);
+    Eigen::Map<Eigen::VectorXd> velocity_vector(
+        h_velocity_vector + i * numSpheres * 3, numSpheres * 3);
+
+    std::cout << "Dynamic Matrix: " << std::endl;
+    for (int j = 0; j < numSpheres * 3; j++) {
+      for (int k = 0; k < numSpheres * 3; k++) {
+        std::cout << dynamic_matrix(j, k) << " ";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "Velocity Vector: " << std::endl;
+    for (int j = 0; j < numSpheres * 3; j++) {
+      std::cout << velocity_vector(j) << " ";
+    }
+
+    std::cout << std::endl;
 
     if (h_num_collisions[i] > 0) {
       // map jacobians and gamma to eigen::map

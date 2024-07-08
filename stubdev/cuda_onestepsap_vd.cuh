@@ -285,6 +285,10 @@ struct SAPGPUData {
     return sap_termination_global[blockIdx.x];
   }
 
+  __device__ int& sap_iteration_counter() {
+    return sap_iteration_counter_global[blockIdx.x];
+  }
+
   __device__ double l_alpha() { return l_alpha_global[blockIdx.x]; }
 
   __device__ const double l_alpha() const { return l_alpha_global[blockIdx.x]; }
@@ -352,6 +356,32 @@ struct SAPGPUData {
     }
   }
 
+  void RetriveGToCPU(std::vector<Eigen::MatrixXd>& G) {
+    G.resize(num_problems);
+    for (int i = 0; i < num_problems; i++) {
+      G[i].resize(num_contacts * 3, 3);
+      cudaMemcpy(G[i].data(), G_global + i * num_contacts * 3 * 3,
+                 num_contacts * 3 * 3 * sizeof(double), cudaMemcpyDeviceToHost);
+    }
+  }
+
+  void RetriveCholLToCPU(std::vector<Eigen::MatrixXd>& L) {
+    L.resize(num_problems);
+    for (int i = 0; i < num_problems; i++) {
+      L[i].resize(num_velocities, num_velocities);
+      cudaMemcpy(L[i].data(),
+                 chol_L_global + i * num_velocities * num_velocities,
+                 num_velocities * num_velocities * sizeof(double),
+                 cudaMemcpyDeviceToHost);
+    }
+  }
+
+  void RetrieveIterationCounterToCPU(std::vector<int>& iteration) {
+    iteration.resize(num_problems);
+    cudaMemcpy(iteration.data(), sap_iteration_counter_global,
+               sizeof(int) * num_problems, cudaMemcpyDeviceToHost);
+  }
+
   void MakeSAPGPUData(std::vector<SAPCPUData> data) {
     this->num_contacts = data[0].num_contacts;
     this->num_velocities = data[0].num_velocities;
@@ -408,6 +438,8 @@ struct SAPGPUData {
                             num_problems * sizeof(int)));
     HANDLE_ERROR(
         cudaMalloc(&sap_termination_global, num_problems * sizeof(int)));
+    HANDLE_ERROR(
+        cudaMalloc(&sap_iteration_counter_global, num_problems * sizeof(int)));
 
     // Set data to initialized value using cudaMemset
     HANDLE_ERROR(cudaMemset(
@@ -429,6 +461,8 @@ struct SAPGPUData {
                             num_problems * sizeof(int)));
     HANDLE_ERROR(
         cudaMemset(sap_termination_global, 0, num_problems * sizeof(int)));
+    HANDLE_ERROR(cudaMemset(sap_iteration_counter_global, 0,
+                            num_problems * sizeof(int)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
@@ -531,6 +565,8 @@ struct SAPGPUData {
                                         // problem)
   int* sap_termination_global;  // Global memory to hold sap solver termination
                                 // condition (1 int per problem)
+  int* sap_iteration_counter_global;  // Global memory to hold sap solver
+                                      // iteration counter (1 int per problem)
 };
 
 // ===========================================================================

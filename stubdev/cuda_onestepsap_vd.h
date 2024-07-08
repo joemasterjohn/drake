@@ -24,7 +24,8 @@ struct SAPCPUData {
 
 void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                        std::vector<Eigen::MatrixXd>& v_solved,
-                       int num_velocities, int num_contacts, int num_problems);
+                       std::vector<int>& iteration_counter, int num_velocities,
+                       int num_contacts, int num_problems);
 
 void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                                 std::vector<double>& momentum_cost,
@@ -32,5 +33,7 @@ void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                                 std::vector<Eigen::MatrixXd>& hessian,
                                 std::vector<Eigen::MatrixXd>& neg_grad,
                                 std::vector<Eigen::MatrixXd>& chol_x,
+                                std::vector<Eigen::MatrixXd>& chol_l,
+                                std::vector<Eigen::MatrixXd>& G,
                                 int num_velocities, int num_contacts,
                                 int num_problems);
