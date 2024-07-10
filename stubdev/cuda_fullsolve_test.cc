@@ -12,7 +12,7 @@
 namespace drake {
 namespace {
 
-GTEST_TEST(KernelTest, Cholesky) {
+GTEST_TEST(KernelTest, FullSolveTest) {
   const int numSpheres = 10;
   const int numProblems = 1;
 
@@ -54,7 +54,6 @@ GTEST_TEST(KernelTest, Cholesky) {
   CollisionData h_collisionMatrixSpheres[numProblems * numSpheres * numSpheres];
   double* h_jacobian = new double[numProblems * (numSpheres * 3) *
                                   (numSpheres * numSpheres * 3)];
-  double* h_gamma = new double[numProblems * (numSpheres * numSpheres * 3)];
   int* h_num_collisions = new int[numProblems];
 
   double* h_dynamic_matrix =
@@ -73,7 +72,7 @@ GTEST_TEST(KernelTest, Cholesky) {
 
   // Run the GPU collision engine
   CollisionEngine(h_spheres, numProblems, numSpheres, h_collisionMatrixSpheres,
-                  h_jacobian, h_gamma, h_num_collisions, h_dynamic_matrix,
+                  h_jacobian, h_num_collisions, h_dynamic_matrix,
                   h_velocity_vector, h_v_star, h_phi0, h_contact_stiffness,
                   h_contact_damping);
 
@@ -98,10 +97,6 @@ GTEST_TEST(KernelTest, Cholesky) {
     Eigen::Map<Eigen::VectorXd> contact_damping(
         h_contact_damping + i * (numSpheres * numSpheres),
         numSpheres * numSpheres);
-
-    // Eigen::Map<Eigen::VectorXd> gamma(
-    //     h_gamma + i * (numSpheres * numSpheres * 3), h_num_collisions[i] *
-    //     3);
 
     // experimental data structure
     dynamic_matrix_vec.push_back(dynamic_matrix);
@@ -129,7 +124,8 @@ GTEST_TEST(KernelTest, Cholesky) {
     }
     std::cout << std::endl;
 
-    std::cout << "V_guess: " << std::endl;
+    // we use the orginal velocity as guess velocity
+    std::cout << "v vector: " << std::endl;
     for (int j = 0; j < numSpheres * 3; j++) {
       std::cout << v_guess_vec[i](j) << " ";
     }
@@ -250,33 +246,6 @@ GTEST_TEST(KernelTest, Cholesky) {
                            .vn
                     << std::endl;
 
-          std::cout << "Local Gamma: ("
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(0)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(1)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(2)
-                    << ")" << std::endl;
-          std::cout << "Global Gamma: ("
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(0)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(1)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(2)
-                    << ")" << std::endl;
-
           std::cout << "====================================" << std::endl;
         }
       }
@@ -341,35 +310,45 @@ GTEST_TEST(KernelTest, Cholesky) {
     sap_cpu_data.push_back(sap_data);
   }
 
-  //   void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
-  //                                 std::vector<double>& momentum_cost,
-  //                                 std::vector<double>& regularizer_cost,
-  //                                 std::vector<Eigen::MatrixXd>& hessian,
-  //                                 std::vector<Eigen::MatrixXd>& neg_grad,
-  //                                 std::vector<Eigen::MatrixXd>& chol_x,
-  //                                 int num_velocities, int num_contacts,
-  //                                 int num_problems);
+  // Debugging section, checking the solved search direction
+  //   std::vector<double> momentum_cost;
+  //   std::vector<double> regularizer_cost;
+  //   std::vector<Eigen::MatrixXd> hessian;
+  //   std::vector<Eigen::MatrixXd> neg_grad;
+  //   std::vector<Eigen::MatrixXd> chol_x;
 
-  std::vector<double> momentum_cost;
-  std::vector<double> regularizer_cost;
-  std::vector<Eigen::MatrixXd> hessian;
-  std::vector<Eigen::MatrixXd> neg_grad;
-  std::vector<Eigen::MatrixXd> chol_x;
+  // invoke test sap call
+  //   TestCostEvalAndSolveSapGPU(sap_cpu_data, momentum_cost, regularizer_cost,
+  //                              hessian, neg_grad, chol_x, num_velocities,
+  //                              num_contacts, num_problems);
 
-  TestCostEvalAndSolveSapGPU(sap_cpu_data, momentum_cost, regularizer_cost,
-                             hessian, neg_grad, chol_x, num_velocities,
-                             num_contacts, num_problems);
+  //   std::cout << "chol_x: " << std::endl;
+  //   // print out results
+  //   for (int i = 0; i < num_problems; i++) {
+  //     // print out chol_x
+  //     for (int j = 0; j < num_velocities; j++) {
+  //       std::cout << chol_x[i](j, 0) << "  ";
+  //     }
+  //   }
+  //   std::cout << std::endl;
 
-  std::cout << "chol_x: " << std::endl;
-  // print out results
+  std::vector<Eigen::MatrixXd> v_solved;
+
+  TestOneStepSapGPU(sap_cpu_data, v_solved, num_velocities, num_contacts,
+                    num_problems);
+
   for (int i = 0; i < num_problems; i++) {
-    // print out chol_x
+    std::cout << "Solved velocity: " << std::endl;
     for (int j = 0; j < num_velocities; j++) {
-      std::cout << chol_x[i](j, 0) << "  ";
+      std::cout << v_solved[i](j, 0) << " ";
     }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
 }
+
+// ===================================================
+// END OF ACTUAL SAP SOLVER FUNCTION CALLS
+// ===================================================
 
 }  // namespace
 }  // namespace drake

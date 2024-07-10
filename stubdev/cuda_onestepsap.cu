@@ -76,11 +76,24 @@ __device__ void MMultiply(double alpha, const Eigen::Map<Eigen::MatrixXd> A,
   }
 }
 
-// Sets lambda_r = 0.5 * gamma.transpose() * R * gamma by modifying `data`
-__device__ void CalcRegularizationCost(SAPGPUData* data) {
+__device__ void CalcConstraintCost(SAPGPUData* data) {
   double sum = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-    sum += 0.5 * data->gamma(i).dot(data->R(i).cwiseProduct(data->gamma(i)));
+  for (int i = threadIdx.x; i < data->num_active_contacts(); i += blockDim.x) {
+    double k = data->contact_stiffness(i)(0, 0);
+    double d = data->contact_damping(i)(0, 0);
+    double phi_0_i = data->phi0(i)(0, 0);
+    double v_d = 1.0 / (d + 1.0e-20);
+    double v_x = data->phi0(i)(0, 0) * k / dt / (k + 1.0e-20);
+    double v_hat = min(v_x, v_d);
+    double v_n = (data->J().row(i * 3 + 2) * data->v_guess())(0, 0);
+    double v = min(v_n, v_hat);  // clamped
+
+    double df = -dt * k * v;
+
+    double N = dt * (v * (phi_0_i * k + 1.0 / 2.0 * df) -
+                     d * v * v / 2.0 * (phi_0_i * k + 2.0 / 3.0 * df));
+
+    sum += -N;
   }
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
@@ -91,7 +104,7 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    data->regularizer_cost()(0, 0) = sum;
+    data->constraint_cost()(0, 0) = sum;
   }
 
   __syncwarp();
@@ -169,6 +182,11 @@ __device__ void UpdateGammaG(SAPGPUData* data) {
     data->gamma_full()(i) = 0.0;
   }
 
+  // set all G to 0
+  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+    data->G(i).setZero();
+  }
+
   __syncwarp();
 
   for (int i = threadIdx.x; i < data->num_active_contacts() * 3;
@@ -239,8 +257,8 @@ __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
   // Calculate Momentum Cost
   CalcMomentumCost(data, sums);
 
-  // Calculate Regularization Cost
-  CalcRegularizationCost(data);
+  // Calculate Constraint Cost
+  CalcConstraintCost(data);
 
   // Calculate and assemble Hessian
   // Calculate G*J
@@ -351,12 +369,12 @@ __device__ void SAPLineSearchEvalCost(
 
   __syncwarp();
 
-  CalcRegularizationCost(data);
+  CalcConstraintCost(data);
 
   __syncwarp();
 
   if (threadIdx.x == 0) {
-    f = data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
+    f = data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0);
   }
 
   __syncwarp();
@@ -387,8 +405,6 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha,
   }
   __syncwarp();
 
-  // TODO: check formulation
-  // ((J*dv(alpha)).transpose() * gamma(alpha))
   res = 0.0;
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     res += delta_v_c.block<3, 1>(3 * i, 0).dot(data->gamma(i));
@@ -435,8 +451,6 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
 
   __syncwarp();
 
-  // TODO: check formulation
-  // (J*dv_alpha).transpose() * G * (J*dv_alpha)
   res = 0.0;
   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
     double vec_0 = delta_v_c(3 * i, 0);
@@ -807,7 +821,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 
         // cost criteria check
         double ell = data->momentum_cost()(0, 0) +
-                     data->regularizer_cost()(0, 0);  // current cost
+                     data->constraint_cost()(0, 0);  // current cost
         double ell_scale = 0.5 * (abs(ell) + abs(ell_previous));
         double ell_decrement = std::abs(ell_previous - ell);
         if (ell_decrement <
@@ -819,7 +833,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       }
 
       ell_previous =
-          data->momentum_cost()(0, 0) + data->regularizer_cost()(0, 0);
+          data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0);
 
       // assign previous
       for (int i = 0; i < data->NumVelocities(); i++) {
@@ -878,7 +892,7 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 // the cholesky solve are correct
 void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                                 std::vector<double>& momentum_cost,
-                                std::vector<double>& regularizer_cost,
+                                std::vector<double>& constraint_cost,
                                 std::vector<Eigen::MatrixXd>& hessian,
                                 std::vector<Eigen::MatrixXd>& neg_grad,
                                 std::vector<Eigen::MatrixXd>& chol_x,
@@ -906,7 +920,7 @@ void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   // Transfer back to CPU for gtest validation
   sap_gpu_data_dir.RetriveMomentumCostToCPU(momentum_cost);
-  sap_gpu_data_dir.RetriveRegularizerCostToCPU(regularizer_cost);
+  sap_gpu_data_dir.RetriveConstraintCostToCPU(constraint_cost);
   sap_gpu_data_dir.RetriveHessianToCPU(hessian);
   sap_gpu_data_dir.RetriveNegGradToCPU(neg_grad);
   sap_gpu_data_dir.RetriveCholXToCPU(chol_x);

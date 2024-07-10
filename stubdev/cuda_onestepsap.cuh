@@ -177,19 +177,19 @@ struct SAPGPUData {
         col_size);
   }
 
-  __device__ Eigen::Map<Eigen::MatrixXd> regularizer_cost() {
+  __device__ Eigen::Map<Eigen::MatrixXd> constraint_cost() {
     int row_size = 1;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
-        regularizer_cost_global + blockIdx.x * row_size * col_size, row_size,
+        constraint_cost_global + blockIdx.x * row_size * col_size, row_size,
         col_size);
   }
 
-  __device__ const Eigen::Map<Eigen::MatrixXd> regularizer_cost() const {
+  __device__ const Eigen::Map<Eigen::MatrixXd> constraint_cost() const {
     int row_size = 1;
     int col_size = 1;
     return Eigen::Map<Eigen::MatrixXd>(
-        regularizer_cost_global + blockIdx.x * row_size * col_size, row_size,
+        constraint_cost_global + blockIdx.x * row_size * col_size, row_size,
         col_size);
   }
 
@@ -339,9 +339,9 @@ struct SAPGPUData {
   }
 
   // Retrival functions - copy Regularizer cost data back to CPU
-  void RetriveRegularizerCostToCPU(std::vector<double>& regularizer_cost) {
-    regularizer_cost.resize(num_problems);
-    cudaMemcpy(regularizer_cost.data(), regularizer_cost_global,
+  void RetriveConstraintCostToCPU(std::vector<double>& constraint_cost) {
+    constraint_cost.resize(num_problems);
+    cudaMemcpy(constraint_cost.data(), constraint_cost_global,
                num_problems * sizeof(double), cudaMemcpyDeviceToHost);
   }
 
@@ -416,7 +416,7 @@ struct SAPGPUData {
                             num_problems * sizeof(double)));  // 1D vector
 
     HANDLE_ERROR(
-        cudaMalloc(&regularizer_cost_global, num_problems * sizeof(double)));
+        cudaMalloc(&constraint_cost_global, num_problems * sizeof(double)));
 
     HANDLE_ERROR(cudaMalloc(&G_J_global, num_problems * 3 * num_contacts *
                                              num_velocities * sizeof(double)));
@@ -529,7 +529,7 @@ struct SAPGPUData {
 
   double* momentum_cost_global;  // Global memory momentum_cost for all sims
   double*
-      regularizer_cost_global;  // Global memory regularizer cost for all sims
+      constraint_cost_global;  // Global memory regularizer cost for all sims
   double* dl_dalpha0_global;  // Global memory dℓ/dα(α = 0) = ∇ᵥℓ(α = 0)⋅Δv.
 
   double* G_J_global;       // Global memory to hold G*J

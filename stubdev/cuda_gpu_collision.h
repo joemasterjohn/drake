@@ -29,12 +29,6 @@ struct CollisionData {
 
   double phi0;        // overlap distance
   Eigen::Matrix3d R;  // rotation matrix
-  Eigen::Vector3d
-      gamma;  // contact impulse, expressed in local frame, we follow the
-              // convention, gamma is applied on A, then -gamma is applied on B
-  Eigen::Vector3d gamma_W;  // contact impulse, expressed in world frame, we
-                            // follow the convention, gamma is applied on A,
-                            // then -gamma is applied on B
 
   double vn;  // normal relative velocity, positive if two spheres approaching,
               // negative if separating; on the direction of contact normal
@@ -49,6 +43,7 @@ struct CollisionData {
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      const int numSpheres,
                      CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, double* h_gamma, int* h_num_collisions,
+                     double* h_jacobian, int* h_num_collisions,
                      double* h_dynamic_matrix, double* h_velocity_vector,
-                     double* h_v_star, double* h_phi0, double* h_contact_stiffness, double* h_contact_damping);
+                     double* h_v_star, double* h_phi0,
+                     double* h_contact_stiffness, double* h_contact_damping);

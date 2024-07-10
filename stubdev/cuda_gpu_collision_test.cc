@@ -91,8 +91,6 @@ GTEST_TEST(KernelTest, GPU_Collision) {
       Eigen::Map<Eigen::MatrixXd> jacobian(
           h_jacobian + i * (numSpheres * 3) * (numSpheres * numSpheres * 3),
           numSpheres * 3, h_num_collisions[i] * 3);
-      Eigen::Map<Eigen::VectorXd> gamma(
-          h_gamma + i * (numSpheres * numSpheres * 3), h_num_collisions[i] * 3);
 
       // print out jacobians
       std::cout << "Jacobian: " << std::endl;
@@ -103,13 +101,6 @@ GTEST_TEST(KernelTest, GPU_Collision) {
         }
         std::cout << std::endl;
       }
-
-      // print out gamma
-      std::cout << "Gamma: " << std::endl;
-      for (int j = 0; j < h_num_collisions[i] * 3; j++) {
-        std::cout << gamma(j) << " ";
-      }
-      std::cout << std::endl;
     }
 
     for (int j = 0; j < numSpheres; j++) {
@@ -189,33 +180,6 @@ GTEST_TEST(KernelTest, GPU_Collision) {
                                                 j * numSpheres + k]
                            .vn
                     << std::endl;
-
-          std::cout << "Local Gamma: ("
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(0)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(1)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma(2)
-                    << ")" << std::endl;
-          std::cout << "Global Gamma: ("
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(0)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(1)
-                    << ", "
-                    << h_collisionMatrixSpheres[i * numSpheres * numSpheres +
-                                                j * numSpheres + k]
-                           .gamma_W(2)
-                    << ")" << std::endl;
 
           std::cout << "====================================" << std::endl;
         }

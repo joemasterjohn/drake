@@ -85,23 +85,6 @@ __device__ CollisionData CheckSphereCollision(const Sphere& a,
   return data;
 }
 
-__device__ void CalculateIndividualGamma(CollisionData& data, const Sphere& a,
-                                         const Sphere& b) {
-  // harmonic mean for stiffness and damping
-  double stiffness_avg =
-      (2 * a.stiffness * b.stiffness) / (a.stiffness + b.stiffness);
-  double damping_avg = (2 * a.damping * b.damping) / (a.damping + b.damping);
-
-  // calculate gamma in the local frame
-  double gamma_z =
-      (stiffness_avg * (data.phi0)) * (fmax(0, 1 + damping_avg * data.vn));
-  Eigen::Vector3d gamma_temp(0.0, 0.0, gamma_z);
-  data.gamma = gamma_temp;
-
-  // calculate gamma in the global frame
-  data.gamma_W = dt * data.R.transpose() * data.gamma;
-}
-
 // Kernel to detect collisions between Spheres
 __global__ void DetectSphereCollisions(const Sphere* spheres, int numProblems,
                                        int numSpheres,
@@ -120,38 +103,16 @@ __global__ void DetectSphereCollisions(const Sphere* spheres, int numProblems,
     }
   }
   __syncwarp();
-
-  for (int j = idx; j < numSpheres; j += blockDim.x) {
-    if (j < numSpheres) {
-      for (int k = j + 1; k < numSpheres; k++) {
-        CalculateIndividualGamma(
-            collisionMatrix[(p_idx * numSpheres * numSpheres) + j * numSpheres +
-                            k],
-            spheres[p_idx * numSpheres + j], spheres[p_idx * numSpheres + k]);
-      }
-    }
-  }
-
-  __syncwarp();
 }
 
-// d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, d_jacobian,
-//      d_gamma, d_num_collisions
-
 // Kernel to detect collisions between Spheres
-__global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
-                                       int numSpheres,
-                                       CollisionData* collisionMatrix,
-                                       double* d_jacobian, double* d_gamma,
-                                       int* d_num_collisions, double* d_phi0,
-                                       double* d_contact_stiffness,
-                                       double* d_contact_damping) {
+__global__ void ConstructJacobianGamma(
+    const Sphere* spheres, int numProblems, int numSpheres,
+    CollisionData* collisionMatrix, double* d_jacobian, int* d_num_collisions,
+    double* d_phi0, double* d_contact_stiffness, double* d_contact_damping) {
   int idx = threadIdx.x;
   int p_idx = blockIdx.x;
 
-  Eigen::Map<Eigen::VectorXd> full_gamma(
-      d_gamma + blockIdx.x * numSpheres * numSpheres * 3,
-      numSpheres * numSpheres * 3, 1);
   Eigen::Map<Eigen::MatrixXd> full_jacobian(
       d_jacobian +
           blockIdx.x * (numSpheres * 3) * (numSpheres * numSpheres * 3),
@@ -184,20 +145,6 @@ __global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
                spheres[p_idx * numSpheres + k].damping) /
               (spheres[p_idx * numSpheres + j].damping +
                spheres[p_idx * numSpheres + k].damping);
-
-          // construct full gamma vector
-          full_gamma(collision_idx * 3 + 0) =
-              collisionMatrix[(p_idx * numSpheres * numSpheres) +
-                              j * numSpheres + k]
-                  .gamma_W(0);
-          full_gamma(collision_idx * 3 + 1) =
-              collisionMatrix[(p_idx * numSpheres * numSpheres) +
-                              j * numSpheres + k]
-                  .gamma_W(1);
-          full_gamma(collision_idx * 3 + 2) =
-              collisionMatrix[(p_idx * numSpheres * numSpheres) +
-                              j * numSpheres + k]
-                  .gamma_W(2);
 
           // construct Jacobian matrix
           full_jacobian.block<3, 3>(collision_idx * 3, j * 3) =
@@ -273,7 +220,7 @@ __global__ void CalculateFreeMotionVelocity(const Sphere* spheres,
 void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      const int numSpheres,
                      CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, double* h_gamma, int* h_num_collisions,
+                     double* h_jacobian, int* h_num_collisions,
                      double* h_dynamic_matrix, double* h_velocity_vector,
                      double* h_v_star, double* h_phi0,
                      double* h_contact_stiffness, double* h_contact_damping) {
@@ -287,7 +234,6 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                              // is 3*numsphere x 3*numsphere
   double* d_velocity_vector;  // for now, we deal with 3DOF per body, so
                               // velocity vector is 3*numsphere x 1
-  double* d_gamma;
   double* d_v_star;
   double* d_phi0;
   double* d_contact_stiffness;
@@ -301,8 +247,6 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   HANDLE_ERROR(cudaMalloc((void**)&d_jacobian,
                           numProblems * sizeof(double) * (numSpheres * 3) *
                               numSpheres * numSpheres * 3));
-  HANDLE_ERROR(cudaMalloc((void**)&d_gamma, numProblems * sizeof(double) *
-                                                numSpheres * numSpheres * 3));
   HANDLE_ERROR(
       cudaMalloc((void**)&d_num_collisions, numProblems * sizeof(int)));
   HANDLE_ERROR(cudaMalloc(
@@ -332,8 +276,6 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                               numSpheres * numSpheres * 3));
   HANDLE_ERROR(cudaMemset(d_num_collisions, 0, numProblems * sizeof(int)));
   HANDLE_ERROR(cudaMemset(
-      d_gamma, 0, numProblems * sizeof(double) * numSpheres * numSpheres * 3));
-  HANDLE_ERROR(cudaMemset(
       d_dynamic_matrix, 0,
       numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3));
   HANDLE_ERROR(cudaMemset(d_velocity_vector, 0,
@@ -359,8 +301,7 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   // Construct Jacobian matrix and Gamma vector
   ConstructJacobianGamma<<<blocksPerGridSpheres, threadsPerBlock>>>(
       d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, d_jacobian,
-      d_gamma, d_num_collisions, d_phi0, d_contact_stiffness,
-      d_contact_damping);
+      d_num_collisions, d_phi0, d_contact_stiffness, d_contact_damping);
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Construct Dynamic matrix
@@ -383,10 +324,6 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                           numProblems * sizeof(double) * (numSpheres * 3) *
                               numSpheres * numSpheres * 3,
                           cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(
-      cudaMemcpy(h_gamma, d_gamma,
-                 numProblems * sizeof(double) * numSpheres * numSpheres * 3,
-                 cudaMemcpyDeviceToHost));
   HANDLE_ERROR(cudaMemcpy(h_num_collisions, d_num_collisions,
                           numProblems * sizeof(int), cudaMemcpyDeviceToHost));
   HANDLE_ERROR(
@@ -416,5 +353,4 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   cudaFree(d_collisionMatrixSpheres);
   cudaFree(d_jacobian);
   cudaFree(d_num_collisions);
-  cudaFree(d_gamma);
 }
