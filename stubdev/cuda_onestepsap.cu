@@ -164,10 +164,45 @@ __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
 
 // Depends on vc (constraint velocity) already being computed.
 __device__ void UpdateGammaG(SAPGPUData* data) {
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-    // update each gamma
+  // set all gamma to 0
+  for (int i = threadIdx.x; i < data->NumContacts() * 3; i += blockDim.x) {
+    data->gamma_full()(i) = 0.0;
+  }
 
-    // update each G
+  __syncwarp();
+
+  for (int i = threadIdx.x; i < data->num_active_contacts() * 3;
+       i += blockDim.x) {
+    if (i % 3 == 2) {
+      // compute corresponding v_c
+      // contact velocity on the z direction in the contact local frame
+      double v_contact_z = -(data->J().row(i) * data->v_guess())(0, 0);
+      double phi_0 = data->phi0(int(i / 3))(0, 0);
+
+      // update each gamma
+      // first-order approximation of the penetration
+      // max(0.0, phi_0 + dt * v_contact_z)
+      double pen_approx = phi_0 + dt * v_contact_z;
+      if (pen_approx <= 0.0) pen_approx = 0.0;
+
+      double damping_term =
+          1.0 + data->contact_damping(int(i / 3) * v_contact_z)(0, 0);
+      if (damping_term <= 0.0) damping_term = 0.0;
+
+      data->gamma(int(i / 3))(2) = dt *
+                                   data->contact_stiffness(int(i / 3))(0, 0) *
+                                   pen_approx * damping_term;
+
+      // update each G
+      // impulse gradiant
+      double np =
+          -dt *
+          ((data->contact_stiffness(int(i / 3))(0, 0) * dt * damping_term) +
+           data->contact_damping(int(i / 3))(0, 0) *
+               data->contact_stiffness(int(i / 3))(0, 0) * pen_approx);
+      // assign -np to G(2,2)
+      data->G(int(i / 3))(2, 2) = -np;
+    }
   }
   __syncwarp();
 }

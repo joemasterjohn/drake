@@ -22,6 +22,8 @@ GTEST_TEST(KernelTest, Cholesky) {
   std::vector<Eigen::MatrixXd> v_star_vec;
   std::vector<int> num_collision_vec;
   std::vector<Eigen::VectorXd> phi0_vec;
+  std::vector<Eigen::VectorXd> stiffness_vec;
+  std::vector<Eigen::VectorXd> damping_vec;
 
   // initialize the problem input spheres_vec, within a box of size 4x4x4, all
   // radius 0.5
@@ -63,10 +65,17 @@ GTEST_TEST(KernelTest, Cholesky) {
   double* h_phi0 = new double[numProblems * numSpheres * numSpheres];
   double* h_v_star = new double[numProblems * numSpheres * 3];
 
+  double* h_contact_stiffness =
+      new double[numProblems * numSpheres *
+                 numSpheres];  // vector to store harmonic mean of stiffness for
+                               // each contact
+  double* h_contact_damping = new double[numProblems * numSpheres * numSpheres];
+
   // Run the GPU collision engine
   CollisionEngine(h_spheres, numProblems, numSpheres, h_collisionMatrixSpheres,
                   h_jacobian, h_gamma, h_num_collisions, h_dynamic_matrix,
-                  h_velocity_vector, h_v_star, h_phi0);
+                  h_velocity_vector, h_v_star, h_phi0, h_contact_stiffness,
+                  h_contact_damping);
 
   // Print out the results
   for (int i = 0; i < numProblems; i++) {
@@ -83,8 +92,16 @@ GTEST_TEST(KernelTest, Cholesky) {
     Eigen::Map<Eigen::MatrixXd> jacobian(
         h_jacobian + i * (numSpheres * 3) * (numSpheres * numSpheres * 3),
         numSpheres * numSpheres * 3, numSpheres * 3);
-    Eigen::Map<Eigen::VectorXd> gamma(
-        h_gamma + i * (numSpheres * numSpheres * 3), h_num_collisions[i] * 3);
+    Eigen::Map<Eigen::VectorXd> contact_stiffness(
+        h_contact_stiffness + i * (numSpheres * numSpheres),
+        numSpheres * numSpheres);
+    Eigen::Map<Eigen::VectorXd> contact_damping(
+        h_contact_damping + i * (numSpheres * numSpheres),
+        numSpheres * numSpheres);
+
+    // Eigen::Map<Eigen::VectorXd> gamma(
+    //     h_gamma + i * (numSpheres * numSpheres * 3), h_num_collisions[i] *
+    //     3);
 
     // experimental data structure
     dynamic_matrix_vec.push_back(dynamic_matrix);
@@ -93,14 +110,8 @@ GTEST_TEST(KernelTest, Cholesky) {
     v_star_vec.push_back(v_star);
     num_collision_vec.push_back(h_num_collisions[i]);
     phi0_vec.push_back(phi0);
-
-    std::cout << "Jacobian after move:" << std::endl;
-    for (int j = 0; j < h_num_collisions[i] * 3; j++) {
-      for (int k = 0; k < numSpheres * 3; k++) {
-        std::cout << J_vec[i](j, k) << " ";
-      }
-      std::cout << std::endl;
-    }
+    stiffness_vec.push_back(contact_stiffness);
+    damping_vec.push_back(contact_damping);
   }
 
 #ifdef PRINTOUT
@@ -144,6 +155,19 @@ GTEST_TEST(KernelTest, Cholesky) {
         std::cout << phi0_vec[i](j) << " ";
       }
       std::cout << std::endl;
+
+      // print out contact stiffness and damping
+      std::cout << "Contact Stiffness: " << std::endl;
+      for (int j = 0; j < h_num_collisions[i]; j++) {
+        std::cout << stiffness_vec[i](j) << " ";
+      }
+
+      std::cout << std::endl;
+
+      std::cout << "Contact Damping: " << std::endl;
+      for (int j = 0; j < h_num_collisions[i]; j++) {
+        std::cout << damping_vec[i](j) << " ";
+      }
     }
   }
 
@@ -286,7 +310,11 @@ GTEST_TEST(KernelTest, Cholesky) {
     sap_data.v_star = v_star_vec[i];
     sap_data.v_guess = v_guess_vec[i];
     sap_data.constraint_data.J = J_vec[i];
+
     sap_data.constraint_data.phi0 = phi0_vec[i];
+    sap_data.constraint_data.contact_stiffness = stiffness_vec[i];
+    sap_data.constraint_data.contact_damping = damping_vec[i];
+
     sap_data.constraint_data.num_active_contacts = num_collision_vec[i];
 
     // print sap_data.constraint_data.phi0
@@ -331,6 +359,16 @@ GTEST_TEST(KernelTest, Cholesky) {
   TestCostEvalAndSolveSapGPU(sap_cpu_data, momentum_cost, regularizer_cost,
                              hessian, neg_grad, chol_x, num_velocities,
                              num_contacts, num_problems);
+
+  std::cout << "chol_x: " << std::endl;
+  // print out results
+  for (int i = 0; i < num_problems; i++) {
+    // print out chol_x
+    for (int j = 0; j < num_velocities; j++) {
+      std::cout << chol_x[i](j, 0) << "  ";
+    }
+  }
+  std::cout << std::endl;
 }
 
 }  // namespace

@@ -3,12 +3,24 @@
 #include <vector>
 
 #include <eigen3/Eigen/Dense>
+
+#ifndef dt
+#define dt 0.001
+#endif
+
+#ifndef gravity
+#define gravity -9.81
+#endif
+
 // define a constraint data structure
 struct ConstraintData {
   Eigen::MatrixXd J;
   std::vector<Eigen::MatrixXd> G;
 
   Eigen::VectorXd phi0;
+  Eigen::VectorXd contact_stiffness;
+  Eigen::VectorXd contact_damping;
+
   int num_active_contacts;
 };
 

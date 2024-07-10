@@ -4,8 +4,13 @@
 
 #include "cuda_gpu_collision.h"
 
+#ifndef dt
 #define dt 0.001
+#endif
+
+#ifndef gravity
 #define gravity -9.81
+#endif
 
 // CUDA error handeling
 // =====================
@@ -138,7 +143,9 @@ __global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
                                        int numSpheres,
                                        CollisionData* collisionMatrix,
                                        double* d_jacobian, double* d_gamma,
-                                       int* d_num_collisions, double* d_phi0) {
+                                       int* d_num_collisions, double* d_phi0,
+                                       double* d_contact_stiffness,
+                                       double* d_contact_damping) {
   int idx = threadIdx.x;
   int p_idx = blockIdx.x;
 
@@ -149,6 +156,12 @@ __global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
       d_jacobian +
           blockIdx.x * (numSpheres * 3) * (numSpheres * numSpheres * 3),
       numSpheres * numSpheres * 3, numSpheres * 3);
+  Eigen::Map<Eigen::VectorXd> contact_stiffness(
+      d_contact_stiffness + blockIdx.x * numSpheres * numSpheres,
+      numSpheres * numSpheres, 1);
+  Eigen::Map<Eigen::VectorXd> contact_damping(
+      d_contact_damping + blockIdx.x * numSpheres * numSpheres,
+      numSpheres * numSpheres, 1);
 
   for (int j = idx; j < numSpheres; j += blockDim.x) {
     if (j < numSpheres) {
@@ -157,6 +170,20 @@ __global__ void ConstructJacobianGamma(const Sphere* spheres, int numProblems,
                             k]
                 .isColliding) {
           int collision_idx = atomicAdd(&d_num_collisions[p_idx], 1);
+
+          // update the harmonic mean of contact stiffness
+          contact_stiffness[collision_idx] =
+              (2 * spheres[p_idx * numSpheres + j].stiffness *
+               spheres[p_idx * numSpheres + k].stiffness) /
+              (spheres[p_idx * numSpheres + j].stiffness +
+               spheres[p_idx * numSpheres + k].stiffness);
+
+          // update the harmonic mean of contact damping
+          contact_damping[collision_idx] =
+              (2 * spheres[p_idx * numSpheres + j].damping *
+               spheres[p_idx * numSpheres + k].damping) /
+              (spheres[p_idx * numSpheres + j].damping +
+               spheres[p_idx * numSpheres + k].damping);
 
           // construct full gamma vector
           full_gamma(collision_idx * 3 + 0) =
@@ -248,7 +275,8 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      CollisionData* h_collisionMatrixSpheres,
                      double* h_jacobian, double* h_gamma, int* h_num_collisions,
                      double* h_dynamic_matrix, double* h_velocity_vector,
-                     double* h_v_star, double* h_phi0) {
+                     double* h_v_star, double* h_phi0,
+                     double* h_contact_stiffness, double* h_contact_damping) {
   // Device memory allocations
   Sphere* d_spheres;
   CollisionData* d_collisionMatrixSpheres;
@@ -262,6 +290,8 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   double* d_gamma;
   double* d_v_star;
   double* d_phi0;
+  double* d_contact_stiffness;
+  double* d_contact_damping;
 
   HANDLE_ERROR(cudaMalloc((void**)&d_spheres,
                           numProblems * numSpheres * sizeof(Sphere)));
@@ -284,6 +314,12 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                           numProblems * sizeof(double) * numSpheres * 3));
   HANDLE_ERROR(cudaMalloc(
       (void**)&d_phi0, numProblems * sizeof(double) * numSpheres * numSpheres));
+  HANDLE_ERROR(
+      cudaMalloc((void**)&d_contact_stiffness,
+                 numProblems * sizeof(double) * numSpheres * numSpheres));
+  HANDLE_ERROR(
+      cudaMalloc((void**)&d_contact_damping,
+                 numProblems * sizeof(double) * numSpheres * numSpheres));
 
   // Copy data to device
   HANDLE_ERROR(cudaMemcpy(d_spheres, h_spheres,
@@ -306,6 +342,12 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
       cudaMemset(d_v_star, 0, numProblems * sizeof(double) * numSpheres * 3));
   HANDLE_ERROR(cudaMemset(
       d_phi0, 0, numProblems * sizeof(double) * numSpheres * numSpheres));
+  HANDLE_ERROR(
+      cudaMemset(d_contact_stiffness, 0,
+                 numProblems * sizeof(double) * numSpheres * numSpheres));
+  HANDLE_ERROR(
+      cudaMemset(d_contact_damping, 0,
+                 numProblems * sizeof(double) * numSpheres * numSpheres));
 
   // Kernel launches
   int threadsPerBlock = 32;
@@ -317,7 +359,8 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   // Construct Jacobian matrix and Gamma vector
   ConstructJacobianGamma<<<blocksPerGridSpheres, threadsPerBlock>>>(
       d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, d_jacobian,
-      d_gamma, d_num_collisions, d_phi0);
+      d_gamma, d_num_collisions, d_phi0, d_contact_stiffness,
+      d_contact_damping);
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Construct Dynamic matrix
@@ -359,6 +402,14 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   HANDLE_ERROR(cudaMemcpy(
       h_phi0, d_phi0, numProblems * sizeof(double) * numSpheres * numSpheres,
       cudaMemcpyDeviceToHost));
+  HANDLE_ERROR(
+      cudaMemcpy(h_contact_stiffness, d_contact_stiffness,
+                 numProblems * sizeof(double) * numSpheres * numSpheres,
+                 cudaMemcpyDeviceToHost));
+  HANDLE_ERROR(
+      cudaMemcpy(h_contact_damping, d_contact_damping,
+                 numProblems * sizeof(double) * numSpheres * numSpheres,
+                 cudaMemcpyDeviceToHost));
 
   // Free device memory
   cudaFree(d_spheres);

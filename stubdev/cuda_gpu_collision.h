@@ -51,4 +51,4 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                      CollisionData* h_collisionMatrixSpheres,
                      double* h_jacobian, double* h_gamma, int* h_num_collisions,
                      double* h_dynamic_matrix, double* h_velocity_vector,
-                     double* h_v_star, double* h_phi0);
+                     double* h_v_star, double* h_phi0, double* h_contact_stiffness, double* h_contact_damping);

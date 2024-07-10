@@ -277,6 +277,48 @@ struct SAPGPUData {
         chol_x_global + blockIdx.x * num_velocities, num_velocities, 1);
   }
 
+  __device__ Eigen::Map<Eigen::MatrixXd> phi0(int constraint_index) {
+    return Eigen::Map<Eigen::MatrixXd>(
+        phi0_global + blockIdx.x * num_contacts + constraint_index, 1, 1);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> phi0(
+      int constraint_index) const {
+    return Eigen::Map<Eigen::MatrixXd>(
+        phi0_global + blockIdx.x * num_contacts + constraint_index, 1, 1);
+  }
+
+  __device__ Eigen::Map<Eigen::MatrixXd> contact_stiffness(
+      int constraint_index) {
+    return Eigen::Map<Eigen::MatrixXd>(
+        contact_stiffness_global + blockIdx.x * num_contacts + constraint_index,
+        1, 1);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> contact_stiffness(
+      int constraint_index) const {
+    return Eigen::Map<Eigen::MatrixXd>(
+        contact_stiffness_global + blockIdx.x * num_contacts + constraint_index,
+        1, 1);
+  }
+
+  __device__ Eigen::Map<Eigen::MatrixXd> contact_damping(int constraint_index) {
+    return Eigen::Map<Eigen::MatrixXd>(
+        contact_damping_global + blockIdx.x * num_contacts + constraint_index,
+        1, 1);
+  }
+
+  __device__ const Eigen::Map<Eigen::MatrixXd> contact_damping(
+      int constraint_index) const {
+    return Eigen::Map<Eigen::MatrixXd>(
+        contact_damping_global + blockIdx.x * num_contacts + constraint_index,
+        1, 1);
+  }
+
+  __device__ int& num_active_contacts() {
+    return num_active_contacts_global[blockIdx.x];
+  }
+
   __device__ double l_alpha() { return l_alpha_global[blockIdx.x]; }
 
   __device__ const double l_alpha() const { return l_alpha_global[blockIdx.x]; }
@@ -399,6 +441,10 @@ struct SAPGPUData {
 
     HANDLE_ERROR(
         cudaMalloc(&phi0_global, num_problems * sizeof(double) * num_contacts));
+    HANDLE_ERROR(cudaMalloc(&contact_stiffness_global,
+                            num_problems * sizeof(double) * num_contacts));
+    HANDLE_ERROR(cudaMalloc(&contact_damping_global,
+                            num_problems * sizeof(double) * num_contacts));
     HANDLE_ERROR(
         cudaMalloc(&num_active_contacts_global, num_problems * sizeof(int)));
 
@@ -441,6 +487,14 @@ struct SAPGPUData {
       HANDLE_ERROR(cudaMemcpy(
           phi0_global + i * num_contacts, data[i].constraint_data.phi0.data(),
           num_contacts * sizeof(double), cudaMemcpyHostToDevice));
+      HANDLE_ERROR(cudaMemcpy(contact_stiffness_global + i * num_contacts,
+                              data[i].constraint_data.contact_stiffness.data(),
+                              num_contacts * sizeof(double),
+                              cudaMemcpyHostToDevice));
+      HANDLE_ERROR(cudaMemcpy(contact_damping_global + i * num_contacts,
+                              data[i].constraint_data.contact_damping.data(),
+                              num_contacts * sizeof(double),
+                              cudaMemcpyHostToDevice));
       HANDLE_ERROR(cudaMemcpy(num_active_contacts_global + i,
                               &data[i].constraint_data.num_active_contacts,
                               sizeof(int), cudaMemcpyHostToDevice));
@@ -483,7 +537,13 @@ struct SAPGPUData {
   double* neg_grad_global;  // Global memory to hold negative gradient
 
   double* phi0_global;  // Global memory to hold phi0 - collision penetration
-                        // idstance reported by the geometry engine
+                        // distance reported by the geometry engine
+  double* contact_stiffness_global;  // (harmonic mean of stiffness between two
+                                     // materials) contact stiffness reported by
+                                     // the geometry engine
+  double* contact_damping_global;    // (harmonic mean of damping between two
+                                   // materials) contact damping reported by the
+                                   // geomtry engine
   int* num_active_contacts_global;  // Global memory to hold number of active
                                     // contacts for each problem, one int per
                                     // problem
