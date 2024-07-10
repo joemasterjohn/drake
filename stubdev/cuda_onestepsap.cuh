@@ -397,6 +397,11 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(&l_alpha_global, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&r_alpha_global, num_problems * sizeof(double)));
 
+    HANDLE_ERROR(
+        cudaMalloc(&phi0_global, num_problems * sizeof(double) * num_contacts));
+    HANDLE_ERROR(
+        cudaMalloc(&num_active_contacts_global, num_problems * sizeof(int)));
+
     // Set data to initialized value using cudaMemset
     HANDLE_ERROR(cudaMemset(
         chol_L_global, 0,
@@ -411,6 +416,10 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMemset(dll_eval_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(l_alpha_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(r_alpha_global, 0, num_problems * sizeof(double)));
+    HANDLE_ERROR(cudaMemset(phi0_global, 0,
+                            num_problems * sizeof(double) * num_contacts));
+    HANDLE_ERROR(
+        cudaMemset(num_active_contacts_global, 0, num_problems * sizeof(int)));
 
     // Copy data to GPU
     for (int i = 0; i < num_problems; i++) {
@@ -429,18 +438,25 @@ struct SAPGPUData {
                      data[i].constraint_data.J.data(),
                      3 * num_contacts * num_velocities * sizeof(double),
                      cudaMemcpyHostToDevice));
+      HANDLE_ERROR(cudaMemcpy(
+          phi0_global + i * num_contacts, data[i].constraint_data.phi0.data(),
+          num_contacts * sizeof(double), cudaMemcpyHostToDevice));
+      HANDLE_ERROR(cudaMemcpy(num_active_contacts_global + i,
+                              &data[i].constraint_data.num_active_contacts,
+                              sizeof(int), cudaMemcpyHostToDevice));
 
       for (int j = 0; j < num_contacts; j++) {
-        HANDLE_ERROR(cudaMemcpy(gamma_global + i * num_contacts * 3 + j * 3,
-                                data[i].gamma[j].data(), 3 * sizeof(double),
-                                cudaMemcpyHostToDevice));
+        // HANDLE_ERROR(cudaMemcpy(gamma_global + i * num_contacts * 3 + j * 3,
+        //                         data[i].gamma[j].data(), 3 * sizeof(double),
+        //                         cudaMemcpyHostToDevice));
         HANDLE_ERROR(cudaMemcpy(R_global + i * num_contacts * 3 + j * 3,
                                 data[i].R[j].data(), 3 * sizeof(double),
                                 cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(G_global + i * num_contacts * 3 * 3 + j * 3 * 3,
-                                data[i].constraint_data.G[j].data(),
-                                3 * 3 * sizeof(double),
-                                cudaMemcpyHostToDevice));
+        // HANDLE_ERROR(cudaMemcpy(G_global + i * num_contacts * 3 * 3 + j * 3 *
+        // 3,
+        //                         data[i].constraint_data.G[j].data(),
+        //                         3 * 3 * sizeof(double),
+        //                         cudaMemcpyHostToDevice));
       }
     }
   }
@@ -465,6 +481,12 @@ struct SAPGPUData {
   double* G_J_global;       // Global memory to hold G*J
   double* H_global;         // Global memory to hold Hessian
   double* neg_grad_global;  // Global memory to hold negative gradient
+
+  double* phi0_global;  // Global memory to hold phi0 - collision penetration
+                        // idstance reported by the geometry engine
+  int* num_active_contacts_global;  // Global memory to hold number of active
+                                    // contacts for each problem, one int per
+                                    // problem
 
   // Chlosky solve related variables
   double*

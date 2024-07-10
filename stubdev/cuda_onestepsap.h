@@ -7,6 +7,9 @@
 struct ConstraintData {
   Eigen::MatrixXd J;
   std::vector<Eigen::MatrixXd> G;
+
+  Eigen::VectorXd phi0;
+  int num_active_contacts;
 };
 
 struct SAPCPUData {

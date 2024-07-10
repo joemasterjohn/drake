@@ -89,13 +89,14 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
-    name = "cuda_onestepsap_test_vd",
-    srcs = ["cuda_onestepsap_test_vd.cc"],
+    name = "cuda_fullsolve_test",
+    srcs = ["cuda_fullsolve_test.cc"],
     tags = ["cuda"],
     deps = [
 	"//common:essential",
-    ":cuda_onestepsap_vd",
+    ":cuda_onestepsap",
     ":cuda_cholesky",
+    ":cuda_gpu_collision",
     "@gtest//:main",
     "@cuda//:cudart",
     ],

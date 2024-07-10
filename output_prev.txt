@@ -1,0 +1,167 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //stubdev:cuda_onestepsap_test_vd
+-----------------------------------------------------------------------------
+Running main() from gmock_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from KernelTest
+[ RUN      ] KernelTest.OneStepSAP_GPU
+Kernel Test: OneStepSap
+TestOneStepSapGPU with GPU called with 1 problems
+inside sum: -1.4285714285714286 
+do newton
+d_guess: -0.1895043731778425 
+d2_guess: 1.4285714285714288 
+bracket [l: 0.0000000000000000 guess: 1.2142857142857144 r: 1.5000000000000000] 
+f(bracket): [f(l): -1.4285714285714286 f(guess): -0.1895043731778425 f(r): 0.1020408163265306] 
+neg_grad: 3.0000000000
+neg_grad: -1.0000000000
+momentum_residue: 3.1622776602
+momentum_scale: 5.8757969321
+v_alpha: 
+5.1734693878
+2.7857142857
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1428571429
+-1.0000000000
+this is a step of cholsolve
+alpha at this step is 1.2142857143
+inside sum: -0.4263600483925350 
+neg_grad: 2.8265306122
+neg_grad: 0.2142857143
+momentum_residue: 2.8346417180
+momentum_scale: 6.2087743964
+v_alpha: 
+5.3753644315
+3.1071428571
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1345966958
+0.2142857143
+this is a step of cholsolve
+alpha at this step is 1.5000000000
+inside sum: -0.3395134902893151 
+neg_grad: 2.6246355685
+neg_grad: -0.1071428571
+momentum_residue: 2.6268215507
+momentum_scale: 6.2949672278
+v_alpha: 
+5.5628384007
+2.9464285714
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1249826461
+-0.1071428571
+this is a step of cholsolve
+alpha at this step is 1.5000000000
+inside sum: -0.2857154532575820 
+neg_grad: 2.4371615993
+neg_grad: 0.0535714286
+momentum_residue: 2.4377503070
+momentum_scale: 6.4864241759
+v_alpha: 
+5.7369213720
+3.0267857143
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1160553143
+0.0535714286
+this is a step of cholsolve
+alpha at this step is 1.5000000000
+inside sum: -0.2445996114562720 
+neg_grad: 2.2630786280
+neg_grad: -0.0267857143
+momentum_residue: 2.2632371398
+momentum_scale: 6.6115768503
+v_alpha: 
+5.8985698455
+2.9866071429
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1077656490
+-0.0267857143
+this is a step of cholsolve
+alpha at this step is 1.5000000000
+inside sum: -0.2104654969251758 
+neg_grad: 2.1014301545
+neg_grad: 0.0133928571
+momentum_residue: 2.1014728318
+momentum_scale: 6.7547506519
+v_alpha: 
+6.0486719994
+3.0066964286
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.1000681026
+0.0133928571
+this is a step of cholsolve
+alpha at this step is 1.5000000000
+inside sum: -0.0455812691330890 
+do newton
+d_guess: 0.0000000000000005 
+d2_guess: 0.0455812691330890 
+bracket [l: 0.0000000000000000 guess: 1.0000000000000053 r: 1.5000000000000000] 
+f(bracket): [f(l): -0.0455812691330890 f(guess): 0.0000000000000005 f(r): 0.0227906345665449] 
+do newton
+d_guess: -0.0000000000000003 
+d2_guess: 0.0455812691330890 
+bracket [l: 0.0000000000000000 guess: 0.9999999999999934 r: 1.0000000000000053] 
+f(bracket): [f(l): -0.0455812691330890 f(guess): -0.0000000000000003 f(r): 0.0000000000000005] 
+neg_grad: 0.9778880133
+neg_grad: -0.0066964286
+momentum_residue: 0.9779109411
+momentum_scale: 6.7935209897
+v_alpha: 
+6.0952380952
+3.0000000000
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.0465660959
+-0.0066964286
+this is a step of cholsolve
+alpha at this step is 1.0000000000
+inside sum: -0.0000000000000000 
+neg_grad: 0.0000000000
+neg_grad: -0.0000000000
+momentum_residue: 0.0000000000
+momentum_scale: 6.7935209897
+v_alpha: 
+6.0952380952
+3.0000000000
+v_star: 
+8.0000000000
+3.0000000000
+chol_x: 
+0.0000000000
+-0.0000000000
+this is a step of cholsolve
+alpha at this step is 1.0000000000
+SAP Converged!
+stubdev/cuda_onestepsap_test_vd.cc:63: Failure
+Expected: (abs((v_solved_cpu - v_solved[i]).norm())) < (1e-6), actual: 1.9047619047619051 vs 1e-06
+
+[  FAILED  ] KernelTest.OneStepSAP_GPU (189 ms)
+[----------] 1 test from KernelTest (189 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (189 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] KernelTest.OneStepSAP_GPU
+
+ 1 FAILED TEST

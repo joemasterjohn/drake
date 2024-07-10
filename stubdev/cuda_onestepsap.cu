@@ -97,6 +97,31 @@ __device__ void CalcRegularizationCost(SAPGPUData* data) {
   __syncwarp();
 }
 
+// =======================================================
+// scratch space - discard!!!
+// =======================================================
+// __device__ void CalcConstraintCost(SAPGPUData* data) {
+//   double sum = 0.0;
+//   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+//     sum += CalcIndividualConstraintCost(data, i);
+//   }
+//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
+//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
+//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
+//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
+//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
+
+//   __syncwarp();
+
+//   if (threadIdx.x == 0) {
+//     data->constraint_cost()(0, 0) = sum;
+//   }
+
+//   __syncwarp();
+// }
+
+// =======================================================
+
 // Contruct Hessian, H = dynamics_matrix + J * G * J^T
 __device__ void CalculateHessian(SAPGPUData* data) {
   int num_stride = ((data->NumVelocities() * data->NumVelocities()) + 31) / 32;
@@ -137,6 +162,16 @@ __device__ void CalcMomentumCost(SAPGPUData* data, double* sums) {
   __syncwarp();
 }
 
+// Depends on vc (constraint velocity) already being computed.
+__device__ void UpdateGammaG(SAPGPUData* data) {
+  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+    // update each gamma
+
+    // update each G
+  }
+  __syncwarp();
+}
+
 __device__ void CalculateDlDalpha0(SAPGPUData* data, double* sums) {
   double sum = 0.0;
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
@@ -163,6 +198,8 @@ __device__ void CalculateDlDalpha0(SAPGPUData* data, double* sums) {
 __device__ void CalcSearchDirection(SAPGPUData* data, double* sums) {
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
+
+  UpdateGammaG(data);
 
   // Calculate Momentum Cost
   CalcMomentumCost(data, sums);
@@ -268,6 +305,11 @@ __device__ void SAPLineSearchEvalCost(
       data->v_guess()(i, 0) = v_alpha(i, 0);
     }
   }
+
+  __syncwarp();
+
+  UpdateGammaG(data);
+
   __syncwarp();
 
   CalcMomentumCost(data, sums);
@@ -292,7 +334,8 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha,
                                      Eigen::Map<Eigen::MatrixXd> v_alpha,
                                      Eigen::Map<Eigen::MatrixXd> delta_v_c,
                                      Eigen::Map<Eigen::MatrixXd> delta_p) {
-  // chol_x(search direction) * momentum_gain(computed in eval device function)
+  // chol_x(search direction) * momentum_gain(computed in eval device
+  // function)
   double res = 0.0;
   double d_temp = 0.0;
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
@@ -531,7 +574,8 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
       __syncwarp();
 
-      // we evaluate fguess the last as cache will be left in the global memory
+      // we evaluate fguess the last as cache will be left in the global
+      // memory
       // TODO: Update G and gamma
       SAPLineSearchEvalCost(data, alpha_guess, ell_guess, sums, v_alpha,
                             v_guess_prev);
@@ -581,7 +625,8 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 }
 
 // device function to evaluate the 2-norm of the neg_grad for each iteration
-// this is used to termination logic: ||delta_l_p|| < epsilon_alpha + epsilon_r
+// this is used to termination logic: ||delta_l_p|| < epsilon_alpha +
+// epsilon_r
 __device__ double NegGradCostEval(SAPGPUData* data) {
   double sum = 0.0;
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
@@ -794,8 +839,8 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   sap_gpu_data_solve.RetriveVGuessToCPU(v_solved);
 }
 
-// This function is used in the unit test to confirm the cost evaluation and the
-// cholesky solve are correct
+// This function is used in the unit test to confirm the cost evaluation and
+// the cholesky solve are correct
 void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
                                 std::vector<double>& momentum_cost,
                                 std::vector<double>& regularizer_cost,
