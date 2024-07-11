@@ -5,7 +5,7 @@
 #include <eigen3/Eigen/Dense>
 
 #ifndef dt
-#define dt 0.001
+#define dt 0.002
 #endif
 
 #ifndef gravity

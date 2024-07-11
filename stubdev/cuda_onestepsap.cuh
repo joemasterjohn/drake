@@ -515,6 +515,36 @@ struct SAPGPUData {
     }
   }
 
+  // Free memory
+  void DestroySAPGPUData() {
+    HANDLE_ERROR(cudaFree(A_global));
+    HANDLE_ERROR(cudaFree(v_star_global));
+    HANDLE_ERROR(cudaFree(v_guess_global));
+    HANDLE_ERROR(cudaFree(J_global));
+    HANDLE_ERROR(cudaFree(G_global));
+    HANDLE_ERROR(cudaFree(gamma_global));
+    HANDLE_ERROR(cudaFree(R_global));
+    HANDLE_ERROR(cudaFree(delta_v_global));
+    HANDLE_ERROR(cudaFree(delta_p_global));
+    HANDLE_ERROR(cudaFree(momentum_cost_global));
+    HANDLE_ERROR(cudaFree(constraint_cost_global));
+    HANDLE_ERROR(cudaFree(dl_dalpha0_global));
+    HANDLE_ERROR(cudaFree(G_J_global));
+    HANDLE_ERROR(cudaFree(H_global));
+    HANDLE_ERROR(cudaFree(neg_grad_global));
+    HANDLE_ERROR(cudaFree(phi0_global));
+    HANDLE_ERROR(cudaFree(contact_stiffness_global));
+    HANDLE_ERROR(cudaFree(contact_damping_global));
+    HANDLE_ERROR(cudaFree(num_active_contacts_global));
+    HANDLE_ERROR(cudaFree(chol_L_global));
+    HANDLE_ERROR(cudaFree(chol_y_global));
+    HANDLE_ERROR(cudaFree(chol_x_global));
+    HANDLE_ERROR(cudaFree(dl_eval_global));
+    HANDLE_ERROR(cudaFree(dll_eval_global));
+    HANDLE_ERROR(cudaFree(l_alpha_global));
+    HANDLE_ERROR(cudaFree(r_alpha_global));
+  }
+
  private:
   double* A_global;        // Global memory dynamics matrix A for all sims
   double* v_star_global;   // Global memory free motion generalized velocity v*.

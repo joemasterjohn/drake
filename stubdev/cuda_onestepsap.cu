@@ -561,14 +561,14 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
     if (dell_dalpha_r <= 0.0) {
       alpha_guess = alpha_r;
       flag = 0.0;
-      printf("TERMINATE - early accept, no root in bracket \n");
+      // printf("TERMINATE - early accept, no root in bracket \n");
     }
 
     if (-data->dl_dalpha0()(0, 0) <
         cost_abs_tolerance + cost_rel_tolerance * ell_r) {
       alpha_guess = 1.0;
       flag = 0.0;
-      printf("TERMINATE - early accept, der too small \n");
+      // printf("TERMINATE - early accept, der too small \n");
     }
   }
 
@@ -605,16 +605,16 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         // l_alpha,
         //        r_alpha, guess_alpha, d_guess);
         if (newton_is_slow) {
-          printf("do bisec, newton is slow\n");
+          // printf("do bisec, newton is slow\n");
           dx_negative = 0.5 * (alpha_l - alpha_r);
           alpha_guess = alpha_l - dx_negative;
         } else {
-          printf("do newton\n");
+          // printf("do newton\n");
           dx_negative = dell_dalpha_guess / d2ell_dalpha2_guess;
           alpha_guess = alpha_guess - dx_negative;
           // newton_is_out_of_range
           if (alpha_guess < alpha_l || alpha_guess > alpha_r) {
-            printf("newton oob do bisec!\n");
+            // printf("newton oob do bisec!\n");
             dx_negative = 0.5 * (alpha_l - alpha_r);
             alpha_guess = alpha_l - dx_negative;
           }
@@ -656,13 +656,13 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
         if (first_iter == 0.0) {
           if (abs(dx_negative) <= f_tolerance * alpha_guess) {
             flag = 0.0;
-            printf("TERMINATE - bracket within tolerance \n");
+            // printf("TERMINATE - bracket within tolerance \n");
           }
         }
 
         if (abs(dell_dalpha_guess) <= f_tolerance) {
           flag = 0.0;
-          printf("TERMINATE - root within tolerance \n");
+          // printf("TERMINATE - root within tolerance \n");
         }
       }
 
@@ -816,7 +816,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         if (momentum_residue <=
             abs_tolerance + rel_tolerance * momentum_scale) {
           flag = 0.0;
-          printf("OUTER LOOP TERMINATE - momentum residue\n");
+          // printf("OUTER LOOP TERMINATE - momentum residue\n");
         }
 
         // cost criteria check
@@ -828,7 +828,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
                 cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
             alpha > 0.5) {
           flag = 0.0;
-          printf("OUTER LOOP TERMINATE - cost criteria\n");
+          // printf("OUTER LOOP TERMINATE - cost criteria\n");
         }
       }
 
@@ -840,8 +840,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
         prev_v_guess(i, 0) = data->v_guess()(i, 0);
       }
 
-      printf("this is a step of cholsolve\n");
-      printf("alpha at this step is %f\n", alpha);
+      // printf("this is a step of cholsolve\n");
+      // printf("alpha at this step is %f\n", alpha);
     }
 
     __syncwarp();
@@ -886,6 +886,8 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   sap_gpu_data_solve.RetriveVGuessToCPU(v_solved);
+
+  sap_gpu_data_solve.DestroySAPGPUData();
 }
 
 // This function is used in the unit test to confirm the cost evaluation and
@@ -924,6 +926,8 @@ void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   sap_gpu_data_dir.RetriveHessianToCPU(hessian);
   sap_gpu_data_dir.RetriveNegGradToCPU(neg_grad);
   sap_gpu_data_dir.RetriveCholXToCPU(chol_x);
+
+  sap_gpu_data_dir.DestroySAPGPUData();
 }
 
 // ===========================================================================

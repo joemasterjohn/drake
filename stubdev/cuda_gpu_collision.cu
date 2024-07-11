@@ -5,7 +5,7 @@
 #include "cuda_gpu_collision.h"
 
 #ifndef dt
-#define dt 0.001
+#define dt 0.002
 #endif
 
 #ifndef gravity
@@ -209,8 +209,8 @@ __global__ void CalculateFreeMotionVelocity(const Sphere* spheres,
 
   for (int j = idx; j < numSpheres; j += blockDim.x) {
     if (j < numSpheres) {
-      v_star.block<3, 1>(j * 3, 0) = velocity_vector.block<3, 1>(j * 3, 0) +
-                                     dt * Eigen::Vector3d(0, 0, gravity);
+      v_star.block<3, 1>(j * 3, 0) =
+          velocity_vector.block<3, 1>(j * 3, 0) + dt * Eigen::Vector3d(0, 0, 0);
     }
   }
 
@@ -349,6 +349,13 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
                  cudaMemcpyDeviceToHost));
 
   // Free device memory
+
+  cudaFree(d_dynamic_matrix);
+  cudaFree(d_velocity_vector);
+  cudaFree(d_v_star);
+  cudaFree(d_phi0);
+  cudaFree(d_contact_damping);
+  cudaFree(d_contact_stiffness);
   cudaFree(d_spheres);
   cudaFree(d_collisionMatrixSpheres);
   cudaFree(d_jacobian);
