@@ -156,11 +156,6 @@ struct SAPGPUData {
         gamma_global + blockIdx.x * num_contacts * 3, 3 * num_contacts, 1);
   }
 
-  __device__ Eigen::Map<Eigen::Vector3d> R(int constraint_index) {
-    return Eigen::Map<Eigen::Vector3d>(
-        R_global + (blockIdx.x * num_contacts + constraint_index) * 3, 3, 1);
-  }
-
   __device__ Eigen::Map<Eigen::MatrixXd> momentum_cost() {
     int row_size = 1;
     int col_size = 1;
@@ -407,8 +402,6 @@ struct SAPGPUData {
         &G_global, num_problems * num_contacts * 3 * 3 * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&gamma_global,
                             num_problems * num_contacts * 3 * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(&R_global,
-                            num_problems * num_contacts * 3 * sizeof(double)));
 
     HANDLE_ERROR(cudaMalloc(&delta_p_global,
                             num_problems * num_velocities * sizeof(double)));
@@ -498,20 +491,6 @@ struct SAPGPUData {
       HANDLE_ERROR(cudaMemcpy(num_active_contacts_global + i,
                               &data[i].constraint_data.num_active_contacts,
                               sizeof(int), cudaMemcpyHostToDevice));
-
-      for (int j = 0; j < num_contacts; j++) {
-        // HANDLE_ERROR(cudaMemcpy(gamma_global + i * num_contacts * 3 + j * 3,
-        //                         data[i].gamma[j].data(), 3 * sizeof(double),
-        //                         cudaMemcpyHostToDevice));
-        HANDLE_ERROR(cudaMemcpy(R_global + i * num_contacts * 3 + j * 3,
-                                data[i].R[j].data(), 3 * sizeof(double),
-                                cudaMemcpyHostToDevice));
-        // HANDLE_ERROR(cudaMemcpy(G_global + i * num_contacts * 3 * 3 + j * 3 *
-        // 3,
-        //                         data[i].constraint_data.G[j].data(),
-        //                         3 * 3 * sizeof(double),
-        //                         cudaMemcpyHostToDevice));
-      }
     }
   }
 
@@ -523,7 +502,6 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaFree(J_global));
     HANDLE_ERROR(cudaFree(G_global));
     HANDLE_ERROR(cudaFree(gamma_global));
-    HANDLE_ERROR(cudaFree(R_global));
     HANDLE_ERROR(cudaFree(delta_v_global));
     HANDLE_ERROR(cudaFree(delta_p_global));
     HANDLE_ERROR(cudaFree(momentum_cost_global));
@@ -552,7 +530,6 @@ struct SAPGPUData {
   double* J_global;        // Global memory J matrix for all sims
   double* G_global;        // Global memory G matrix for all sims
   double* gamma_global;    // Global memory v_gamma for all sims
-  double* R_global;        // Global memory v_R for all sims
 
   double* delta_v_global;  // Global memory velocity gain = v - v*
   double* delta_p_global;  // Global memory momentum gain = A * (v - v*)

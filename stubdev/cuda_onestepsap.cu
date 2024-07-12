@@ -787,6 +787,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     first_iter = 1.0;
   }
 
+  __syncwarp();
+
   // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
   while (flag == 1.0) {
@@ -806,6 +808,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 
     // calculate momentum residule and momentum scale
     CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
+
+    __syncwarp();
 
     // Thread 0 registers first results or check residual if the current
     // iteration is not 0, if necessary, continue
@@ -885,9 +889,15 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
 
   HANDLE_ERROR(cudaDeviceSynchronize());
 
+  std::cout << "finished call" << std::endl;
+
   sap_gpu_data_solve.RetriveVGuessToCPU(v_solved);
 
+  std::cout << "retrieved" << std::endl;
+
   sap_gpu_data_solve.DestroySAPGPUData();
+
+  std::cout << "destroyed" << std::endl;
 }
 
 // This function is used in the unit test to confirm the cost evaluation and
