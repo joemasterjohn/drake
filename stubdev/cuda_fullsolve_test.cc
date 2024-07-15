@@ -93,9 +93,14 @@ GTEST_TEST(KernelTest, FullSolveTest) {
         // TODO: randomize the last sphere
         // x between -1.5 to 1.5
         // y between -1.0 and -1.5
+        // cur ball position
+        // int col = i % 20;
+        // p << -2.4 + static_cast<double>(col) * (4.8 / 20.0), -1.7, 0.0;
 
-        p << static_cast<double>(rand()) / RAND_MAX * 3.0 - 1.5,
-            static_cast<double>(rand()) / RAND_MAX * 0.3 - 1.8, 0.0;
+        double random_angle =
+            static_cast<double>(rand()) / RAND_MAX * 2.0 * M_PI;
+        p << 0.0 + 4.5 * cos(random_angle), 3.4641 + 4.5 * sin(random_angle),
+            0.0;
       }
 
       h_spheres[i * numSpheres + j].center = p;
@@ -103,8 +108,15 @@ GTEST_TEST(KernelTest, FullSolveTest) {
       h_spheres[i * numSpheres + j].velocity = Eigen::Vector3d::Zero();
 
       if (j == 21) {
-        h_spheres[i * numSpheres + j].velocity(1) =
-            2.0 * (static_cast<double>(rand()) / RAND_MAX * 4.0 + 6.0);
+        // a random aiming point, from (0,0.25) to (0.0,3.5)
+        Eigen::Vector3d random_target(
+            0.0, 0.25 + static_cast<double>(rand()) / RAND_MAX * 3.25, 0.0);
+        Eigen::Vector3d direction = random_target - p;
+        direction.normalize();
+        // scale up the velocity to 8.0 to 20.0, random
+        h_spheres[i * numSpheres + j].velocity =
+            direction * 8.0 +
+            static_cast<double>(rand()) / RAND_MAX * 12.0 * direction;
       }
 
       h_spheres[i * numSpheres + j].radius = 0.5;
@@ -435,38 +447,61 @@ GTEST_TEST(KernelTest, FullSolveTest) {
         h_spheres[i * numSpheres + j].velocity(2) = v_solved[i](j * 3 + 2, 0);
       }
 
-      // Create and open the file
-      std::ostringstream iterStream;
-      iterStream << "output_" << std::setw(4) << std::setfill('0') << iter;
-      std::string filename = base_foldername + "/problem_" + std::to_string(i) +
-                             "/" + iterStream.str() + ".csv";
+      if (iter % 5 == 0) {
+        // Create and open the file
+        std::ostringstream iterStream;
+        iterStream << "output_" << std::setw(4) << std::setfill('0')
+                   << iter / 5;
+        std::string filename = base_foldername + "/problem_" +
+                               std::to_string(i) + "/" + iterStream.str() +
+                               ".csv";
 
-      std::ofstream file(filename);
-      if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
-        return;
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+          std::cerr << "Failed to open file: " << filename << std::endl;
+          return;
+        }
+
+        // Write column titles to the file
+        file << "pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,vel_magnitude"
+             << std::endl;
+
+        // Write data to the file
+        for (int j = 0; j < numSpheres; j++) {
+          double vel_magnitude =
+              std::sqrt(std::pow(h_spheres[i * numSpheres + j].velocity(0), 2) +
+                        std::pow(h_spheres[i * numSpheres + j].velocity(1), 2) +
+                        std::pow(h_spheres[i * numSpheres + j].velocity(2), 2));
+
+          file << h_spheres[i * numSpheres + j].center(0) << ","
+               << h_spheres[i * numSpheres + j].center(1) << ","
+               << h_spheres[i * numSpheres + j].center(2) << ","
+               << h_spheres[i * numSpheres + j].velocity(0) << ","
+               << h_spheres[i * numSpheres + j].velocity(1) << ","
+               << h_spheres[i * numSpheres + j].velocity(2) << ","
+               << vel_magnitude << std::endl;
+        }
+
+        file.close();
       }
 
-      // Write column titles to the file
-      file << "pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,vel_magnitude" << std::endl;
+      delete[] h_jacobian;
+      delete[] h_num_collisions;
+      delete[] h_dynamic_matrix;
+      delete[] h_velocity_vector;
+      delete[] h_phi0;
+      delete[] h_v_star;
+      delete[] h_contact_stiffness;
+      delete[] h_contact_damping;
 
-      // Write data to the file
-      for (int j = 0; j < numSpheres; j++) {
-        double vel_magnitude =
-            std::sqrt(std::pow(h_spheres[i * numSpheres + j].velocity(0), 2) +
-                      std::pow(h_spheres[i * numSpheres + j].velocity(1), 2) +
-                      std::pow(h_spheres[i * numSpheres + j].velocity(2), 2));
-
-        file << h_spheres[i * numSpheres + j].center(0) << ","
-             << h_spheres[i * numSpheres + j].center(1) << ","
-             << h_spheres[i * numSpheres + j].center(2) << ","
-             << h_spheres[i * numSpheres + j].velocity(0) << ","
-             << h_spheres[i * numSpheres + j].velocity(1) << ","
-             << h_spheres[i * numSpheres + j].velocity(2) << ","
-             << vel_magnitude << std::endl;
-      }
-
-      file.close();
+      h_jacobian = NULL;
+      h_num_collisions = NULL;
+      h_dynamic_matrix = NULL;
+      h_velocity_vector = NULL;
+      h_phi0 = NULL;
+      h_v_star = NULL;
+      h_contact_stiffness = NULL;
+      h_contact_damping = NULL;
     }
   }
 }
