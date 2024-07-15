@@ -123,7 +123,7 @@ GTEST_TEST(KernelTest, FullSolveTest) {
 
       // initialize material properties
       h_spheres[i * numSpheres + j].stiffness = 500.0;
-      h_spheres[i * numSpheres + j].damping = 1e-8;
+      h_spheres[i * numSpheres + j].damping = 0.5;
       h_spheres[i * numSpheres + j].mass = 0.05;
     }
   }

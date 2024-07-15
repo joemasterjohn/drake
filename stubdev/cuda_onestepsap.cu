@@ -791,66 +791,75 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 
   // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
-  while (flag == 1.0) {
-    // calculate search direction
-    // we add offset to shared memory to avoid SoveWithGuessImplKernel
-    // __shared__ varibales being overwritten
-    CalcSearchDirection(data, sums + 5 + data->NumVelocities());
+  for (int iter = 0; iter < max_iteration; iter++) {
+    if (flag == 1.0) {
+      // calculate search direction
+      // we add offset to shared memory to avoid SoveWithGuessImplKernel
+      // __shared__ varibales being overwritten
+      CalcSearchDirection(data, sums + 5 + data->NumVelocities());
 
-    __syncwarp();
+      __syncwarp();
 
-    // perform line search
-    // we add offset to shared memory to avoid SoveWithGuessImplKernel
-    // __shared__ varibales being overwritten
-    double alpha = SAPLineSearch(data, sums + 5 + data->NumVelocities());
+      // perform line search
+      // we add offset to shared memory to avoid SoveWithGuessImplKernel
+      // __shared__ varibales being overwritten
+      double alpha = SAPLineSearch(data, sums + 5 + data->NumVelocities());
 
-    __syncwarp();
+      __syncwarp();
 
-    // calculate momentum residule and momentum scale
-    CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
+      // calculate momentum residule and momentum scale
+      CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
 
-    __syncwarp();
+      __syncwarp();
 
-    // Thread 0 registers first results or check residual if the current
-    // iteration is not 0, if necessary, continue
-    if (threadIdx.x == 0) {
-      if (first_iter == 1.0) {
-        first_iter = 0.0;
-      } else {
-        if (momentum_residue <=
-            abs_tolerance + rel_tolerance * momentum_scale) {
-          flag = 0.0;
-          // printf("OUTER LOOP TERMINATE - momentum residue\n");
+      // Thread 0 registers first results or check residual if the current
+      // iteration is not 0, if necessary, continue
+      if (threadIdx.x == 0) {
+        // printf(
+        //     "iter: %d, alpha: %.16f, momentum_residue: %.16f, momentum_scale:
+        //     "
+        //     "%.16f\n",
+        //     iter, alpha, momentum_residue, momentum_scale);
+
+        if (first_iter == 1.0) {
+          first_iter = 0.0;
+        } else {
+          if (momentum_residue <=
+              abs_tolerance + rel_tolerance * momentum_scale) {
+            flag = 0.0;
+            // printf("OUTER LOOP TERMINATE - momentum residue\n");
+          }
+
+          // cost criteria check
+          double ell = data->momentum_cost()(0, 0) +
+                       data->constraint_cost()(0, 0);  // current cost
+          double ell_scale = 0.5 * (abs(ell) + abs(ell_previous));
+          double ell_decrement = std::abs(ell_previous - ell);
+          // printf("ell_decrement %.30f, rhs: %.30f\n", ell_decrement,
+          //        cost_abs_tolerance + cost_rel_tolerance * ell_scale);
+          if (ell_decrement <
+                  cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
+              alpha > 0.5) {
+            flag = 0.0;
+            // printf("OUTER LOOP TERMINATE - cost criteria\n");
+          }
         }
 
-        // cost criteria check
-        double ell = data->momentum_cost()(0, 0) +
-                     data->constraint_cost()(0, 0);  // current cost
-        double ell_scale = 0.5 * (abs(ell) + abs(ell_previous));
-        double ell_decrement = std::abs(ell_previous - ell);
-        if (ell_decrement <
-                cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
-            alpha > 0.5) {
-          flag = 0.0;
-          // printf("OUTER LOOP TERMINATE - cost criteria\n");
+        ell_previous =
+            data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0);
+
+        // assign previous
+        for (int i = 0; i < data->NumVelocities(); i++) {
+          prev_v_guess(i, 0) = data->v_guess()(i, 0);
         }
+
+        // printf("this is a step of cholsolve\n");
+        // printf("alpha at this step is %f\n", alpha);
       }
 
-      ell_previous =
-          data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0);
-
-      // assign previous
-      for (int i = 0; i < data->NumVelocities(); i++) {
-        prev_v_guess(i, 0) = data->v_guess()(i, 0);
-      }
-
-      // printf("this is a step of cholsolve\n");
-      // printf("alpha at this step is %f\n", alpha);
+      __syncwarp();
     }
-
-    __syncwarp();
   }
-
   // TODO: remove this debugging output
   if (threadIdx.x == 0) printf("SAP Converged!\n");
   __syncwarp();
