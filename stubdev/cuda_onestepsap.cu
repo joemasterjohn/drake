@@ -204,7 +204,7 @@ __device__ void UpdateGammaG(SAPGPUData* data) {
       if (pen_approx <= 0.0) pen_approx = 0.0;
 
       double damping_term =
-          1.0 + data->contact_damping(int(i / 3) * v_contact_z)(0, 0);
+          1.0 + data->contact_damping(int(i / 3))(0, 0) * v_contact_z;
       if (damping_term <= 0.0) damping_term = 0.0;
 
       data->gamma(int(i / 3))(2) = dt *
@@ -815,12 +815,6 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       // Thread 0 registers first results or check residual if the current
       // iteration is not 0, if necessary, continue
       if (threadIdx.x == 0) {
-        // printf(
-        //     "iter: %d, alpha: %.16f, momentum_residue: %.16f, momentum_scale:
-        //     "
-        //     "%.16f\n",
-        //     iter, alpha, momentum_residue, momentum_scale);
-
         if (first_iter == 1.0) {
           first_iter = 0.0;
         } else {
