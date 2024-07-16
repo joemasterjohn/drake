@@ -12,7 +12,7 @@ import urllib.request
 # Ubuntu.
 URL = "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/Packages.gz"  # noqa
 
-CUDA_VERSION = "12-4"  # Use `-` not `.` for filename matching.
+CUDA_VERSION = "12-5"  # Use `-` not `.` for filename matching.
 # This is the CUDA packages and their versions that we want to use.
 # From
 #    https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/#cuda-major-component-versions
@@ -20,23 +20,23 @@ CUDA_VERSION = "12-4"  # Use `-` not `.` for filename matching.
 #    https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/
 # Minimum NVIDIA Linux driver for this version: 550.54.15
 PACKAGE_VERSION_MAP = {
-    "cuda-cccl": "12.4.127",
-    "cuda-crt": "12.4.131",
-    "cuda-cudart": "12.4.127",
-    "cuda-cudart-dev": "12.4.127",
-    "cuda-nvcc": "12.4.131",
-    "cuda-nvvm": "12.4.131",
-    "cuda-sanitizer": "12.4.127",
-    "libnpp": "12.2.5.30",
-    "libnpp-dev": "12.2.5.30",
-    "libnvjpeg": "12.3.1.117",
-    "libnvjpeg-dev": "12.3.1.117",
-    "libcusolver": "11.6.1.9",
-    "libcusolver-dev": "11.6.1.9",
-    "libcublas": "12.4.5.8",
-    "libcublas-dev": "12.4.5.8",
-    "libcusparse": "12.3.1.170",
-    "libcusparse-dev": "12.3.1.170",
+    "cuda-cccl": "12.5.39",
+    "cuda-crt": "12.5.82",
+    "cuda-cudart": "12.5.82",
+    "cuda-cudart-dev": "12.5.82",
+    "cuda-nvcc": "12.5.82",
+    "cuda-nvvm": "12.5.82",
+    "cuda-sanitizer": "12.5.81",
+    "libnpp": "12.3.0.159",
+    "libnpp-dev": "12.3.0.159",
+    "libnvjpeg": "12.3.2.81",
+    "libnvjpeg-dev": "12.3.2.81",
+    "libcusolver": "11.6.3.83",
+    "libcusolver-dev": "11.6.3.83",
+    "libcublas": "12.5.3.2",
+    "libcublas-dev": "12.5.3.2",
+    "libcusparse": "12.5.1.3",
+    "libcusparse-dev": "12.5.1.3",
 }
 
 
@@ -118,7 +118,7 @@ def main():
     bzl = make_bzl(manifest)
 
     # Overwrite Anzu's source manifest.
-    with open("tools/workspace/cuda/manifest-22.04.bzl", "w") as f:
+    with open("/home/jsonzhou/Desktop/drake/tools/workspace/cuda/manifest-22.04.bzl", "w") as f:
         f.write(bzl)
 
     return 0

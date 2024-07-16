@@ -50,6 +50,25 @@ nvcc_library(
     ],
 )
 
+nvcc_library(
+    name = "cuda_malloc",
+    hdrs = ["cuda_malloc.h"],
+    srcs = ["cuda_malloc.cu"],
+    deps = [
+        "//common:essential",
+    ],
+)
+
+drake_cc_googletest(
+    name = "cuda_malloc_test",
+    srcs = ["cuda_malloc_test.cc"],
+    tags = ["cuda"],
+    deps = [
+    "cuda_malloc",
+    "@gtest//:main",
+    "@cuda//:cudart",
+    ],
+)
 
 
 drake_cc_googletest(
@@ -101,4 +120,5 @@ drake_cc_googletest(
     "@cuda//:cudart",
     ],
 )
+
 

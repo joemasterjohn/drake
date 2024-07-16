@@ -239,14 +239,27 @@ void CollisionEngine(Sphere* h_spheres, const int numProblems,
   double* d_contact_stiffness;
   double* d_contact_damping;
 
+  std::cout << "haha 0" << std::endl;
+  std::cout << "sizeof(Spheres): " << sizeof(Sphere) << std::endl;
+  std::cout << "sizeof(double)  " << sizeof(double) << std::endl;
+  std::cout << "numProblems: " << numProblems << std::endl;
+
+  double* d_test;
+  HANDLE_ERROR(cudaMalloc((void**)&d_test, sizeof(double)));
+
+  std::cout << "end test call" << std::endl;
+
   HANDLE_ERROR(cudaMalloc((void**)&d_spheres,
                           numProblems * numSpheres * sizeof(Sphere)));
+  std::cout << "haha 1" << std::endl;
   HANDLE_ERROR(cudaMalloc(
       (void**)&d_collisionMatrixSpheres,
       numProblems * numSpheres * numSpheres * sizeof(CollisionData)));
+  std::cout << "haha 2" << std::endl;
   HANDLE_ERROR(cudaMalloc((void**)&d_jacobian,
                           numProblems * sizeof(double) * (numSpheres * 3) *
                               numSpheres * numSpheres * 3));
+  std::cout << "haha 3" << std::endl;
   HANDLE_ERROR(
       cudaMalloc((void**)&d_num_collisions, numProblems * sizeof(int)));
   HANDLE_ERROR(cudaMalloc(

@@ -14,32 +14,33 @@
 namespace drake {
 namespace {
 
-bool create_directory(const std::string& path) {
-  std::error_code ec;
-  if (std::filesystem::create_directories(path, ec)) {
-    return true;
-  } else {
-    std::cerr << "Failed to create directory " << path << ": " << ec.message()
-              << std::endl;
-    return false;
-  }
-}
+// bool create_directory(const std::string& path) {
+//   std::error_code ec;
+//   if (std::filesystem::create_directories(path, ec)) {
+//     return true;
+//   } else {
+//     std::cerr << "Failed to create directory " << path << ": " <<
+//     ec.message()
+//               << std::endl;
+//     return false;
+//   }
+// }
 
 GTEST_TEST(KernelTest, FullSolveTest) {
   const int numSpheres = 22;
-  const int numProblems = 100;
+  const int numProblems = 111;
 
-  // Get the current working directory
-  std::string base_foldername = "/home/jsonzhou/Desktop/drake/output";
-  create_directory(base_foldername);
-  for (int i = 0; i < numProblems; i++) {
-    std::string problem_foldername =
-        base_foldername + "/problem_" + std::to_string(i);
-    create_directory(problem_foldername);
-  }
+  // // Get the current working directory
+  // std::string base_foldername = "/home/jsonzhou/Desktop/drake/output";
+  // create_directory(base_foldername);
+  // for (int i = 0; i < numProblems; i++) {
+  //   std::string problem_foldername =
+  //       base_foldername + "/problem_" + std::to_string(i);
+  //   create_directory(problem_foldername);
+  // }
 
-  std::cout << "Output directories created at: " << base_foldername
-            << std::endl;
+  // std::cout << "Output directories created at: " << base_foldername
+  //           << std::endl;
 
   // initialize the problem input spheres_vec, within a box of size 4x4x4, all
   // radius 0.5
@@ -128,7 +129,7 @@ GTEST_TEST(KernelTest, FullSolveTest) {
     }
   }
 
-  for (int iter = 0; iter < 1500; iter++) {
+  for (int iter = 0; iter < 1; iter++) {
     // Allocate memory for results on host
     CollisionData
         h_collisionMatrixSpheres[numProblems * numSpheres * numSpheres];
@@ -352,156 +353,160 @@ GTEST_TEST(KernelTest, FullSolveTest) {
     // START OF ACTUAL SAP SOLVER FUNCTION CALLS
     // ===================================================
 
-    int num_contacts = numSpheres * numSpheres;
-    int num_velocities = numSpheres * 3;
-    int num_problems = numProblems;
+    // int num_contacts = numSpheres * numSpheres;
+    // int num_velocities = numSpheres * 3;
+    // int num_problems = numProblems;
 
-    std::vector<SAPCPUData> sap_cpu_data;
+    // std::vector<SAPCPUData> sap_cpu_data;
 
     for (int i = 0; i < numProblems; i++) {
-      SAPCPUData sap_data;
+      //   SAPCPUData sap_data;
 
-      sap_data.num_contacts = num_contacts;
-      sap_data.num_velocities = num_velocities;
-      sap_data.num_problems = num_problems;
+      //   sap_data.num_contacts = num_contacts;
+      //   sap_data.num_velocities = num_velocities;
+      //   sap_data.num_problems = num_problems;
 
-      sap_data.dynamics_matrix = dynamic_matrix_vec[i];
-      sap_data.v_star = v_star_vec[i];
-      sap_data.v_guess = v_guess_vec[i];
-      sap_data.constraint_data.J = J_vec[i];
+      //   sap_data.dynamics_matrix = dynamic_matrix_vec[i];
+      //   sap_data.v_star = v_star_vec[i];
+      //   sap_data.v_guess = v_guess_vec[i];
+      //   sap_data.constraint_data.J = J_vec[i];
 
-      sap_data.constraint_data.phi0 = phi0_vec[i];
-      sap_data.constraint_data.contact_stiffness = stiffness_vec[i];
-      sap_data.constraint_data.contact_damping = damping_vec[i];
+      //   sap_data.constraint_data.phi0 = phi0_vec[i];
+      //   sap_data.constraint_data.contact_stiffness = stiffness_vec[i];
+      //   sap_data.constraint_data.contact_damping = damping_vec[i];
 
-      sap_data.constraint_data.num_active_contacts = num_collision_vec[i];
+      //   sap_data.constraint_data.num_active_contacts = num_collision_vec[i];
 
-      // initialize impulse data vector and regularization matrices
-      for (int j = 0; j < num_contacts; j++) {
-        sap_data.R.push_back(Eigen::Vector3d::Ones(3, 1));
-      }
+      //   // initialize impulse data vector and regularization matrices
+      //   for (int j = 0; j < num_contacts; j++) {
+      //     sap_data.R.push_back(Eigen::Vector3d::Ones(3, 1));
+      //   }
 
-      sap_cpu_data.push_back(sap_data);
-    }
+      //   sap_cpu_data.push_back(sap_data);
+      // }
 
-    // Debugging section, checking the solved search direction
-    //   std::vector<double> momentum_cost;
-    //   std::vector<double> regularizer_cost;
-    //   std::vector<Eigen::MatrixXd> hessian;
-    //   std::vector<Eigen::MatrixXd> neg_grad;
-    //   std::vector<Eigen::MatrixXd> chol_x;
+      // // Debugging section, checking the solved search direction
+      // //   std::vector<double> momentum_cost;
+      // //   std::vector<double> regularizer_cost;
+      // //   std::vector<Eigen::MatrixXd> hessian;
+      // //   std::vector<Eigen::MatrixXd> neg_grad;
+      // //   std::vector<Eigen::MatrixXd> chol_x;
 
-    // invoke test sap call
-    //   TestCostEvalAndSolveSapGPU(sap_cpu_data, momentum_cost,
-    //   regularizer_cost,
-    //                              hessian, neg_grad, chol_x, num_velocities,
-    //                              num_contacts, num_problems);
+      // // invoke test sap call
+      // //   TestCostEvalAndSolveSapGPU(sap_cpu_data, momentum_cost,
+      // //   regularizer_cost,
+      // //                              hessian, neg_grad, chol_x,
+      // num_velocities,
+      // //                              num_contacts, num_problems);
 
-    //   std::cout << "chol_x: " << std::endl;
-    //   // print out results
-    //   for (int i = 0; i < num_problems; i++) {
-    //     // print out chol_x
-    //     for (int j = 0; j < num_velocities; j++) {
-    //       std::cout << chol_x[i](j, 0) << "  ";
-    //     }
-    //   }
-    //   std::cout << std::endl;
+      // //   std::cout << "chol_x: " << std::endl;
+      // //   // print out results
+      // //   for (int i = 0; i < num_problems; i++) {
+      // //     // print out chol_x
+      // //     for (int j = 0; j < num_velocities; j++) {
+      // //       std::cout << chol_x[i](j, 0) << "  ";
+      // //     }
+      // //   }
+      // //   std::cout << std::endl;
 
-    std::vector<Eigen::MatrixXd> v_solved;
+      // std::vector<Eigen::MatrixXd> v_solved;
 
-    TestOneStepSapGPU(sap_cpu_data, v_solved, num_velocities, num_contacts,
-                      num_problems);
+      // TestOneStepSapGPU(sap_cpu_data, v_solved, num_velocities, num_contacts,
+      //                   num_problems);
 
-    for (int i = 0; i < num_problems; i++) {
-      std::cout << "Solved velocity: " << std::endl;
-      for (int j = 0; j < num_velocities; j++) {
-        std::cout << v_solved[i](j, 0) << " ";
-      }
-      std::cout << std::endl;
+      // for (int i = 0; i < num_problems; i++) {
+      //   std::cout << "Solved velocity: " << std::endl;
+      //   for (int j = 0; j < num_velocities; j++) {
+      //     std::cout << v_solved[i](j, 0) << " ";
+      //   }
+      //   std::cout << std::endl;
 
-      std::cout << "time: " << iter * dt << " Kinetic Energy of the system: ";
-      double kinetic_energy = 0.0;
-      for (int j = 0; j < numSpheres; j++) {
-        kinetic_energy +=
-            0.5 * h_spheres[i * numSpheres + j].mass *
-            (v_solved[i](j * 3, 0) * v_solved[i](j * 3, 0) +
-             v_solved[i](j * 3 + 1, 0) * v_solved[i](j * 3 + 1, 0) +
-             v_solved[i](j * 3 + 2, 0) * v_solved[i](j * 3 + 2, 0));
-      }
-      std::cout << kinetic_energy << std::endl;
+      //   std::cout << "time: " << iter * dt << " Kinetic Energy of the system:
+      //   "; double kinetic_energy = 0.0; for (int j = 0; j < numSpheres; j++)
+      //   {
+      //     kinetic_energy +=
+      //         0.5 * h_spheres[i * numSpheres + j].mass *
+      //         (v_solved[i](j * 3, 0) * v_solved[i](j * 3, 0) +
+      //          v_solved[i](j * 3 + 1, 0) * v_solved[i](j * 3 + 1, 0) +
+      //          v_solved[i](j * 3 + 2, 0) * v_solved[i](j * 3 + 2, 0));
+      //   }
+      //   std::cout << kinetic_energy << std::endl;
 
-      // update positions and
-      // copy the new velocity back to the sphere
+      //   // update positions and
+      //   // copy the new velocity back to the sphere
 
-      for (int j = 0; j < numSpheres; j++) {
-        // integrate velocity to positions
-        h_spheres[i * numSpheres + j].center(0) +=
-            h_spheres[i * numSpheres + j].velocity(0) * dt;
-        h_spheres[i * numSpheres + j].center(1) +=
-            h_spheres[i * numSpheres + j].velocity(1) * dt;
-        h_spheres[i * numSpheres + j].center(2) +=
-            h_spheres[i * numSpheres + j].velocity(2) * dt;
+      //   for (int j = 0; j < numSpheres; j++) {
+      //     // integrate velocity to positions
+      //     h_spheres[i * numSpheres + j].center(0) +=
+      //         h_spheres[i * numSpheres + j].velocity(0) * dt;
+      //     h_spheres[i * numSpheres + j].center(1) +=
+      //         h_spheres[i * numSpheres + j].velocity(1) * dt;
+      //     h_spheres[i * numSpheres + j].center(2) +=
+      //         h_spheres[i * numSpheres + j].velocity(2) * dt;
 
-        h_spheres[i * numSpheres + j].velocity(0) = v_solved[i](j * 3, 0);
-        h_spheres[i * numSpheres + j].velocity(1) = v_solved[i](j * 3 + 1, 0);
-        h_spheres[i * numSpheres + j].velocity(2) = v_solved[i](j * 3 + 2, 0);
-      }
+      //     h_spheres[i * numSpheres + j].velocity(0) = v_solved[i](j * 3, 0);
+      //     h_spheres[i * numSpheres + j].velocity(1) = v_solved[i](j * 3 + 1,
+      //     0); h_spheres[i * numSpheres + j].velocity(2) = v_solved[i](j * 3 +
+      //     2, 0);
+      //   }
 
-      if (iter % 5 == 0) {
-        // Create and open the file
-        std::ostringstream iterStream;
-        iterStream << "output_" << std::setw(4) << std::setfill('0')
-                   << iter / 5;
-        std::string filename = base_foldername + "/problem_" +
-                               std::to_string(i) + "/" + iterStream.str() +
-                               ".csv";
+      // if (iter % 5 == 0) {
+      //   // Create and open the file
+      //   std::ostringstream iterStream;
+      //   iterStream << "output_" << std::setw(4) << std::setfill('0')
+      //              << iter / 5;
+      //   std::string filename = base_foldername + "/problem_" +
+      //                          std::to_string(i) + "/" + iterStream.str() +
+      //                          ".csv";
 
-        std::ofstream file(filename);
-        if (!file.is_open()) {
-          std::cerr << "Failed to open file: " << filename << std::endl;
-          return;
-        }
+      //   std::ofstream file(filename);
+      //   if (!file.is_open()) {
+      //     std::cerr << "Failed to open file: " << filename << std::endl;
+      //     return;
+      //   }
 
-        // Write column titles to the file
-        file << "pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,vel_magnitude"
-             << std::endl;
+      //   // Write column titles to the file
+      //   file << "pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,vel_magnitude"
+      //        << std::endl;
 
-        // Write data to the file
-        for (int j = 0; j < numSpheres; j++) {
-          double vel_magnitude =
-              std::sqrt(std::pow(h_spheres[i * numSpheres + j].velocity(0), 2) +
-                        std::pow(h_spheres[i * numSpheres + j].velocity(1), 2) +
-                        std::pow(h_spheres[i * numSpheres + j].velocity(2), 2));
+      //   // Write data to the file
+      //   for (int j = 0; j < numSpheres; j++) {
+      //     double vel_magnitude =
+      //         std::sqrt(std::pow(h_spheres[i * numSpheres + j].velocity(0),
+      //         2) +
+      //                   std::pow(h_spheres[i * numSpheres + j].velocity(1),
+      //                   2) + std::pow(h_spheres[i * numSpheres +
+      //                   j].velocity(2), 2));
 
-          file << h_spheres[i * numSpheres + j].center(0) << ","
-               << h_spheres[i * numSpheres + j].center(1) << ","
-               << h_spheres[i * numSpheres + j].center(2) << ","
-               << h_spheres[i * numSpheres + j].velocity(0) << ","
-               << h_spheres[i * numSpheres + j].velocity(1) << ","
-               << h_spheres[i * numSpheres + j].velocity(2) << ","
-               << vel_magnitude << std::endl;
-        }
+      //     file << h_spheres[i * numSpheres + j].center(0) << ","
+      //          << h_spheres[i * numSpheres + j].center(1) << ","
+      //          << h_spheres[i * numSpheres + j].center(2) << ","
+      //          << h_spheres[i * numSpheres + j].velocity(0) << ","
+      //          << h_spheres[i * numSpheres + j].velocity(1) << ","
+      //          << h_spheres[i * numSpheres + j].velocity(2) << ","
+      //          << vel_magnitude << std::endl;
+      //   }
 
-        file.close();
-      }
+      //   file.close();
+      // }
 
-      delete[] h_jacobian;
-      delete[] h_num_collisions;
-      delete[] h_dynamic_matrix;
-      delete[] h_velocity_vector;
-      delete[] h_phi0;
-      delete[] h_v_star;
-      delete[] h_contact_stiffness;
-      delete[] h_contact_damping;
+      // delete[] h_jacobian;
+      // delete[] h_num_collisions;
+      // delete[] h_dynamic_matrix;
+      // delete[] h_velocity_vector;
+      // delete[] h_phi0;
+      // delete[] h_v_star;
+      // delete[] h_contact_stiffness;
+      // delete[] h_contact_damping;
 
-      h_jacobian = NULL;
-      h_num_collisions = NULL;
-      h_dynamic_matrix = NULL;
-      h_velocity_vector = NULL;
-      h_phi0 = NULL;
-      h_v_star = NULL;
-      h_contact_stiffness = NULL;
-      h_contact_damping = NULL;
+      // h_jacobian = NULL;
+      // h_num_collisions = NULL;
+      // h_dynamic_matrix = NULL;
+      // h_velocity_vector = NULL;
+      // h_phi0 = NULL;
+      // h_v_star = NULL;
+      // h_contact_stiffness = NULL;
+      // h_contact_damping = NULL;
     }
   }
 }
