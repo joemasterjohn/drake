@@ -107,7 +107,7 @@ GTEST_TEST(KernelTest, FullSolveTest) {
 
       h_spheres[i * numSpheres + j].velocity = Eigen::Vector3d::Zero();
 
-      [[unlikely]] if (j == 21) {
+      if (j == 21) [[unlikely]] {
         // a random aiming point, from (0,0.25) to (0.0,3.5)
         Eigen::Vector3d random_target(
             0.0, 0.25 + static_cast<double>(rand()) / RAND_MAX * 3.25, 0.0);
@@ -122,13 +122,13 @@ GTEST_TEST(KernelTest, FullSolveTest) {
       h_spheres[i * numSpheres + j].radius = 0.5;
 
       // initialize material properties
-      h_spheres[i * numSpheres + j].stiffness = 500.0;
+      h_spheres[i * numSpheres + j].stiffness = 40000.0;
       h_spheres[i * numSpheres + j].damping = 0.5;
       h_spheres[i * numSpheres + j].mass = 0.05;
     }
   }
 
-  for (int iter = 0; iter < 1500; iter++) {
+  for (int iter = 0; iter < 300; iter++) {
     // Allocate memory for results on host
     CollisionData* h_collisionMatrixSpheres =
         new CollisionData[numProblems * numSpheres * numSpheres];
@@ -279,11 +279,10 @@ GTEST_TEST(KernelTest, FullSolveTest) {
         h_spheres[i * numSpheres + j].velocity(2) = v_solved[i](j * 3 + 2, 0);
       }
 
-      if (iter % 5 == 0) {
+      if (true) {
         // Create and open the file
         std::ostringstream iterStream;
-        iterStream << "output_" << std::setw(4) << std::setfill('0')
-                   << iter / 5;
+        iterStream << "output_" << std::setw(4) << std::setfill('0') << iter;
         std::string filename = base_foldername + "/problem_" +
                                std::to_string(i) + "/" + iterStream.str() +
                                ".csv";

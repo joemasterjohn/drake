@@ -5,7 +5,7 @@
 #include "cuda_gpu_collision.h"
 
 #ifndef dt
-#define dt 0.002
+#define dt 0.01
 #endif
 
 #ifndef gravity
