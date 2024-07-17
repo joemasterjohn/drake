@@ -77,7 +77,7 @@ def _nvcc_object(
             # the graphic card will use if it is capable of.
             "-gencode arch=compute_86,code=sm_86",
             # Input => output compile only (don't link).
-            "$(location {}) -c -g -G -o $@".format(src),
+            "$(location {}) -c -o $@".format(src),
         ] + include_args + nvcc_opts),
         tags = ["manual"],
         visibility = ["//visibility:private"],
