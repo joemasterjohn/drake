@@ -577,11 +577,9 @@ std::pair<T, int> SapSolver<T>::PerformBackTrackingLineSearch(
 }
 
 template <typename T>
-std::pair<T, int> SapSolver<T>::
-
-    (const SapModel<T>& model, const Context<T>& context,
-     const SearchDirectionData& search_direction_data,
-     Context<T>* scratch) const
+std::pair<T, int> SapSolver<T>::PerformExactLineSearch(
+    const SapModel<T>& model, const Context<T>& context,
+    const SearchDirectionData& search_direction_data, Context<T>* scratch) const
   requires std::is_same_v<T, double>
 {  // NOLINT(whitespace/braces)
   DRAKE_DEMAND(parameters_.line_search_type ==
