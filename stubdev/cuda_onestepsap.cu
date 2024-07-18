@@ -18,6 +18,10 @@
 // ========================================================================
 
 // ========================================================================
+// Data Access Functions
+// ========================================================================
+
+// ========================================================================
 // Device Functions
 // ========================================================================
 // Device helper function to perform SAPXY operation
@@ -109,31 +113,6 @@ __device__ void CalcConstraintCost(SAPGPUData* data) {
 
   __syncwarp();
 }
-
-// =======================================================
-// scratch space - discard!!!
-// =======================================================
-// __device__ void CalcConstraintCost(SAPGPUData* data) {
-//   double sum = 0.0;
-//   for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
-//     sum += CalcIndividualConstraintCost(data, i);
-//   }
-//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 16);
-//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 8);
-//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
-//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
-//   sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
-
-//   __syncwarp();
-
-//   if (threadIdx.x == 0) {
-//     data->constraint_cost()(0, 0) = sum;
-//   }
-
-//   __syncwarp();
-// }
-
-// =======================================================
 
 // Contruct Hessian, H = dynamics_matrix + J * G * J^T
 __device__ void CalculateHessian(SAPGPUData* data) {
@@ -792,6 +771,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
   // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
   for (int iter = 0; iter < max_iteration; iter++) {
+    if (flag == 0.0) break;
+
     if (flag == 1.0) {
       // calculate search direction
       // we add offset to shared memory to avoid SoveWithGuessImplKernel
@@ -855,7 +836,7 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
     }
   }
   // TODO: remove this debugging output
-  if (threadIdx.x == 0) printf("SAP Converged!\n");
+  // if (threadIdx.x == 0) printf("SAP Converged!\n");
   __syncwarp();
 }
 
@@ -863,25 +844,11 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
 // Driver Functions
 // This function is used in the unit test to perform a complete SAP solve,
 // including search direction calculation and line search
-void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
-                       std::vector<Eigen::MatrixXd>& v_solved,
-                       int num_velocities, int num_contacts, int num_problems) {
+void SAPGPUData::TestOneStepSapGPU() {
   std::cout << "TestOneStepSapGPU with GPU called with " << num_problems
             << " problems" << std::endl;
 
   // We create two GPU data struct instances for gtest unit test purpose
-
-  SAPGPUData sap_gpu_data_solve;  // GPU data struct
-
-  sap_gpu_data_solve.MakeSAPGPUData(sap_cpu_data);
-
-  // copy SAPGPUData to GPU
-
-  SAPGPUData* d_sap_gpu_data_solve;
-
-  HANDLE_ERROR(cudaMalloc(&d_sap_gpu_data_solve, sizeof(SAPGPUData)));
-  HANDLE_ERROR(cudaMemcpy(d_sap_gpu_data_solve, &sap_gpu_data_solve,
-                          sizeof(SAPGPUData), cudaMemcpyHostToDevice));
 
   int threadsPerBlock = 32;
 
@@ -893,55 +860,47 @@ void TestOneStepSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   std::cout << "finished call" << std::endl;
-
-  sap_gpu_data_solve.RetriveVGuessToCPU(v_solved);
-
-  std::cout << "retrieved" << std::endl;
-
-  sap_gpu_data_solve.DestroySAPGPUData();
-
-  std::cout << "destroyed" << std::endl;
 }
 
-// This function is used in the unit test to confirm the cost evaluation and
-// the cholesky solve are correct
-void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
-                                std::vector<double>& momentum_cost,
-                                std::vector<double>& constraint_cost,
-                                std::vector<Eigen::MatrixXd>& hessian,
-                                std::vector<Eigen::MatrixXd>& neg_grad,
-                                std::vector<Eigen::MatrixXd>& chol_x,
-                                int num_velocities, int num_contacts,
-                                int num_problems) {
-  SAPGPUData sap_gpu_data_dir;  // GPU data struct instance for validation of
-  // calculation results of one step
+// // This function is used in the unit test to confirm the cost evaluation and
+// // the cholesky solve are correct
+// void TestCostEvalAndSolveSapGPU(std::vector<SAPCPUData>& sap_cpu_data,
+//                                 std::vector<double>& momentum_cost,
+//                                 std::vector<double>& constraint_cost,
+//                                 std::vector<Eigen::MatrixXd>& hessian,
+//                                 std::vector<Eigen::MatrixXd>& neg_grad,
+//                                 std::vector<Eigen::MatrixXd>& chol_x,
+//                                 int num_velocities, int num_contacts,
+//                                 int num_problems) {
+//   SAPGPUData sap_gpu_data_dir;  // GPU data struct instance for validation of
+//   // calculation results of one step
 
-  sap_gpu_data_dir.MakeSAPGPUData(sap_cpu_data);
+//   sap_gpu_data_dir.MakeSAPGPUData(sap_cpu_data);
 
-  SAPGPUData* d_sap_gpu_data_dir;
-  HANDLE_ERROR(cudaMalloc(&d_sap_gpu_data_dir, sizeof(SAPGPUData)));
-  HANDLE_ERROR(cudaMemcpy(d_sap_gpu_data_dir, &sap_gpu_data_dir,
-                          sizeof(SAPGPUData), cudaMemcpyHostToDevice));
+//   SAPGPUData* d_sap_gpu_data_dir;
+//   HANDLE_ERROR(cudaMalloc(&d_sap_gpu_data_dir, sizeof(SAPGPUData)));
+//   HANDLE_ERROR(cudaMemcpy(d_sap_gpu_data_dir, &sap_gpu_data_dir,
+//                           sizeof(SAPGPUData), cudaMemcpyHostToDevice));
 
-  // unit test: check for search direction solved by cholesky solve
-  // Hx = -grad
+//   // unit test: check for search direction solved by cholesky solve
+//   // Hx = -grad
 
-  int threadsPerBlock = 32;
+//   int threadsPerBlock = 32;
 
-  SolveSearchDirectionKernel<<<num_problems, threadsPerBlock,
-                               4096 * sizeof(double)>>>(d_sap_gpu_data_dir);
+//   SolveSearchDirectionKernel<<<num_problems, threadsPerBlock,
+//                                4096 * sizeof(double)>>>(d_sap_gpu_data_dir);
 
-  HANDLE_ERROR(cudaDeviceSynchronize());
+//   HANDLE_ERROR(cudaDeviceSynchronize());
 
-  // Transfer back to CPU for gtest validation
-  sap_gpu_data_dir.RetriveMomentumCostToCPU(momentum_cost);
-  sap_gpu_data_dir.RetriveConstraintCostToCPU(constraint_cost);
-  sap_gpu_data_dir.RetriveHessianToCPU(hessian);
-  sap_gpu_data_dir.RetriveNegGradToCPU(neg_grad);
-  sap_gpu_data_dir.RetriveCholXToCPU(chol_x);
+//   // Transfer back to CPU for gtest validation
+//   sap_gpu_data_dir.RetriveMomentumCostToCPU(momentum_cost);
+//   sap_gpu_data_dir.RetriveConstraintCostToCPU(constraint_cost);
+//   sap_gpu_data_dir.RetriveHessianToCPU(hessian);
+//   sap_gpu_data_dir.RetriveNegGradToCPU(neg_grad);
+//   sap_gpu_data_dir.RetriveCholXToCPU(chol_x);
 
-  sap_gpu_data_dir.DestroySAPGPUData();
-}
+//   sap_gpu_data_dir.DestroySAPGPUData();
+// }
 
 // ===========================================================================
 

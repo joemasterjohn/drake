@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "cuda_gpu_collision.cuh"
 #include "cuda_gpu_collision.h"
 
 #ifndef dt
@@ -11,18 +12,6 @@
 #ifndef gravity
 #define gravity -9.81
 #endif
-
-// CUDA error handeling
-// =====================
-static void HandleError(cudaError_t err, const char* file, int line) {
-  if (err != cudaSuccess) {
-    printf("%s in %s at line %d\n", cudaGetErrorString(err), file, line);
-    exit(EXIT_FAILURE);
-  }
-}
-
-#define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
-// =====================
 
 // Device function to check Sphere-Sphere collision
 __device__ CollisionData CheckSphereCollision(const Sphere& a,
@@ -217,150 +206,65 @@ __global__ void CalculateFreeMotionVelocity(const Sphere* spheres,
   __syncwarp();
 }
 
-void CollisionEngine(Sphere* h_spheres, const int numProblems,
-                     const int numSpheres,
-                     CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, int* h_num_collisions,
-                     double* h_dynamic_matrix, double* h_velocity_vector,
-                     double* h_v_star, double* h_phi0,
-                     double* h_contact_stiffness, double* h_contact_damping) {
-  // Device memory allocations
-  Sphere* d_spheres;
-  CollisionData* d_collisionMatrixSpheres;
-
-  int* d_num_collisions;
-  double* d_jacobian;
-  double* d_dynamic_matrix;  // for now, we deal with 3DOF per body, so A matrix
-  // is 3*numsphere x 3*numsphere
-  double* d_velocity_vector;  // for now, we deal with 3DOF per body, so
-                              // velocity vector is 3*numsphere x 1
-  double* d_v_star;
-  double* d_phi0;
-  double* d_contact_stiffness;
-  double* d_contact_damping;
-
-  double* d_test;
-  HANDLE_ERROR(cudaMalloc((void**)&d_test, sizeof(double)));
-
-  HANDLE_ERROR(cudaMalloc((void**)&d_spheres,
-                          numProblems * numSpheres * sizeof(Sphere)));
-  HANDLE_ERROR(cudaMalloc(
-      (void**)&d_collisionMatrixSpheres,
-      numProblems * numSpheres * numSpheres * sizeof(CollisionData)));
-  HANDLE_ERROR(cudaMalloc((void**)&d_jacobian,
-                          numProblems * sizeof(double) * (numSpheres * 3) *
-                              numSpheres * numSpheres * 3));
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_num_collisions, numProblems * sizeof(int)));
-  HANDLE_ERROR(cudaMalloc(
-      (void**)&d_dynamic_matrix,
-      numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3));
-  HANDLE_ERROR(cudaMalloc((void**)&d_velocity_vector,
-                          numProblems * sizeof(double) * numSpheres * 3));
-  HANDLE_ERROR(cudaMalloc((void**)&d_v_star,
-                          numProblems * sizeof(double) * numSpheres * 3));
-  HANDLE_ERROR(cudaMalloc(
-      (void**)&d_phi0, numProblems * sizeof(double) * numSpheres * numSpheres));
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_contact_stiffness,
-                 numProblems * sizeof(double) * numSpheres * numSpheres));
-  HANDLE_ERROR(
-      cudaMalloc((void**)&d_contact_damping,
-                 numProblems * sizeof(double) * numSpheres * numSpheres));
-
-  // Copy data to device
-  HANDLE_ERROR(cudaMemcpy(d_spheres, h_spheres,
-                          numProblems * numSpheres * sizeof(Sphere),
-                          cudaMemcpyHostToDevice));
-
-  // Set jacobian, num_collisions, full gamma vector to zero
-  HANDLE_ERROR(cudaMemset(d_jacobian, 0,
-                          numProblems * sizeof(double) * (numSpheres * 3) *
-                              numSpheres * numSpheres * 3));
-  HANDLE_ERROR(cudaMemset(d_num_collisions, 0, numProblems * sizeof(int)));
-  HANDLE_ERROR(cudaMemset(
-      d_dynamic_matrix, 0,
-      numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3));
-  HANDLE_ERROR(cudaMemset(d_velocity_vector, 0,
-                          numProblems * sizeof(double) * numSpheres * 3));
-  HANDLE_ERROR(
-      cudaMemset(d_v_star, 0, numProblems * sizeof(double) * numSpheres * 3));
-  HANDLE_ERROR(cudaMemset(
-      d_phi0, 0, numProblems * sizeof(double) * numSpheres * numSpheres));
-  HANDLE_ERROR(
-      cudaMemset(d_contact_stiffness, 0,
-                 numProblems * sizeof(double) * numSpheres * numSpheres));
-  HANDLE_ERROR(
-      cudaMemset(d_contact_damping, 0,
-                 numProblems * sizeof(double) * numSpheres * numSpheres));
-
+void CollisionGPUData::CollisionEngine(const int numProblems,
+                                       const int numSpheres) {
   // Kernel launches
   int threadsPerBlock = 32;
   int blocksPerGridSpheres = numProblems;
   DetectSphereCollisions<<<blocksPerGridSpheres, threadsPerBlock>>>(
-      d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres);
+      this->GetSpherePtr(), numProblems, numSpheres,
+      this->GetCollisionMatrixPtr());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Construct Jacobian matrix and Gamma vector
   ConstructJacobianGamma<<<blocksPerGridSpheres, threadsPerBlock>>>(
-      d_spheres, numProblems, numSpheres, d_collisionMatrixSpheres, d_jacobian,
-      d_num_collisions, d_phi0, d_contact_stiffness, d_contact_damping);
+      this->GetSpherePtr(), numProblems, numSpheres,
+      this->GetCollisionMatrixPtr(), this->GetJacobianPtr(),
+      this->GetNumCollisionsPtr(), this->GetPhi0Ptr(),
+      this->GetContactStiffnessPtr(), this->GetContactDampingPtr());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Construct Dynamic matrix
   ConstructDynamicMatrixVelocityVector<<<blocksPerGridSpheres,
                                          threadsPerBlock>>>(
-      d_spheres, numProblems, numSpheres, d_dynamic_matrix, d_velocity_vector);
+      this->GetSpherePtr(), numProblems, numSpheres,
+      this->GetDynamicMatrixPtr(), this->GetVelocityVectorPtr());
   HANDLE_ERROR(cudaDeviceSynchronize());
 
   // Calculate free motion velocity vector Dynamic matrix
   CalculateFreeMotionVelocity<<<blocksPerGridSpheres, threadsPerBlock>>>(
-      d_spheres, numProblems, numSpheres, d_velocity_vector, d_v_star);
+      this->GetSpherePtr(), numProblems, numSpheres,
+      this->GetVelocityVectorPtr(), this->GetVStarPtr());
   HANDLE_ERROR(cudaDeviceSynchronize());
+}
 
-  // Copy results back to host
-  HANDLE_ERROR(
-      cudaMemcpy(h_collisionMatrixSpheres, d_collisionMatrixSpheres,
-                 numProblems * numSpheres * numSpheres * sizeof(CollisionData),
-                 cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(cudaMemcpy(h_jacobian, d_jacobian,
-                          numProblems * sizeof(double) * (numSpheres * 3) *
-                              numSpheres * numSpheres * 3,
-                          cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(cudaMemcpy(h_num_collisions, d_num_collisions,
-                          numProblems * sizeof(int), cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(
-      cudaMemcpy(h_dynamic_matrix, d_dynamic_matrix,
-                 numProblems * sizeof(double) * numSpheres * 3 * numSpheres * 3,
-                 cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(cudaMemcpy(h_velocity_vector, d_velocity_vector,
-                          numProblems * sizeof(double) * numSpheres * 3,
-                          cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(cudaMemcpy(h_v_star, d_v_star,
-                          numProblems * sizeof(double) * numSpheres * 3,
-                          cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(cudaMemcpy(
-      h_phi0, d_phi0, numProblems * sizeof(double) * numSpheres * numSpheres,
-      cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(
-      cudaMemcpy(h_contact_stiffness, d_contact_stiffness,
-                 numProblems * sizeof(double) * numSpheres * numSpheres,
-                 cudaMemcpyDeviceToHost));
-  HANDLE_ERROR(
-      cudaMemcpy(h_contact_damping, d_contact_damping,
-                 numProblems * sizeof(double) * numSpheres * numSpheres,
-                 cudaMemcpyDeviceToHost));
+__global__ void IntegrateExplicitEulerKernel(Sphere* spheres, int numProblems,
+                                             int numSpheres,
+                                             double* d_velocity_vector) {
+  int idx = threadIdx.x;
+  int p_idx = blockIdx.x;
 
-  // Free device memory
+  Eigen::Map<Eigen::VectorXd> velocity_vector(
+      d_velocity_vector + blockIdx.x * numSpheres * 3, numSpheres * 3, 1);
 
-  cudaFree(d_dynamic_matrix);
-  cudaFree(d_velocity_vector);
-  cudaFree(d_v_star);
-  cudaFree(d_phi0);
-  cudaFree(d_contact_damping);
-  cudaFree(d_contact_stiffness);
-  cudaFree(d_spheres);
-  cudaFree(d_collisionMatrixSpheres);
-  cudaFree(d_jacobian);
-  cudaFree(d_num_collisions);
+  for (int j = idx; j < numSpheres; j += blockDim.x) {
+    spheres[p_idx * numSpheres + j].velocity =
+        velocity_vector.block<3, 1>(j * 3, 0);
+    spheres[p_idx * numSpheres + j].center =
+        spheres[p_idx * numSpheres + j].center +
+        dt * velocity_vector.block<3, 1>(j * 3, 0);
+  }
+
+  __syncwarp();
+}
+
+// an eplicit euler to update the position based on velocity_vector
+void CollisionGPUData::IntegrateExplicitEuler(const int numProblems,
+                                              const int numSpheres) {
+  // Kernel launches
+  int threadsPerBlock = 32;
+  int blocksPerGridSpheres = numProblems;
+  IntegrateExplicitEulerKernel<<<blocksPerGridSpheres, threadsPerBlock>>>(
+      d_spheres, numProblems, numSpheres, this->GetVelocityVectorPtr());
+  HANDLE_ERROR(cudaDeviceSynchronize());
 }

@@ -1,7 +1,10 @@
 #pragma once
 
+#include "cuda_gpu_collision.cuh"
 #include "cuda_onestepsap.h"
 
+#ifndef HANDLE_ERROR_MACRO
+#define HANDLE_ERROR_MACRO
 static void HandleError(cudaError_t err, const char* file, int line) {
   if (err != cudaSuccess) {
     printf("%s in %s at line %d\n", cudaGetErrorString(err), file, line);
@@ -10,6 +13,8 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 }
 
 #define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
+#endif
+
 //
 // define a SAP data strucutre
 struct SAPGPUData {
@@ -381,23 +386,14 @@ struct SAPGPUData {
     }
   }
 
-  void MakeSAPGPUData(std::vector<SAPCPUData> data) {
-    this->num_contacts = data[0].num_contacts;
-    this->num_velocities = data[0].num_velocities;
-    this->num_problems = data.size();
+  void Initialize(int num_contacts, int num_velocities, int num_problems,
+                  CollisionGPUData* gpu_collision_data) {
+    this->num_contacts = num_contacts;
+    this->num_velocities = num_velocities;
+    this->num_problems = num_problems;
 
-    // Malloc for all pointers
-    HANDLE_ERROR(cudaMalloc(&A_global, num_problems * num_velocities *
-                                           num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(&v_guess_global,
-                            num_problems * num_velocities * sizeof(double)));
-    HANDLE_ERROR(cudaMalloc(&v_star_global,
-                            num_problems * num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&delta_v_global,
                             num_problems * num_velocities * sizeof(double)));
-
-    HANDLE_ERROR(cudaMalloc(&J_global, num_problems * 3 * num_contacts *
-                                           num_velocities * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(
         &G_global, num_problems * num_contacts * 3 * 3 * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&gamma_global,
@@ -432,15 +428,23 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMalloc(&l_alpha_global, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMalloc(&r_alpha_global, num_problems * sizeof(double)));
 
-    HANDLE_ERROR(
-        cudaMalloc(&phi0_global, num_problems * sizeof(double) * num_contacts));
-    HANDLE_ERROR(cudaMalloc(&contact_stiffness_global,
-                            num_problems * sizeof(double) * num_contacts));
-    HANDLE_ERROR(cudaMalloc(&contact_damping_global,
-                            num_problems * sizeof(double) * num_contacts));
-    HANDLE_ERROR(
-        cudaMalloc(&num_active_contacts_global, num_problems * sizeof(int)));
+    // retrieve data from the gpu_collision_data
+    A_global = gpu_collision_data->GetDynamicMatrixPtr();
+    v_star_global = gpu_collision_data->GetVStarPtr();
+    v_guess_global = gpu_collision_data->GetVelocityVectorPtr();
+    J_global = gpu_collision_data->GetJacobianPtr();
+    phi0_global = gpu_collision_data->GetPhi0Ptr();
+    contact_stiffness_global = gpu_collision_data->GetContactStiffnessPtr();
+    contact_damping_global = gpu_collision_data->GetContactDampingPtr();
+    num_active_contacts_global = gpu_collision_data->GetNumCollisionsPtr();
 
+    // copy struct to device
+    HANDLE_ERROR(cudaMalloc(&d_sap_gpu_data_solve, sizeof(SAPGPUData)));
+    HANDLE_ERROR(cudaMemcpy(d_sap_gpu_data_solve, this, sizeof(SAPGPUData),
+                            cudaMemcpyHostToDevice));
+  }
+
+  void Update() {
     // Set data to initialized value using cudaMemset
     HANDLE_ERROR(cudaMemset(
         chol_L_global, 0,
@@ -455,43 +459,6 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMemset(dll_eval_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(l_alpha_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(r_alpha_global, 0, num_problems * sizeof(double)));
-    HANDLE_ERROR(cudaMemset(phi0_global, 0,
-                            num_problems * sizeof(double) * num_contacts));
-    HANDLE_ERROR(
-        cudaMemset(num_active_contacts_global, 0, num_problems * sizeof(int)));
-
-    // Copy data to GPU
-    for (int i = 0; i < num_problems; i++) {
-      HANDLE_ERROR(cudaMemcpy(A_global + i * num_velocities * num_velocities,
-                              data[i].dynamics_matrix.data(),
-                              num_velocities * num_velocities * sizeof(double),
-                              cudaMemcpyHostToDevice));
-      HANDLE_ERROR(
-          cudaMemcpy(v_star_global + i * num_velocities, data[i].v_star.data(),
-                     num_velocities * sizeof(double), cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(
-          v_guess_global + i * num_velocities, data[i].v_guess.data(),
-          num_velocities * sizeof(double), cudaMemcpyHostToDevice));
-      HANDLE_ERROR(
-          cudaMemcpy(J_global + i * 3 * num_contacts * num_velocities,
-                     data[i].constraint_data.J.data(),
-                     3 * num_contacts * num_velocities * sizeof(double),
-                     cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(
-          phi0_global + i * num_contacts, data[i].constraint_data.phi0.data(),
-          num_contacts * sizeof(double), cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(contact_stiffness_global + i * num_contacts,
-                              data[i].constraint_data.contact_stiffness.data(),
-                              num_contacts * sizeof(double),
-                              cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(contact_damping_global + i * num_contacts,
-                              data[i].constraint_data.contact_damping.data(),
-                              num_contacts * sizeof(double),
-                              cudaMemcpyHostToDevice));
-      HANDLE_ERROR(cudaMemcpy(num_active_contacts_global + i,
-                              &data[i].constraint_data.num_active_contacts,
-                              sizeof(int), cudaMemcpyHostToDevice));
-    }
   }
 
   // Free memory
@@ -522,6 +489,8 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaFree(l_alpha_global));
     HANDLE_ERROR(cudaFree(r_alpha_global));
   }
+
+  void TestOneStepSapGPU();
 
  private:
   double* A_global;        // Global memory dynamics matrix A for all sims
@@ -576,6 +545,8 @@ struct SAPGPUData {
   double*
       r_alpha_global;  // Global memory to hold right alpha for line search this
                        // also serves as a scratch space during the line search
+
+  SAPGPUData* d_sap_gpu_data_solve;  // Storing GPU copy of SAPGPUData
 };
 
 // ===========================================================================

@@ -6,7 +6,6 @@
 
 #include <cuda_runtime.h>
 #include <eigen3/Eigen/Dense>
-
 // Define sphere geometry
 struct Sphere {
   Eigen::Vector3d center;
@@ -40,10 +39,11 @@ struct CollisionData {
 };
 
 // Collision check
-void CollisionEngine(Sphere* h_spheres, const int numProblems,
-                     const int numSpheres,
-                     CollisionData* h_collisionMatrixSpheres,
-                     double* h_jacobian, int* h_num_collisions,
-                     double* h_dynamic_matrix, double* h_velocity_vector,
-                     double* h_v_star, double* h_phi0,
-                     double* h_contact_stiffness, double* h_contact_damping);
+// void CollisionEngine(Sphere* h_spheres, const int numProblems,
+//                      const int numSpheres,
+//                      CollisionData* h_collisionMatrixSpheres,
+//                      double* h_jacobian, int* h_num_collisions,
+//                      double* h_dynamic_matrix, double* h_velocity_vector,
+//                      double* h_v_star, double* h_phi0,
+//                      double* h_contact_stiffness, double* h_contact_damping,
+//                      SAPInputData* h_sap_input_data);
