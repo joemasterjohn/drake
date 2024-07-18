@@ -105,8 +105,6 @@ __device__ void CalcConstraintCost(SAPGPUData* data) {
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
 
-  __syncwarp();
-
   if (threadIdx.x == 0) {
     data->constraint_cost()(0, 0) = sum;
   }
@@ -215,8 +213,6 @@ __device__ void CalculateDlDalpha0(SAPGPUData* data, double* sums) {
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 4);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 2);
   sum += __shfl_down_sync(0xFFFFFFFF, sum, 1);
-
-  __syncwarp();
 
   if (threadIdx.x == 0) {
     data->dl_dalpha0()(0, 0) = sum;
@@ -394,8 +390,6 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha,
   res += __shfl_down_sync(0xFFFFFFFF, res, 2);
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
 
-  __syncwarp();
-
   if (threadIdx.x == 0) {
     d_temp = d_temp - res;
     dell_dalpha = d_temp;
@@ -450,8 +444,6 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   res += __shfl_down_sync(0xFFFFFFFF, res, 2);
   res += __shfl_down_sync(0xFFFFFFFF, res, 1);
 
-  __syncwarp();
-
   if (threadIdx.x == 0) {
     d_temp += res;
     d2ell_dalpha2 = d_temp;
@@ -467,8 +459,6 @@ __device__ double SAPLineSearch(SAPGPUData* data, double* buff) {
 
   int equ_idx = blockIdx.x;
   int thread_idx = threadIdx.x;
-
-  __syncwarp();
 
   double* sums = buff + buff_arr_offset + 3 * data->NumVelocities() +
                  3 * data->NumContacts();
@@ -689,8 +679,6 @@ __device__ void CalcStoppingCriteriaResidual(SAPGPUData* data,
   p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 2);
   p_tilde_2 += __shfl_down_sync(0xFFFFFFFF, p_tilde_2, 1);
 
-  __syncwarp();
-
   // calculate j_tilde^2 term
   double j_tilde_2 = 0.0;
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
@@ -708,8 +696,6 @@ __device__ void CalcStoppingCriteriaResidual(SAPGPUData* data,
   j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 2);
   j_tilde_2 += __shfl_down_sync(0xFFFFFFFF, j_tilde_2, 1);
 
-  __syncwarp();
-
   // calculate ell_grad_tilde^2 term
   double ell_grad_tilde_2 = 0.0;
   for (int i = threadIdx.x; i < data->NumVelocities(); i += blockDim.x) {
@@ -723,8 +709,6 @@ __device__ void CalcStoppingCriteriaResidual(SAPGPUData* data,
   ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 4);
   ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 2);
   ell_grad_tilde_2 += __shfl_down_sync(0xFFFFFFFF, ell_grad_tilde_2, 1);
-
-  __syncwarp();
 
   // calculate momentum residue
   if (threadIdx.x == 0) {
@@ -743,8 +727,6 @@ __global__ void SolveSearchDirectionKernel(SAPGPUData* data) {
   extern __shared__ double sums[];
 
   CalcSearchDirection(data, sums);
-
-  __syncwarp();
 }
 
 __global__ void SolveWithGuessKernel(SAPGPUData* data) {
@@ -771,6 +753,9 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
   // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
   for (int iter = 0; iter < max_iteration; iter++) {
+    if (threadIdx.x == 0) {
+      printf("iter: %d\n", iter);
+    }
     if (flag == 0.0) break;
 
     if (flag == 1.0) {
@@ -778,8 +763,6 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       // we add offset to shared memory to avoid SoveWithGuessImplKernel
       // __shared__ varibales being overwritten
       CalcSearchDirection(data, sums + 5 + data->NumVelocities());
-
-      __syncwarp();
 
       // perform line search
       // we add offset to shared memory to avoid SoveWithGuessImplKernel
@@ -791,7 +774,9 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       // calculate momentum residule and momentum scale
       CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
 
-      __syncwarp();
+      if (threadIdx.x == 0) {
+        printf("momentum_residue: %.30f\n", momentum_residue);
+      }
 
       // Thread 0 registers first results or check residual if the current
       // iteration is not 0, if necessary, continue

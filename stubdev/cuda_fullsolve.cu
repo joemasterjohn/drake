@@ -22,7 +22,7 @@
 #endif
 #include <iomanip>
 
-bool write_out = false;
+bool write_out = true;
 
 bool create_directory(const std::string& path) {
   int result;
@@ -67,7 +67,7 @@ void FullSolveSapCPUEntry(Sphere* h_spheres, const int numProblems,
   sap_gpu_data.Initialize(numContacts, numSpheres * 3, numProblems,
                           &gpu_collision_data);
 
-  for (int iter = 0; iter < 300; iter++) {
+  for (int iter = 0; iter < 400; iter++) {
     gpu_collision_data.Update();
 
     // // Run the GPU collision engine

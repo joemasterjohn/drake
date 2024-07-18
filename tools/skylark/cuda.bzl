@@ -71,6 +71,7 @@ def _nvcc_object(
             "-use_fast_math",
             # Eigen requires some experimental extensions.
             "--expt-relaxed-constexpr",
+            "-lineinfo",
             # The double-precision version of atomicAdd requires CUDA compute
             # capability 6.x but the Tesla M60 on Jenkins only supports 5.2.
             # This will generate and include code compatible with 6.0, which
