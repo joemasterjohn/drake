@@ -68,7 +68,7 @@ def _nvcc_object(
             "--compiler-options=-fPIC",
             # Don't bother supporting -c dbg mode here.
             "-O2 -DNDEBUG",
-            "-use_fast_math",
+            #"-use_fast_math",
             # Eigen requires some experimental extensions.
             "--expt-relaxed-constexpr",
             "-lineinfo",

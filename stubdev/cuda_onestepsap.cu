@@ -381,7 +381,7 @@ __device__ void SAPLineSearchEvalDer(SAPGPUData* data, double alpha,
   __syncwarp();
 
   res = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+  for (int i = threadIdx.x; i < data->num_active_contacts(); i += blockDim.x) {
     res += delta_v_c.block<3, 1>(3 * i, 0).dot(data->gamma(i));
   }
   res += __shfl_down_sync(0xFFFFFFFF, res, 16);
@@ -425,7 +425,7 @@ __device__ void SAPLineSearchEval2Der(SAPGPUData* data, double alpha,
   __syncwarp();
 
   res = 0.0;
-  for (int i = threadIdx.x; i < data->NumContacts(); i += blockDim.x) {
+  for (int i = threadIdx.x; i < data->num_active_contacts(); i += blockDim.x) {
     double vec_0 = delta_v_c(3 * i, 0);
     double vec_1 = delta_v_c(3 * i + 1, 0);
     double vec_2 = delta_v_c(3 * i + 2, 0);
@@ -775,7 +775,8 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
 
       if (threadIdx.x == 0) {
-        printf("momentum_residue: %.30f\n", momentum_residue);
+        printf("momentum_residue: %.30f, rhs: %.30f\n", momentum_residue,
+               abs_tolerance + rel_tolerance * momentum_scale);
       }
 
       // Thread 0 registers first results or check residual if the current
@@ -794,9 +795,17 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
           double ell = data->momentum_cost()(0, 0) +
                        data->constraint_cost()(0, 0);  // current cost
           double ell_scale = 0.5 * (abs(ell) + abs(ell_previous));
-          double ell_decrement = std::abs(ell_previous - ell);
+          double ell_decrement = abs(ell_previous - ell);
           // printf("ell_decrement %.30f, rhs: %.30f\n", ell_decrement,
           //        cost_abs_tolerance + cost_rel_tolerance * ell_scale);
+          printf("ell_decrement %.30f, rhs: %.30f alpha: %.30f\n",
+                 ell_decrement,
+                 cost_abs_tolerance + cost_rel_tolerance * ell_scale, alpha);
+          printf(
+              "momentum_cost: %.30f, constraint_cost: %.30f, total cost: "
+              "%.30f\n",
+              data->momentum_cost()(0, 0), data->constraint_cost()(0, 0),
+              data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0));
           if (ell_decrement <
                   cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
               alpha > 0.5) {

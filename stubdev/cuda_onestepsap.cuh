@@ -459,6 +459,10 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaMemset(dll_eval_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(l_alpha_global, 0, num_problems * sizeof(double)));
     HANDLE_ERROR(cudaMemset(r_alpha_global, 0, num_problems * sizeof(double)));
+
+    // reset gamma_full to 0
+    HANDLE_ERROR(cudaMemset(gamma_global, 0,
+                            num_problems * num_contacts * 3 * sizeof(double)));
   }
 
   // Free memory
