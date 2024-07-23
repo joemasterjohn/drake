@@ -753,9 +753,9 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
   // TODO: might need replace this while loop to a for loop
   // SAP Iteration loop
   for (int iter = 0; iter < max_iteration; iter++) {
-    if (threadIdx.x == 0) {
-      printf("iter: %d\n", iter);
-    }
+    // if (threadIdx.x == 0) {
+    //   printf("iter: %d\n", iter);
+    // }
     if (flag == 0.0) break;
 
     if (flag == 1.0) {
@@ -774,10 +774,10 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
       // calculate momentum residule and momentum scale
       CalcStoppingCriteriaResidual(data, momentum_residue, momentum_scale);
 
-      if (threadIdx.x == 0) {
-        printf("momentum_residue: %.30f, rhs: %.30f\n", momentum_residue,
-               abs_tolerance + rel_tolerance * momentum_scale);
-      }
+      // if (threadIdx.x == 0) {
+      //   printf("momentum_residue: %.30f, rhs: %.30f\n", momentum_residue,
+      //          abs_tolerance + rel_tolerance * momentum_scale);
+      // }
 
       // Thread 0 registers first results or check residual if the current
       // iteration is not 0, if necessary, continue
@@ -798,14 +798,14 @@ __global__ void SolveWithGuessKernel(SAPGPUData* data) {
           double ell_decrement = abs(ell_previous - ell);
           // printf("ell_decrement %.30f, rhs: %.30f\n", ell_decrement,
           //        cost_abs_tolerance + cost_rel_tolerance * ell_scale);
-          printf("ell_decrement %.30f, rhs: %.30f alpha: %.30f\n",
-                 ell_decrement,
-                 cost_abs_tolerance + cost_rel_tolerance * ell_scale, alpha);
-          printf(
-              "momentum_cost: %.30f, constraint_cost: %.30f, total cost: "
-              "%.30f\n",
-              data->momentum_cost()(0, 0), data->constraint_cost()(0, 0),
-              data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0));
+          // printf("ell_decrement %.30f, rhs: %.30f alpha: %.30f\n",
+          //        ell_decrement,
+          //        cost_abs_tolerance + cost_rel_tolerance * ell_scale, alpha);
+          // printf(
+          //     "momentum_cost: %.30f, constraint_cost: %.30f, total cost: "
+          //     "%.30f\n",
+          //     data->momentum_cost()(0, 0), data->constraint_cost()(0, 0),
+          //     data->momentum_cost()(0, 0) + data->constraint_cost()(0, 0));
           if (ell_decrement <
                   cost_abs_tolerance + cost_rel_tolerance * ell_scale &&
               alpha > 0.5) {

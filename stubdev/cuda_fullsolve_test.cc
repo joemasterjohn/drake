@@ -13,12 +13,12 @@ namespace {
 
 GTEST_TEST(KernelTest, FullSolveTest) {
   int numSpheres = 22;
-  int numProblems = 1;
+  int numProblems = 1000;
   int numContacts = numSpheres * numSpheres;
 
   // initialize the problem input spheres_vec, within a box of size 4x4x4, all
   // radius 0.5
-  Sphere h_spheres[numProblems * numSpheres];
+  Sphere* h_spheres = new Sphere[numProblems * numSpheres];
   for (int i = 0; i < numProblems; i++) {
     for (int j = 0; j < numSpheres; j++) {
       Eigen::Vector3d p;
@@ -72,12 +72,12 @@ GTEST_TEST(KernelTest, FullSolveTest) {
         // int col = i % 20;
         // p << -2.4 + static_cast<double>(col) * (4.8 / 20.0), -1.7, 0.0;
 
-        // double random_angle =
-        //     static_cast<double>(rand()) / RAND_MAX * 2.0 * M_PI;
-        // p << 0.0 + 4.5 * cos(random_angle), 3.4641 + 4.5 * sin(random_angle),
-        //     0.0;
+        double random_angle =
+            static_cast<double>(rand()) / RAND_MAX * 2.0 * M_PI;
+        p << 0.0 + 4.5 * cos(random_angle), 3.4641 + 4.5 * sin(random_angle),
+            0.0;
 
-        p << 0.0, -2.0, 0.0;
+        // p << 0.0, -2.0, 0.0;
       }
 
       h_spheres[i * numSpheres + j].center = p;
@@ -86,21 +86,22 @@ GTEST_TEST(KernelTest, FullSolveTest) {
 
       if (j == 21) [[unlikely]] {
         // a random aiming point, from (0,0.25) to (0.0,3.5)
-        // Eigen::Vector3d random_target(
-        //     0.0, 0.25 + static_cast<double>(rand()) / RAND_MAX * 3.25, 0.0);
-        // Eigen::Vector3d direction = random_target - p;
-        // direction.normalize();
-        // // scale up the velocity to 8.0 to 20.0, random
-        // h_spheres[i * numSpheres + j].velocity =
-        //     direction * 8.0 +
-        //     static_cast<double>(rand()) / RAND_MAX * 12.0 * direction;
-        h_spheres[i * numSpheres + j].velocity = Eigen::Vector3d(0.0, 5.0, 0.0);
+        Eigen::Vector3d random_target(
+            0.0, 0.25 + static_cast<double>(rand()) / RAND_MAX * 3.25, 0.0);
+        Eigen::Vector3d direction = random_target - p;
+        direction.normalize();
+        // scale up the velocity to 8.0 to 20.0, random
+        h_spheres[i * numSpheres + j].velocity =
+            direction * 8.0 +
+            static_cast<double>(rand()) / RAND_MAX * 12.0 * direction;
+        // h_spheres[i * numSpheres + j].velocity = Eigen::Vector3d(0.0, 5.0,
+        // 0.0);
       }
 
       h_spheres[i * numSpheres + j].radius = 0.5;
 
       // initialize material properties
-      h_spheres[i * numSpheres + j].stiffness = 40000.0;
+      h_spheres[i * numSpheres + j].stiffness = 200.0;
       h_spheres[i * numSpheres + j].damping = 0.5;
       h_spheres[i * numSpheres + j].mass = 0.05;
     }
