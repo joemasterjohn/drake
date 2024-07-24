@@ -226,7 +226,11 @@ def installed_headers_for_drake_deps(deps):
             not x.startswith("@") and
             not x.startswith("//drake/lcmtypes:") and
             not x == "//:drake_shared_library" and
-            not x.startswith("//third_party")
+            not x.startswith("//third_party") and
+            x.find("cuda_gpu_collision") == -1 and
+            x.find("cuda_onestepsap") == -1 and
+            x.find("cuda_cholesky") == -1 and
+            x.find("cuda_onestepsap_vd") == -1
         )
     ]
 
@@ -419,6 +423,7 @@ def _raw_drake_cc_library(
             tags = ["nolint"],
             visibility = ["//visibility:public"],
         )
+        print(installed_headers_for_drake_deps(interface_deps))
 
     # If we're using implementation_deps, then the result of compiling our srcs
     # needs to use an intermediate label name. The actual `name` label will be
