@@ -9,8 +9,17 @@ load(
 load(
     "//tools/skylark:drake_cc.bzl",
     "drake_cc_googletest",
+    "drake_cc_library",
+    "drake_cc_package_library",
 )
 
+drake_cc_package_library(
+    name = "stubdev",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cuda_fullsolve",
+    ],
+)
 
 nvcc_library(
     name = "cuda_cholesky",
@@ -51,16 +60,17 @@ nvcc_library(
     ],
 )
 
-nvcc_library(
+drake_cc_library(
     name = "cuda_fullsolve",
     hdrs = ["cuda_fullsolve.h",  "cuda_gpu_collision.h","cuda_onestepsap.cuh","cuda_onestepsap.h"],
-    srcs = ["cuda_fullsolve.cu"],
+    srcs = ["cuda_fullsolve.cc"],
     deps = [
-        "//common:essential",
         ":cuda_gpu_collision",
         ":cuda_onestepsap",
         ":cuda_cholesky",
     ],
+    visibility = ["//visibility:public"],
+    declare_installed_headers = True,
 )
 
 drake_cc_googletest(

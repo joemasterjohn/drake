@@ -5,7 +5,8 @@ def _nvcc_object(
         includes = [],
         extra_srcs = [],
         extra_includes = [],
-        nvcc_opts = []):
+        nvcc_opts = [],
+        visibility = []):
     """Compile a specific `src` using nvcc.
 
     src: The src (.cu) file to compile.
@@ -81,7 +82,7 @@ def _nvcc_object(
             "$(location {}) -c -o $@".format(src),
         ] + include_args + nvcc_opts),
         tags = ["manual"],
-        visibility = ["//visibility:private"],
+        visibility = visibility,
     )
 
 def nvcc_library(
@@ -90,7 +91,8 @@ def nvcc_library(
         hdrs = [],
         includes = [],
         nvcc_opts = [],
-        deps = []):
+        deps = [],
+        visibility = ["//visibility:private"]):
     """Declares a cc_library-like target.
 
     Only a few kwargs are supported, compared to the typical cc_library.  If we
@@ -127,6 +129,7 @@ def nvcc_library(
             extra_srcs = nvcc_extra_srcs,
             extra_includes = nvcc_extra_includes,
             nvcc_opts = nvcc_opts,
+            visibility = visibility,
         )
         nvcc_objs.append(obj_name)
     native.cc_library(
@@ -134,5 +137,6 @@ def nvcc_library(
         srcs = nvcc_objs,
         hdrs = hdrs,
         deps = deps + ["@cuda//:cudart"],
-        linkstatic = 1,
+        linkstatic = False,
+        visibility = visibility,
     )

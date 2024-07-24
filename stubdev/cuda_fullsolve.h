@@ -48,8 +48,8 @@ class FullSolveSAP {
     return true;
   }
 
-  void init(Sphere* h_spheres, const int numProblems, const int numSpheres,
-            const int numContacts, bool writeout);
+  void init(Sphere* h_spheres_in, int numProblems_in, int numSpheres_in,
+            int numContacts_in, bool writeout_in);
   void step();
   void destroy();
 

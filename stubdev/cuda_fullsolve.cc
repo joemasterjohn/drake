@@ -1,3 +1,5 @@
+#include "cuda_fullsolve.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -7,7 +9,6 @@
 #include <iostream>
 #include <vector>
 
-#include "cuda_fullsolve.h"
 #include "cuda_gpu_collision.h"
 #include "cuda_onestepsap.cuh"
 #include "cuda_onestepsap.h"
@@ -21,18 +22,18 @@
 #endif
 #include <iomanip>
 
-void FullSolveSAP::init(Sphere* h_spheres, const int numProblems,
-                        const int numSpheres, const int numContacts,
-                        bool writeout) {
-  this->h_spheres = h_spheres;
-  this->numProblems = numProblems;
-  this->numSpheres = numSpheres;
-  this->numContacts = numContacts;
+void FullSolveSAP::init(Sphere* h_spheres_in, int numProblems_in,
+                        int numSpheres_in, int numContacts_in,
+                        bool writeout_in) {
+  this->h_spheres = h_spheres_in;
+  this->numProblems = numProblems_in;
+  this->numSpheres = numSpheres_in;
+  this->numContacts = numContacts_in;
   this->gpu_collision_data->Initialize(this->h_spheres, this->numProblems,
                                        this->numSpheres);
   this->sap_gpu_data->Initialize(this->numContacts, this->numSpheres * 3,
                                  this->numProblems, this->gpu_collision_data);
-  this->writeout = writeout;
+  this->writeout = writeout_in;
 
   if (writeout) {
     create_directory(base_foldername);
