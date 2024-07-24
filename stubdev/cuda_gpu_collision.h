@@ -6,6 +6,7 @@
 
 #include <cuda_runtime.h>
 #include <eigen3/Eigen/Dense>
+
 // Define sphere geometry
 struct Sphere {
   Eigen::Vector3d center;
@@ -38,12 +39,61 @@ struct CollisionData {
   double f_0;  // contact force history, f0 = k * x0
 };
 
-// Collision check
-// void CollisionEngine(Sphere* h_spheres, const int numProblems,
-//                      const int numSpheres,
-//                      CollisionData* h_collisionMatrixSpheres,
-//                      double* h_jacobian, int* h_num_collisions,
-//                      double* h_dynamic_matrix, double* h_velocity_vector,
-//                      double* h_v_star, double* h_phi0,
-//                      double* h_contact_stiffness, double* h_contact_damping,
-//                      SAPInputData* h_sap_input_data);
+// define a SAP data strucutre
+struct CollisionGPUData {
+  void Initialize(Sphere* h_spheres, int m_num_problems, int m_num_spheres);
+  void Update();
+  void Destroy();
+
+  // CPU data retrival, assuming the CPU data is already allocated
+  void RetrieveCollisionDataToCPU(CollisionData* h_collisionMatrixSpheres);
+  void RetrieveJacobianToCPU(double* h_jacobian);
+  void RetrieveNumCollisionsToCPU(int* h_num_collisions);
+  void RetrieveDynamicMatrixToCPU(double* h_dynamic_matrix);
+  void RetrieveVelocityVectorToCPU(double* h_velocity_vector);
+  void RetrieveVStarToCPU(double* h_v_star);
+  void RetrievePhi0ToCPU(double* h_phi0);
+  void RetrieveContactStiffnessToCPU(double* h_contact_stiffness);
+  void RetrieveContactDampingToCPU(double* h_contact_damping);
+  void RetieveSphereDataToCPU(Sphere* h_spheres);
+
+  Sphere* GetSpherePtr() { return d_spheres; }
+
+  CollisionData* GetCollisionMatrixPtr() { return d_collisionMatrixSpheres; }
+
+  double* GetJacobianPtr() { return d_jacobian; }
+
+  int* GetNumCollisionsPtr() { return d_num_collisions; }
+
+  double* GetDynamicMatrixPtr() { return d_dynamic_matrix; }
+
+  double* GetVelocityVectorPtr() { return d_velocity_vector; }
+
+  double* GetPhi0Ptr() { return d_phi0; }
+
+  double* GetVStarPtr() { return d_v_star; }
+
+  double* GetContactStiffnessPtr() { return d_contact_stiffness; }
+
+  double* GetContactDampingPtr() { return d_contact_damping; }
+
+  void CollisionEngine(const int numProblems, const int numSpheres);
+
+  void IntegrateExplicitEuler(const int numProblems, const int numSpheres);
+
+ private:
+  Sphere* d_spheres;
+  CollisionData* d_collisionMatrixSpheres;
+  double* d_jacobian;
+  int* d_num_collisions;
+  double* d_dynamic_matrix;
+  double* d_velocity_vector;
+  double* d_phi0;
+  double* d_v_star;
+
+  double* d_contact_stiffness;
+  double* d_contact_damping;
+
+  int num_problems = 0;
+  int num_spheres = 0;
+};

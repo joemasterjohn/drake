@@ -23,7 +23,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_gpu_collision",
-    hdrs = ["cuda_gpu_collision.h", "cuda_gpu_collision.cuh"],
+    hdrs = ["cuda_gpu_collision.h"],
     srcs = ["cuda_gpu_collision.cu"],
     deps = [
         "//common:essential",
@@ -32,7 +32,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_onestepsap",
-    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h","cuda_onestepsap.cuh", "cuda_cholesky.cuh", "cuda_gpu_collision.h", "cuda_gpu_collision.cuh"],
+    hdrs = ["cuda_onestepsap.h", "cuda_cholesky.h","cuda_onestepsap.cuh", "cuda_cholesky.cuh", "cuda_gpu_collision.h"],
     srcs = ["cuda_onestepsap.cu"],
     deps = [
         "//common:essential",
@@ -53,7 +53,7 @@ nvcc_library(
 
 nvcc_library(
     name = "cuda_fullsolve",
-    hdrs = ["cuda_fullsolve.h", "cuda_gpu_collision.cuh", "cuda_gpu_collision.h","cuda_onestepsap.cuh","cuda_onestepsap.h"],
+    hdrs = ["cuda_fullsolve.h",  "cuda_gpu_collision.h","cuda_onestepsap.cuh","cuda_onestepsap.h"],
     srcs = ["cuda_fullsolve.cu"],
     deps = [
         "//common:essential",

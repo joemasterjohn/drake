@@ -1,5 +1,6 @@
 #include "cuda_fullsolve.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -13,7 +14,7 @@ namespace {
 
 GTEST_TEST(KernelTest, FullSolveTest) {
   int numSpheres = 22;
-  int numProblems = 1000;
+  int numProblems = 100;
   int numContacts = numSpheres * numSpheres;
 
   // initialize the problem input spheres_vec, within a box of size 4x4x4, all
@@ -107,7 +108,13 @@ GTEST_TEST(KernelTest, FullSolveTest) {
     }
   }
 
-  FullSolveSapCPUEntry(h_spheres, numProblems, numSpheres, numContacts);
+  FullSolveSAP solver;
+  solver.init(h_spheres, numProblems, numSpheres, numContacts, false);
+  for (int i = 0; i < 400; i++) {
+    std::cout << "Step " << i << std::endl;
+    solver.step();
+  }
+  solver.destroy();
 }
 
 // ===================================================

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cuda_gpu_collision.cuh"
+#include "cuda_gpu_collision.h"
 #include "cuda_onestepsap.h"
 
 #ifndef HANDLE_ERROR_MACRO
@@ -18,6 +18,8 @@ static void HandleError(cudaError_t err, const char* file, int line) {
 //
 // define a SAP data strucutre
 struct SAPGPUData {
+#if defined(__CUDACC__)
+
   // Mutable get functions
   __device__ Eigen::Map<Eigen::MatrixXd> dynamics_matrix() {
     int row_size = num_velocities;
@@ -331,6 +333,8 @@ struct SAPGPUData {
   __host__ __device__ const int NumContacts() const { return num_contacts; }
   __host__ __device__ const int NumProblems() const { return num_problems; }
 
+#endif
+
   // Retrival functions - copy Momentum cost data back to CPU
   void RetriveMomentumCostToCPU(std::vector<double>& momentum_cost) {
     momentum_cost.resize(num_problems);
@@ -386,11 +390,11 @@ struct SAPGPUData {
     }
   }
 
-  void Initialize(int num_contacts, int num_velocities, int num_problems,
-                  CollisionGPUData* gpu_collision_data) {
-    this->num_contacts = num_contacts;
-    this->num_velocities = num_velocities;
-    this->num_problems = num_problems;
+  void Initialize(int in_num_contacts, int in_num_velocities,
+                  int in_num_problems, CollisionGPUData* gpu_collision_data) {
+    num_contacts = in_num_contacts;
+    num_velocities = in_num_velocities;
+    num_problems = in_num_problems;
 
     HANDLE_ERROR(cudaMalloc(&delta_v_global,
                             num_problems * num_velocities * sizeof(double)));
@@ -466,11 +470,11 @@ struct SAPGPUData {
   }
 
   // Free memory
-  void DestroySAPGPUData() {
-    HANDLE_ERROR(cudaFree(A_global));
-    HANDLE_ERROR(cudaFree(v_star_global));
-    HANDLE_ERROR(cudaFree(v_guess_global));
-    HANDLE_ERROR(cudaFree(J_global));
+  void Destroy() {
+    // HANDLE_ERROR(cudaFree(A_global));
+    // HANDLE_ERROR(cudaFree(v_star_global));
+    // HANDLE_ERROR(cudaFree(v_guess_global));
+    // HANDLE_ERROR(cudaFree(J_global));
     HANDLE_ERROR(cudaFree(G_global));
     HANDLE_ERROR(cudaFree(gamma_global));
     HANDLE_ERROR(cudaFree(delta_v_global));
@@ -481,10 +485,10 @@ struct SAPGPUData {
     HANDLE_ERROR(cudaFree(G_J_global));
     HANDLE_ERROR(cudaFree(H_global));
     HANDLE_ERROR(cudaFree(neg_grad_global));
-    HANDLE_ERROR(cudaFree(phi0_global));
-    HANDLE_ERROR(cudaFree(contact_stiffness_global));
-    HANDLE_ERROR(cudaFree(contact_damping_global));
-    HANDLE_ERROR(cudaFree(num_active_contacts_global));
+    // HANDLE_ERROR(cudaFree(phi0_global));
+    // HANDLE_ERROR(cudaFree(contact_stiffness_global));
+    // HANDLE_ERROR(cudaFree(contact_damping_global));
+    // HANDLE_ERROR(cudaFree(num_active_contacts_global));
     HANDLE_ERROR(cudaFree(chol_L_global));
     HANDLE_ERROR(cudaFree(chol_y_global));
     HANDLE_ERROR(cudaFree(chol_x_global));
