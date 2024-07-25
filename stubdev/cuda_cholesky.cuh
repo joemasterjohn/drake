@@ -10,6 +10,7 @@ __device__ void CholeskyFactorizationFunc(Eigen::Map<Eigen::MatrixXd> M,
                                           Eigen::Map<Eigen::MatrixXd> L,
                                           int equ_idx, int thread_idx, size_t n,
                                           size_t num_stride) {
+                                            
   for (int stride = 0; stride < num_stride; stride++) {
     int j_up = 31 + stride * 32;
     int j = thread_idx + stride * 32;

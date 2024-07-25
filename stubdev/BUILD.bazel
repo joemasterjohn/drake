@@ -27,6 +27,7 @@ nvcc_library(
     srcs = ["cuda_cholesky.cu"],
     deps = [
         "//common:essential",
+        "@cuda//:hdrs"
     ],
 )
 
@@ -36,6 +37,7 @@ nvcc_library(
     srcs = ["cuda_gpu_collision.cu"],
     deps = [
         "//common:essential",
+        "@cuda//:hdrs"
     ],
 )
 
@@ -47,6 +49,7 @@ nvcc_library(
         "//common:essential",
         ":cuda_cholesky",
         ":cuda_gpu_collision",
+        "@cuda//:hdrs"
     ],
 )
 
@@ -68,6 +71,8 @@ drake_cc_library(
         ":cuda_gpu_collision",
         ":cuda_onestepsap",
         ":cuda_cholesky",
+        "@cuda//:cudart",
+        "@cuda//:hdrs"
     ],
     visibility = ["//visibility:public"],
     declare_installed_headers = True,

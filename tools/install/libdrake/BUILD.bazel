@@ -251,6 +251,7 @@ cc_library(
         "//common:drake_marker_shared_library",
         "@lcm",
         "@spdlog",
+        "@cuda//:cudart",
     ],
 )
 
@@ -266,6 +267,7 @@ cc_library(
         "//lcmtypes:lcmtypes_drake_cc",
         "@eigen",
         "@fmt",
+        "@cuda//:hdrs",
     ],
 )
 
