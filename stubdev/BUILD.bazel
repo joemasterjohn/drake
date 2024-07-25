@@ -13,13 +13,13 @@ load(
     "drake_cc_package_library",
 )
 
-drake_cc_package_library(
-    name = "stubdev",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cuda_fullsolve",
-    ],
-)
+# drake_cc_package_library(
+#     name = "stubdev",
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":cuda_fullsolve",
+#     ],
+# )
 
 nvcc_library(
     name = "cuda_cholesky",
@@ -69,7 +69,7 @@ drake_cc_library(
         ":cuda_onestepsap",
         ":cuda_cholesky",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     declare_installed_headers = True,
 )
 

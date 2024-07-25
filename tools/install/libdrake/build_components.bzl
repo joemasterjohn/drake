@@ -82,7 +82,6 @@ LIBDRAKE_COMPONENTS = [
     "//planning/locomotion",
     "//planning/trajectory_optimization",
     "//solvers",
-    "//stubdev",
     "//systems/analysis",
     "//systems/controllers",
     "//systems/estimators",
