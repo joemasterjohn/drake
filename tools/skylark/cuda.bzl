@@ -1,3 +1,6 @@
+load("//tools/skylark:drake_cc.bzl", "drake_installed_headers", "installed_headers_for_drake_deps")
+
+
 def _nvcc_object(
         name,
         src = None,
@@ -114,6 +117,15 @@ def nvcc_library(
     else:
         nvcc_extra_srcs = []
         nvcc_extra_includes = []
+
+    drake_installed_headers(
+        name = name + ".installed_headers",
+        hdrs = [],
+        hdrs_exclude = [],
+        deps = installed_headers_for_drake_deps(deps),
+        tags = ["nolint"],
+        visibility = ["//visibility:public"],
+    )
 
     # Compile srcs using nvcc.
     nvcc_objs = []

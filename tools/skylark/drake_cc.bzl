@@ -226,11 +226,7 @@ def installed_headers_for_drake_deps(deps):
             not x.startswith("@") and
             not x.startswith("//drake/lcmtypes:") and
             not x == "//:drake_shared_library" and
-            not x.startswith("//third_party") and
-            x.find("cuda_gpu_collision") == -1 and
-            x.find("cuda_onestepsap") == -1 and
-            x.find("cuda_cholesky") == -1 and
-            x.find("cuda_onestepsap_vd") == -1
+            not x.startswith("//third_party")
         )
     ]
 
@@ -415,7 +411,6 @@ def _raw_drake_cc_library(
 
     # Add the installed header tracking, unless we've opted-out.
     if declare_installed_headers:
-        print("DECLARE INSTALLED HEADERS " + name)
         drake_installed_headers(
             name = name + ".installed_headers",
             hdrs = hdrs,
@@ -424,8 +419,6 @@ def _raw_drake_cc_library(
             tags = ["nolint"],
             visibility = ["//visibility:public"],
         )
-        print(installed_headers_for_drake_deps(interface_deps))
-        print("DECLARE INSTALLED HEADERS " + name)
 
 
     # If we're using implementation_deps, then the result of compiling our srcs

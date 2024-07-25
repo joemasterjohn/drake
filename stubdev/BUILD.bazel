@@ -13,13 +13,13 @@ load(
     "drake_cc_package_library",
 )
 
-# drake_cc_package_library(
-#     name = "stubdev",
-#     visibility = ["//visibility:public"],
-#     deps = [
-#         ":cuda_fullsolve",
-#     ],
-# )
+drake_cc_package_library(
+    name = "stubdev",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cuda_fullsolve",
+    ],
+)
 
 nvcc_library(
     name = "cuda_cholesky",
