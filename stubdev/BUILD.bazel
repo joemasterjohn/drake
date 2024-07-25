@@ -69,7 +69,7 @@ drake_cc_library(
         ":cuda_onestepsap",
         ":cuda_cholesky",
     ],
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     declare_installed_headers = True,
 )
 
@@ -78,7 +78,7 @@ drake_cc_googletest(
     srcs = ["cuda_cholesky_test.cc"],
     tags = ["cuda"],
     deps = [
-	"//common:essential",
+	    "//common:essential",
         ":cuda_cholesky",
         "@gtest//:main",
     ],
@@ -89,7 +89,7 @@ drake_cc_googletest(
     srcs = ["cuda_gpu_collision_test.cc"],
     tags = ["cuda"],
     deps = [
-	"//common:essential",
+	    "//common:essential",
         ":cuda_gpu_collision",
         "@gtest//:main",
     ],

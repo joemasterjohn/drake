@@ -137,6 +137,6 @@ def nvcc_library(
         srcs = nvcc_objs,
         hdrs = hdrs,
         deps = deps + ["@cuda//:cudart"],
-        linkstatic = False,
+        linkstatic = True,
         visibility = visibility,
     )

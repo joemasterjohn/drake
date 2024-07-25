@@ -82,6 +82,7 @@ LIBDRAKE_COMPONENTS = [
     "//planning/locomotion",
     "//planning/trajectory_optimization",
     "//solvers",
+    "//stubdev:cuda_fullsolve",  # unpackaged
     "//systems/analysis",
     "//systems/controllers",
     "//systems/estimators",
