@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "drake/geometry/mesh_source.h"
 #include "drake/geometry/proximity/volume_mesh.h"
@@ -44,6 +45,8 @@ namespace internal {
          std::exception for non-positive scale factors. */
 VolumeMesh<double> ReadVtkToVolumeMesh(const MeshSource& mesh_source,
                                        double scale = 1.0);
+
+std::vector<double> ReadVtkToPressureValues(const MeshSource& mesh_source);
 
 }  // namespace internal
 }  // namespace geometry

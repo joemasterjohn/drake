@@ -52,8 +52,30 @@ VolumeMesh<T> MakeVolumeMeshFromVtk(const Mesh& mesh) {
   }
 }
 
+template <typename T>
+std::vector<T> MakePressureFromVtkFile(const Mesh& mesh) {
+  if (mesh.extension() != ".vtk") {
+    throw std::runtime_error(fmt::format(
+        "MakePressureFromVtkFile() called on a Mesh specification with the wrong "
+        "extension type. Requires '.vtk', got '{}' for mesh data {}.",
+        mesh.extension(), mesh.source().description()));
+  }
+  
+  std::vector<double> pressure = ReadVtkToPressureValues(mesh.source());
+  if constexpr (std::is_same_v<T, double>) {
+    return pressure;
+  } else {
+    std::vector<T> pressure_T;
+    pressure_T.reserve(pressure.size());
+    for (const T v : pressure) {
+      pressure_T.emplace_back(v);
+    }
+    return pressure_T;
+  }
+}
+
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    (&MakeVolumeMeshFromVtk<T>));
+    (&MakeVolumeMeshFromVtk<T>, &MakePressureFromVtkFile<T>));
 
 }  // namespace internal
 }  // namespace geometry

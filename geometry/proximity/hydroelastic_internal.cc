@@ -9,6 +9,7 @@
 
 #include <fmt/format.h>
 
+#include "drake/common/ssize.h"
 #include "drake/common/text_logging.h"
 #include "drake/geometry/proximity/inflate_mesh.h"
 #include "drake/geometry/proximity/make_box_field.h"
@@ -597,6 +598,17 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
     // volume mesh. If that's not true, we'll get an error.
     mesh = make_unique<VolumeMesh<double>>(
         MakeVolumeMeshFromVtk<double>(mesh_spec));
+
+    // If the .vtk file already contains pressure values, defer to those loaded
+    // from file.
+    std::vector<double> pressure_values =
+        MakePressureFromVtk<double>(mesh_spec);
+    if (ssize(pressure_values) == mesh->num_vertices()) {
+      auto mesh_field = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+          std::move(pressure_values), mesh.get());
+      return SoftGeometry(SoftMesh(std::move(mesh), std::move(mesh_field)));
+    }
+
   } else {
     // Otherwise, we'll create a compliant representation of its convex hull.
     mesh = make_unique<VolumeMesh<double>>(MakeConvexVolumeMesh<double>(
