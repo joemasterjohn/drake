@@ -11,6 +11,7 @@
 #include <vtkNew.h>                     // vtkCommonCore
 #include <vtkUnstructuredGrid.h>        // vtkCommonDataModel
 #include <vtkUnstructuredGridReader.h>  // vtkIOLegacy
+#include <vtkPointData.h>
 
 #include "drake/common/eigen_types.h"
 
@@ -79,6 +80,26 @@ VolumeMesh<double> ReadVtkToVolumeMesh(const MeshSource& mesh_source,
   }
 
   return {std::move(elements), std::move(vertices)};
+}
+
+std::vector<double> ReadVtkToPressureValues(const std::string& filename) {
+  vtkNew<vtkUnstructuredGridReader> reader;
+  reader->SetFileName(filename.c_str());
+  reader->Update();
+  vtkUnstructuredGrid* vtk_mesh = reader->GetOutput();
+
+  const vtkIdType num_vertices = vtk_mesh->GetNumberOfPoints();
+  std::vector<double> pressure;
+  pressure.reserve(num_vertices);
+
+  vtkPointData* values = vtk_mesh->GetPointData();
+  if (!values) return {};
+  vtkDataArray* arr = values->GetScalars();
+  if (!arr) return {};
+  for (int i = 0; i < arr->GetNumberOfTuples(); ++i) {
+    pressure.push_back(arr->GetTuple1(i));
+  }
+  return pressure;
 }
 
 }  // namespace internal

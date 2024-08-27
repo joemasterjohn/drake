@@ -28,6 +28,14 @@ namespace internal {
 template <typename T>
 VolumeMesh<T> MakeVolumeMeshFromVtk(const Mesh& mesh);
 
+template <typename T>
+std::vector<T> MakePressureFromVtkFile(const std::filesystem::path& filename);
+
+template <typename T, typename Shape>
+std::vector<T> MakePressureFromVtk(const Shape& shape) {
+  return MakePressureFromVtkFile<T>(shape.filename());
+}
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake
