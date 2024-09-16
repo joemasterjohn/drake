@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+Kinematics and mass properties are taken as given from: https://support.barrett.com/wiki/Hand/282/
+Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
+-->
+<sdf version="1.7" xmlns:drake="http://drake.mit.edu" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="BarrettFinger.xacro"/>
+  <model name="BarrettHand">
+    <link name="hand_base">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>-2.506e-5 0.034479 -.0072785 0 0 0</pose>
+        <mass>0.36699</mass>
+        <inertia>
+          <ixx>0.00040811</ixx>
+          <ixy>0.00000082</ixy>
+          <ixz>0.00000048</ixz>
+          <iyy>0.00040009</iyy>
+          <iyz>0.00002736</iyz>
+          <izz>0.00022400</izz>
+        </inertia>
+      </inertial>
+      <visual name="hand_base_visual">
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/multibody/BarrettHand/models/visual/hand_base.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+    <xacro:BarrettFinger index="1" />
+    <xacro:BarrettFinger index="2" />
+    <xacro:BarrettFinger index="3" />
+
+  </model>
+</sdf>

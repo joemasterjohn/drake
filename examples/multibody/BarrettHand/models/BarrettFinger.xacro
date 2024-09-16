@@ -1,0 +1,181 @@
+<?xml version="1.0"?>
+<!--
+Kinematics and mass properties are taken as given from: https://support.barrett.com/wiki/Hand/282/
+Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
+-->
+<sdf version="1.7" xmlns:drake="http://drake.mit.edu" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="BarrettFinger" params="index">
+
+    <xacro:if value="${index == 1}">
+      <xacro:property name="r" value="-1" />
+      <xacro:property name="j" value="1" />
+    </xacro:if>
+    <xacro:if value="${index == 2}">
+      <xacro:property name="r" value="1" />
+      <xacro:property name="j" value="1" />
+    </xacro:if>
+    <xacro:if value="${index == 3}">
+      <xacro:property name="r" value="0" />
+      <xacro:property name="j" value="-1" />
+    </xacro:if>
+
+    <xacro:property name="A0" value="${0.025 * r}"/>
+    <xacro:property name="A1" value="0.05"/>
+    <xacro:property name="A2" value="0.07"/>
+    <xacro:property name="A3" value="0.05"/>
+    <xacro:property name="alpha0" value="0"/>
+    <xacro:property name="alpha1" value=" 1.5707963"/>
+    <xacro:property name="alpha2" value="0"/>
+    <xacro:property name="alpha3" value="-1.5707963"/>
+    <xacro:property name="D0" value="0.0589"/>
+    <xacro:property name="D1" value="0"/>
+    <xacro:property name="D2" value="0"/>
+    <xacro:property name="D3" value="0.0095"/>
+    <xacro:property name="theta0" value="${-1.5707963 * j}"/>
+    <xacro:property name="theta1" value="0"/>
+    <xacro:property name="theta2" value="0.73303829"/>
+    <xacro:property name="theta3" value="0"/>
+
+    <link name="finger_${index}_base">
+      <pose relative_to="hand_base">${A0} 0 ${D0} ${alpha0} 0 ${theta0}</pose>
+      <xacro:if value="${r == 0}">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0</mass>
+        <inertia>
+          <ixx>0</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0</iyy>
+          <iyz>0</iyz>
+          <izz>0</izz>
+        </inertia>
+      </inertial>
+      </xacro:if>
+      <xacro:unless value="${r == 0}">
+      <inertial>
+        <pose>0.030616 -7.3219e-5 -0.0112010 0 0 0</pose>
+        <mass>0.14109</mass>
+        <inertia>
+          <ixx>2.0672e-5</ixx>
+          <ixy>2.6024e-7</ixy>
+          <ixz>6.3481e-6</ixz>
+          <iyy>7.4105e-5</iyy>
+          <iyz>1.7118e-8</iyz>
+          <izz>6.8207e-5</izz>
+        </inertia>
+      </inertial>
+      <visual name="finger_${index}_base_visual">
+        <pose relative_to="finger_${index}_base">0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/multibody/BarrettHand/models/visual/finger_base.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      </xacro:unless>
+    </link>
+    <link name="finger_${index}_proximal">
+      <pose relative_to="finger_${index}_base">${A1} 0 ${D1} ${alpha1} 0 ${theta1}</pose>
+      <inertial>
+        <pose>0.022042 0.00082603 0.0005526 0 0 0</pose>
+        <mass>0.05832</mass>
+        <inertia>
+          <ixx>4.7592e-6</ixx>
+          <ixy>6.2295e-7</ixy>
+          <ixz>-6.6417e-7</ixz>
+          <iyy>4.1929e-5</iyy>
+          <iyz>-2.1644e-9</iyz>
+          <izz>4.3066e-5</izz>
+        </inertia>
+      </inertial>
+      <visual name="finger_${index}_proximal_visual">
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/multibody/BarrettHand/models/visual/finger_proximal.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <link name="finger_${index}_distal">
+      <pose relative_to="finger_${index}_proximal">${A2} 0 ${D2} ${alpha2} 0 ${theta2}</pose>
+      <inertial>
+        <pose>0.022825 0.0010491 0.00042038 0 0 0</pose>
+        <mass>0.041377</mass>
+        <inertia>
+          <ixx>3.1053e-6</ixx>
+          <ixy>4.3996e-7</ixy>
+          <ixz>-2.9595e-7</ixz>
+          <iyy>1.6812e-5</iyy>
+          <iyz>-1.8205e-8</iyz>
+          <izz>1.5673e-5</izz>
+        </inertia>
+      </inertial>
+      <visual name="finger_${index}_distal_visual">
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/multibody/BarrettHand/models/visual/finger_distal.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <frame name="finger_${index}_tip">
+      <pose relative_to="finger_${index}_distal">${A3} 0 ${D3} ${alpha3} 0 ${theta3}</pose>
+    </frame>
+
+    <xacro:if value="${r == 0}">
+    <joint name="finger_${index}_hand_to_base" type="fixed">
+      <child>finger_${index}_base</child>
+      <parent>hand_base</parent>
+      <pose relative_to="hand_base">0 0 0 0 0 0 </pose>
+    </joint>
+    </xacro:if>
+    <xacro:unless value="${r == 0}">
+    <joint name="finger_${index}_hand_to_base" type="revolute">
+      <child>finger_${index}_base</child>
+      <parent>hand_base</parent>
+      <pose relative_to="finger_${index}_base">0 0 0 0 0 0 </pose>
+      <axis>
+        <xyz>0 0 ${r}</xyz>
+	      <limit>
+	        <lower>-inf</lower>
+	        <upper>inf</upper>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+    </xacro:unless>
+
+    <joint name="finger_${index}_base_to_proximal" type="revolute">
+      <child>finger_${index}_proximal</child>
+      <parent>finger_${index}_base</parent>
+      <pose relative_to="finger_${index}_proximal">0 0 0 0 0 0 </pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+	      <limit>
+	        <lower>-inf</lower>
+	        <upper>inf</upper>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+    <joint name="finger_${index}_proximal_to_distal" type="revolute">
+      <child>finger_${index}_distal</child>
+      <parent>finger_${index}_proximal</parent>
+      <pose relative_to="finger_${index}_distal">0 0 0 0 0 0 </pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+	      <limit>
+	        <lower>-inf</lower>
+	        <upper>inf</upper>
+          <effort>0</effort>
+        </limit>
+      </axis>
+    </joint>
+
+
+  </xacro:macro>
+</sdf>

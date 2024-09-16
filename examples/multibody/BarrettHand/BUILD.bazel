@@ -1,9 +1,33 @@
+load("//tools/install:install_data.bzl", "install_data")
 load(
     "//tools/skylark:drake_cc.bzl",
     "drake_cc_binary",
 )
+load("//tools/workspace/ros_xacro_internal:defs.bzl", "xacro_filegroup")
 
 package(default_visibility = ["//visibility:private"])
+
+install_data(
+    name = "install_data",
+    data = [
+        ":models",
+        ":BarrettHandModels"
+    ],
+    visibility = ["//visibility:public"],
+)
+
+xacro_filegroup(
+    name = "BarrettHandModels",
+    srcs = [
+        "models/BarrettHand.sdf.xacro",
+    ],
+    data = [
+        "models/BarrettFinger.xacro",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+)
 
 filegroup(
     name = "models",
@@ -12,10 +36,11 @@ filegroup(
         "**/*.obj",
         "**/*.mtl",
         "**/*.vtk",
+        "**/*.gltf",
+        "**/*.glb"
     ]),
     visibility = [
-        "//:__pkg__",
-        "//bindings/pydrake/multibody:__pkg__",
+        "//visibility:public",
     ],
 )
 
