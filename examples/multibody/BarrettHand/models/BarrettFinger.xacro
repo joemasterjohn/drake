@@ -19,6 +19,7 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
       <xacro:property name="j" value="-1" />
     </xacro:if>
 
+    <!-- DH Parameters -->
     <xacro:property name="A0" value="${0.025 * r}"/>
     <xacro:property name="A1" value="0.05"/>
     <xacro:property name="A2" value="0.07"/>
@@ -27,7 +28,7 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
     <xacro:property name="alpha1" value=" 1.5707963"/>
     <xacro:property name="alpha2" value="0"/>
     <xacro:property name="alpha3" value="-1.5707963"/>
-    <xacro:property name="D0" value="0.0589"/>
+    <xacro:property name="D0" value="0.0589"/>  <!-- Offset determined from the CAD -->
     <xacro:property name="D1" value="0"/>
     <xacro:property name="D2" value="0"/>
     <xacro:property name="D3" value="0.0095"/>
@@ -122,7 +123,7 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
         </geometry>
       </visual>
     </link>
-    <frame name="finger_${index}_tip">
+    <frame name="finger_${index}_tip" attached_to="finger_${index}_distal">
       <pose relative_to="finger_${index}_distal">${A3} 0 ${D3} ${alpha3} 0 ${theta3}</pose>
     </frame>
 
@@ -141,8 +142,8 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
       <axis>
         <xyz>0 0 ${r}</xyz>
 	      <limit>
-	        <lower>-inf</lower>
-	        <upper>inf</upper>
+	        <lower>0</lower>
+	        <upper>3.141592653589793</upper>
           <effort>0</effort>
         </limit>
       </axis>
@@ -156,8 +157,8 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
       <axis>
         <xyz>0 0 1</xyz>
 	      <limit>
-	        <lower>-inf</lower>
-	        <upper>inf</upper>
+	        <lower>0</lower>
+	        <upper>2.443460952792061</upper>
           <effort>0</effort>
         </limit>
       </axis>
@@ -169,13 +170,12 @@ Model files can be found at: https://web.barrett.com/files/BH8-282_PPS.zip
       <axis>
         <xyz>0 0 1</xyz>
 	      <limit>
-	        <lower>-inf</lower>
-	        <upper>inf</upper>
+	        <lower>0</lower>
+	        <upper>0.8377580409572781</upper>
           <effort>0</effort>
         </limit>
       </axis>
     </joint>
-
 
   </xacro:macro>
 </sdf>
