@@ -81,7 +81,7 @@ VolumeMeshFieldLinear<T, T> MakeVolumeMeshPressureField(
     }
   }
 
-  max_value = 0.0005;
+  max_value = 0.0002;
   if (max_value <= 0) {
     throw std::runtime_error(
         "MakeVolumeMeshPressureField(): "
