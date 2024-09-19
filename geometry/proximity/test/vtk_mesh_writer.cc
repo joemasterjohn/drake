@@ -6,6 +6,8 @@
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/geometry/proximity/mesh_to_vtk.h"
 #include "drake/geometry/proximity/volume_mesh_field.h"
+#include "drake/geometry/proximity/bvh.h"
+#include "drake/geometry/proximity/bvh_to_vtk.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
@@ -21,7 +23,7 @@ namespace {
 int do_main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
       "Parse the model give by the first command line argument and export all "
-      "compliant mesh types to vtk files.");
+      "compliant mesh types and their BVH to vtk files.");
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   if (argc < 2) {
     drake::log()->error("Missing input filename");
@@ -55,6 +57,7 @@ int do_main(int argc, char* argv[]) {
       const bool no_mesh_field = maybe_mesh_field.index() == 0;
       if (!no_mesh_field) {
         drake::log()->info(fmt::format("gid({})", id));
+        // Write the mesh field to file.
         std::string filename = fmt::format("{}_mesh.vtk", id);
         const drake::geometry::VolumeMeshFieldLinear<double, double>* pressure =
             std::get<
@@ -62,6 +65,10 @@ int do_main(int argc, char* argv[]) {
                 maybe_mesh_field);
         drake::geometry::internal::WriteVolumeMeshFieldLinearToVtk(
             filename, "pressure", *pressure, "pressure");
+        // Make a BVH (we don't have access to the underlying BVH) and write it
+        // to file.
+        const Bvh<Obb, VolumeMesh<double>> bvh(pressure->mesh());
+        WriteBVHToVtk(fmt::format("{}_bvh.vtk", id), bvh, "bvh");
       }
     }
   }

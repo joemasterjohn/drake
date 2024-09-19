@@ -20,6 +20,7 @@ drake_cc_package_library(
         ":bv",
         ":bvh",
         ":bvh_updater",
+        ":bvh_to_vtk",
         ":collision_filter",
         ":contact_surface_utility",
         ":deformable_contact_geometries",
@@ -112,6 +113,16 @@ drake_cc_library(
         ":bv",
         ":bvh",
         "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "bvh_to_vtk",
+    srcs = ["bvh_to_vtk.cc"],
+    hdrs = ["bvh_to_vtk.h"],
+    deps = [
+        ":bvh",
+        "@fmt",
     ],
 )
 
@@ -960,6 +971,7 @@ drake_cc_binary(
         "//multibody/plant",
         "//geometry:scene_graph_inspector",
         "//common:essential",
+        ":bvh_to_vtk",
         ":mesh_to_vtk",
         "@gflags",
     ]
