@@ -1995,7 +1995,9 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   MultibodyConstraintId AddBallConstraint(
       const RigidBody<T>& body_A, const Vector3<double>& p_AP,
       const RigidBody<T>& body_B,
-      const std::optional<Vector3<double>>& p_BQ = {});
+      const std::optional<Vector3<double>>& p_BQ = {},
+      ConstraintKinematicsMode mode =
+          ConstraintKinematicsMode::kDefaultState);
 
   /// Defines a constraint such that frame P affixed to body A is coincident at
   /// all times with frame Q affixed to body B, effectively modeling a weld
@@ -2922,6 +2924,17 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
     this->ValidateContext(context);
     this->ValidateCreatedForThisSystem(state);
     internal_tree().SetRandomState(context, state, generator);
+  }
+
+  /// Sets `state` to what will be considered to be the _zero_ state
+  // (generalized position and velocity) for this plant.
+  /// @throws std::exception if called pre-finalize. See Finalize().
+  void SetZeroState(const systems::Context<T>& context,
+                    systems::State<T>* state) const {
+    DRAKE_MBP_THROW_IF_NOT_FINALIZED();
+    this->ValidateContext(context);
+    this->ValidateCreatedForThisSystem(state);
+    internal_tree().SetZeroState(context, state);
   }
 
   /// Returns a list of string names corresponding to each element of the

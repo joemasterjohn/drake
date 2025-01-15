@@ -15,6 +15,16 @@
 
 namespace drake {
 namespace multibody {
+
+/// For constraints with implicit kinematics in their specifications,
+/// determines in which state the constraint is satisfied.
+enum class ConstraintKinematicsMode {
+  // Constraint is satisfied in the plant's default state.
+  kDefaultState,
+  // Constraint is satisfied in the plant's zero state.
+  kZeroState,
+};
+
 namespace internal {
 
 // Struct to store coupler constraint parameters.
@@ -98,6 +108,10 @@ struct BallConstraintSpec {
   // std::nullopt; if so, then during Finalize() it will be set so that the
   // constraint is satisfied in the default context.
   std::optional<Vector3<double>> p_BQ;
+
+  // When p_BQ is left unspecified, determines the plant state in which this
+  // constraint is satisfied.
+  ConstraintKinematicsMode mode;
 
   MultibodyConstraintId id;  // Id of this constraint in the plant.
 };

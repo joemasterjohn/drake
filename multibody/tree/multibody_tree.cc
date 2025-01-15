@@ -1076,6 +1076,14 @@ void MultibodyTree<T>::SetRandomState(const systems::Context<T>& context,
 }
 
 template <typename T>
+void MultibodyTree<T>::SetZeroState(const systems::Context<T>& context,
+                                    systems::State<T>* state) const {
+  for (const auto& mobilizer : mobilizers_) {
+    mobilizer->SetZeroState(context, state);
+  }
+}
+
+template <typename T>
 VectorX<T> MultibodyTree<T>::GetPositionsAndVelocities(
     const systems::Context<T>& context,
     ModelInstanceIndex model_instance) const {

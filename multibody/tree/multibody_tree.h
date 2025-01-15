@@ -1009,6 +1009,10 @@ class MultibodyTree {
                       systems::State<T>* state,
                       RandomGenerator* generator) const;
 
+  // See MultibodyPlant method.
+  void SetZeroState(const systems::Context<T>& context,
+                    systems::State<T>* state) const;
+
   // Returns a const Eigen vector reference containing the vector
   // `[q; v]` of the model with `q` the vector of generalized positions and
   // `v` the vector of generalized velocities.

@@ -1699,7 +1699,11 @@ class MujocoParser {
           }
           body_B = &plant_->GetBodyByName(body2, model_instance_);
         }
-        plant_->AddBallConstraint(body_A, p_AP, *body_B);
+        // Per MuJoCo docs for `equality/connect(*)`: "the constraint is assumed
+        // to be satisfied in the configuration in which the model is defined."
+        // (a.k.a. the zero configuration).
+        plant_->AddBallConstraint(body_A, p_AP, *body_B, {},
+                                  ConstraintKinematicsMode::kZeroState);
       } else {
         std::string site1, site2;
         if (!ParseStringAttribute(connect_node, "site1", &site1) ||
