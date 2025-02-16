@@ -2737,6 +2737,11 @@ void Meshcat::SetProperty(std::string_view path, std::string property,
   }
 }
 
+void Meshcat::SetProperty(std::string_view path, std::string property,
+                          const std::vector<float>& value) {
+  impl().SetProperty(path, std::move(property), value);
+}
+
 void Meshcat::SetEnvironmentMap(const fs::path& image_path) {
   const std::string_view property_path = "/Background/<object>";
   const std::string property_name = "environment_map";
