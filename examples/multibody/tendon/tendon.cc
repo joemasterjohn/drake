@@ -33,14 +33,14 @@ DEFINE_double(simulation_time, 5.0, "Duration of the simulation in seconds.");
 
 DEFINE_double(dt, 1e-2, "Simulation time step [s].");
 // Effectively infinite to force the constraint into the near-rigid regime.
-DEFINE_double(k, 1e20, "Constraint stiffness [N/m].");
+DEFINE_double(k, 1e3, "Constraint stiffness [N/m].");
 // Used to calculate tau_d, but will be ignored with infinite stiffness (tau_d
 // set to dt).
 DEFINE_double(d, 0, "Constraint dissipation [N⋅s/m]");
 // Set lower limit to -inf so that the tendon considers a single constraint
 // equation.
-DEFINE_double(lower, -kInf, "Joint 0 lower limit [m].");
-DEFINE_double(upper, 1.0, "Joint 0 upper limit [m].");
+DEFINE_double(lower, 0.0, "Joint 0 lower limit [m].");
+DEFINE_double(upper, kInf, "Joint 0 upper limit [m].");
 
 int do_main() {
   DiagramBuilder<double> builder;
@@ -61,31 +61,7 @@ int do_main() {
 
   auto& joint0 = plant.template AddJoint<PrismaticJoint>(
       "prismatic_joint0", plant.world_body(), std::nullopt, body0, std::nullopt,
-      Eigen::Vector3d::UnitX());
-
-  auto& actuator0 =
-      plant.AddJointActuator("prismatic_joint0_actuator", joint0, 10);
-  plant.get_mutable_joint_actuator(actuator0.index())
-      .set_controller_gains({.p = 1e6, .d = 1e2});
-
-  auto& body1 = plant.AddRigidBody(
-      "block1",
-      SpatialInertia<double>::MakeFromCentralInertia(
-          mass, Eigen::Vector3d::Zero(), UnitInertia<double>::SolidCube(0.1)));
-
-  auto& joint1 = plant.template AddJoint<PrismaticJoint>(
-      "prismatic_joint1", plant.world_body(),
-      RigidTransformd(Vector3d(0, 1, 0)), body1, std::nullopt,
-      -Eigen::Vector3d::UnitX());
-  unused(joint1);
-
-  //   // Add the tendon constraint.
-  //   std::vector<JointIndex> joints = {joint0.index(), joint1.index()};
-  //   std::vector<double> a = {1.0, -2.0};
-
-  //   // Coupler constraint between joint0 and joint2.
-  //   plant.AddFixedTendonConstraint(joints, a, 0.0, 0.0, 0.0, FLAGS_k,
-  //   FLAGS_d);
+      Eigen::Vector3d::UnitZ());
 
   // Joint limit constraint on joint0.
   plant.AddFixedTendonConstraint({joint0.index()}, {1.0}, 0.0, FLAGS_lower,
@@ -94,10 +70,8 @@ int do_main() {
   // Add visual geometry
   plant.RegisterVisualGeometry(body0, RigidTransformd::Identity(),
                                Box(0.1, 0.1, 0.1), "block0_visual",
-                               Eigen::Vector4d(0.8, 0.2, 0.2, 1.0));
-  plant.RegisterVisualGeometry(body1, RigidTransformd::Identity(),
-                               Box(0.1, 0.1, 0.1), "block1_visual",
-                               Eigen::Vector4d(0.2, 0.8, 0.2, 1.0));
+                               Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
+
   plant.Finalize();
 
   // Add visualization
@@ -109,8 +83,7 @@ int do_main() {
   Context<double>& plant_context =
       plant.GetMyMutableContextFromRoot(diagram_context.get());
 
-  plant.get_desired_state_input_port(joint0.model_instance())
-      .FixValue(&plant_context, Vector2d(FLAGS_upper, 0));
+  joint0.SetPositions(&plant_context, Vector1d(1));
 
   // Create a simulator and run the simulation
   std::unique_ptr<Simulator<double>> simulator =
@@ -119,11 +92,6 @@ int do_main() {
   simulator->Initialize();
   common::MaybePauseForUser();
   simulator->AdvanceTo(FLAGS_simulation_time);
-
-  plant.get_desired_state_input_port(joint0.model_instance())
-      .FixValue(&plant_context, Vector2d(FLAGS_lower, 0));
-
-  simulator->AdvanceTo(5 * FLAGS_simulation_time);
 
   return 0;
 }
