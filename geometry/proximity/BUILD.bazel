@@ -21,6 +21,7 @@ drake_cc_package_library(
         ":bv",
         ":bvh",
         ":bvh_updater",
+        ":ccd",
         ":collision_filter",
         ":contact_surface_utility",
         ":deformable_contact_geometries",
@@ -28,6 +29,7 @@ drake_cc_package_library(
         ":deformable_field_intersection",
         ":deformable_mesh_intersection",
         ":detect_zero_simplex",
+        ":dynamic_bvh",
         ":field_intersection",
         ":hydroelastic_internal",
         ":inflate_mesh",
@@ -53,6 +55,7 @@ drake_cc_package_library(
         ":mesh_to_vtk",
         ":mesh_traits",
         ":meshing_utilities",
+        ":minimum_bounding_sphere",
         ":obj_to_surface_mesh",
         ":plane",
         ":polygon_surface_mesh",
@@ -138,6 +141,22 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "dynamic_bvh",
+    srcs = ["dynamic_bvh.cc"],
+    hdrs = ["dynamic_bvh.h"],
+    deps = [
+        ":bv",
+        ":posed_half_space",
+        ":triangle_surface_mesh",
+        ":volume_mesh",
+        "//common:essential",
+        "//geometry:shape_specification",
+        "//geometry:utilities",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
     name = "calc_distance_to_surface_mesh",
     srcs = ["calc_distance_to_surface_mesh.cc"],
     hdrs = ["calc_distance_to_surface_mesh.h"],
@@ -152,6 +171,18 @@ drake_cc_library(
     implementation_deps = [
         ":distance_to_point_callback",
         "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "ccd",
+    srcs = ["ccd.cc"],
+    hdrs = ["ccd.h"],
+    deps = [
+        "//common:essential",
+    ],
+    implementation_deps = [
+        "//common:default_scalars",
     ],
 )
 
@@ -404,6 +435,31 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "speculative_calculator",
+    srcs = ["speculative_calculator.cc"],
+    hdrs = ["speculative_calculator.h"],
+    internal = True,
+    visibility = [
+        "//geometry:__pkg__",
+        "//geometry/benchmarking:__pkg__",
+    ],
+    deps = [
+        ":hydroelastic_internal",
+        ":volume_mesh",
+        ":mesh_field",
+        ":ccd",
+        ":minimum_bounding_sphere",
+        ":dynamic_bvh",
+        "//geometry/query_results:speculative_contact",
+        "//math:geometric_transform",
+        "//multibody/math:spatial_algebra",
+        "//common:essential",
+    ],
+)
+
+
+
+drake_cc_library(
     name = "hydroelastic_internal",
     srcs = ["hydroelastic_internal.cc"],
     hdrs = ["hydroelastic_internal.h"],
@@ -438,6 +494,8 @@ drake_cc_library(
         "//geometry:geometry_roles",
         "//geometry:proximity_properties",
         "//geometry:shape_specification",
+        "//geometry/proximity:minimum_bounding_sphere",
+        "//geometry/proximity:dynamic_bvh",
         "@fmt",
     ],
 )
@@ -797,6 +855,19 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "minimum_bounding_sphere",
+    srcs = ["minimum_bounding_sphere.cc"],
+    hdrs = ["minimum_bounding_sphere.h"],
+    deps = [
+        "//common:essential",
+    ],
+    implementation_deps = [
+        "//common:default_scalars",
+        "//math:linear_solve",
+    ],
+)
+
+drake_cc_library(
     name = "obj_to_surface_mesh",
     srcs = ["obj_to_surface_mesh.cc"],
     hdrs = ["obj_to_surface_mesh.h"],
@@ -1085,6 +1156,17 @@ drake_cc_googletest(
 )
 
 drake_cc_googletest(
+    name = "dynamic_bvh_test",
+    deps = [
+        ":bvh",
+        ":dynamic_bvh",
+        ":make_sphere_mesh",
+        ":volume_mesh",
+        "//geometry:shape_specification",
+    ],
+)
+
+drake_cc_googletest(
     name = "bvh_updater_test",
     deps = [
         ":bvh",
@@ -1110,6 +1192,15 @@ drake_cc_googletest(
         ":volume_to_surface_mesh",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "ccd_test",
+    deps = [
+        ":ccd",
+        "//common:default_scalars",
+        "//math:geometric_transform",
     ],
 )
 
@@ -1309,6 +1400,16 @@ drake_cc_googletest(
         ":hydroelastic_calculator",
         "//common/test_utilities",
         "//math:autodiff",
+    ],
+)
+
+drake_cc_googletest(
+    name = "speculative_calculator_test",
+    deps = [
+        ":speculative_calculator",
+        "//common:default_scalars",
+        "//math:geometric_transform",
+        "//common/test_utilities:eigen_matrix_compare",
     ],
 )
 
@@ -1620,6 +1721,14 @@ drake_cc_googletest(
         ":meshing_utilities",
         ":obj_to_surface_mesh",
         "//common:find_resource",
+    ],
+)
+
+drake_cc_googletest(
+    name = "minimum_bounding_sphere_test",
+    deps = [
+        ":minimum_bounding_sphere",
+        "//common:default_scalars",
     ],
 )
 
