@@ -60,6 +60,8 @@ class Aabb {
     DRAKE_DEMAND(half_width.z() >= 0.0);
   }
 
+  Aabb(const Aabb& a, const Aabb& b);
+
   /* Returns the center of the box -- equivalent to the position vector from
    the hierarchy frame's origin Ho to `this` box's origin Bo: `p_HoBo_H`. */
   const Vector3<double>& center() const { return center_; }
@@ -119,6 +121,17 @@ class Aabb {
    @returns `true` if the boxes intersect.   */
   static bool HasOverlap(const Aabb& aabb_G, const Obb& obb_H,
                          const math::RigidTransformd& X_GH);
+
+  /* Reports whether the two axis-aligned bounding boxes `a_G` and `b_G`
+   intersect. The poses of `a_G` and `b_G` are assumed to be given in the same
+   frame, G.
+
+   @param a_G       The first axis-aligned box.
+   @param b_G       The second axis-aligned box.
+   @returns `true` if the boxes intersect.   */
+  static bool HasOverlap(const Aabb& a_G, const Aabb& b_G);
+
+  static bool Contains(const Aabb& a_G, const Aabb& b_G);
 
   // TODO(SeanCurtis-TRI): Support collision with primitives as appropriate
   //  (see obb.h for an example).

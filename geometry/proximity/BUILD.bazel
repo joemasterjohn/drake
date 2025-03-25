@@ -28,6 +28,7 @@ drake_cc_package_library(
         ":deformable_field_intersection",
         ":deformable_mesh_intersection",
         ":detect_zero_simplex",
+        ":dynamic_bvh",
         ":field_intersection",
         ":hydroelastic_internal",
         ":inflate_mesh",
@@ -134,6 +135,22 @@ drake_cc_library(
         ":bv",
         ":bvh",
         "//common:essential",
+    ],
+)
+
+drake_cc_library(
+    name = "dynamic_bvh",
+    srcs = ["dynamic_bvh.cc"],
+    hdrs = ["dynamic_bvh.h"],
+    deps = [
+        ":bv",
+        ":posed_half_space",
+        ":triangle_surface_mesh",
+        ":volume_mesh",
+        "//common:essential",
+        "//geometry:shape_specification",
+        "//geometry:utilities",
+        "//math:geometric_transform",
     ],
 )
 
@@ -1078,6 +1095,17 @@ drake_cc_googletest(
         ":triangle_surface_mesh",
         ":volume_mesh",
         "//common/test_utilities:eigen_matrix_compare",
+        "//geometry:shape_specification",
+    ],
+)
+
+drake_cc_googletest(
+    name = "dynamic_bvh_test",
+    deps = [
+        ":bvh",
+        ":dynamic_bvh",
+        ":make_sphere_mesh",
+        ":volume_mesh",
         "//geometry:shape_specification",
     ],
 )
