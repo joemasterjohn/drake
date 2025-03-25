@@ -14,6 +14,15 @@ using Eigen::Vector3d;
 using math::RigidTransformd;
 using math::RotationMatrixd;
 
+Aabb::Aabb(const Aabb& a, const Aabb& b) {
+  Vector3<double> min_corner =
+      (a.center() - a.half_width()).cwiseMin(b.center() - b.half_width());
+  Vector3<double> max_corner =
+      (a.center() + a.half_width()).cwiseMin(b.center() + b.half_width());
+  center_ = 0.5 * (min_corner + max_corner);
+  half_width_ = 0.5 * (max_corner - min_corner);
+}
+
 bool Aabb::HasOverlap(const Aabb& a_G, const Aabb& b_H,
                       const RigidTransformd& X_GH) {
   /* For this analysis, a_G has local frame A and b_H has local frame B.
@@ -48,6 +57,17 @@ bool Aabb::HasOverlap(const Aabb& aabb_G, const Obb& obb_H,
       X_GH.rotation() * obb_H.pose().rotation(),
       X_GH * obb_H.pose().translation() - aabb_G.center());
   return BoxesOverlap(aabb_G.half_width(), obb_H.half_width(), X_AO);
+}
+
+bool Aabb::HasOverlap(const Aabb& a_G, const Aabb& b_G) {
+  /* The boxes overlap iff they overlap in each coordinate individually:
+      |a.cx - b.cx| <= a.hx + b.hx
+      |a.cy - b.cy| <= a.hy + b.hy
+      |a.cz - b.cz| <= a.hz + b.hz  */
+  return (((a_B.center() - b_G.center()).cwiseAbs() - a_G.half_width() -
+           b_G.half_width())
+              .array() <= 0)
+      .all();
 }
 
 template <typename MeshType>

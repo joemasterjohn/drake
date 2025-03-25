@@ -138,6 +138,22 @@ drake_cc_library(
 )
 
 drake_cc_library(
+    name = "dynamic_bvh",
+    srcs = ["dynamic_bvh.cc"],
+    hdrs = ["dynamic_bvh.h"],
+    deps = [
+        ":bv",
+        ":posed_half_space",
+        ":triangle_surface_mesh",
+        ":volume_mesh",
+        "//common:essential",
+        "//geometry:shape_specification",
+        "//geometry:utilities",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
     name = "calc_distance_to_surface_mesh",
     srcs = ["calc_distance_to_surface_mesh.cc"],
     hdrs = ["calc_distance_to_surface_mesh.h"],
