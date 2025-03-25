@@ -20,6 +20,9 @@
 #include "drake/geometry/proximity_properties.h"
 #include "drake/geometry/shape_specification.h"
 
+#include "drake/geometry/proximity/minimum_bounding_sphere.h"
+#include "drake/geometry/proximity/dynamic_bvh.h"
+
 namespace drake {
 namespace geometry {
 namespace internal {
@@ -88,6 +91,20 @@ class SoftMesh {
     return *mesh_topology_;
   }
 
+  /* The minimum bounding spheres of the tetrahedral elements of the mesh
+   * provided by `mesh()` */
+  const std::vector<PosedSphere<double>>& mesh_bounding_spheres() const {
+    return *mesh_bounding_spheres_;
+  }
+
+  /* A dynamic BVH of the mesh provided by `mesh()` */
+  const DynamicBvh& mesh_dynamic_bvh() const {
+    return *mesh_dynamic_bvh_;
+  }
+
+  /* Mutable version of `mesh_dynamic_bvh()` */
+  DynamicBvh& mutable_mesh_dynamic_bvh() { return *mesh_dynamic_bvh_; }
+
  private:
   // TODO(SeanCurtis-TRI): Determine if there is a need for these to all be
   // unique_ptr and remove the indirection if not necessary.
@@ -98,6 +115,8 @@ class SoftMesh {
   std::unique_ptr<Bvh<Obb, TriangleSurfaceMesh<double>>> surface_mesh_bvh_;
   std::unique_ptr<VolumeMeshTopology> mesh_topology_;
   std::unique_ptr<std::vector<TetFace>> tri_to_tet_;
+  std::unique_ptr<std::vector<PosedSphere<double>>> mesh_bounding_spheres_;
+  std::unique_ptr<DynamicBvh> mesh_dynamic_bvh_;
 };
 
 /* Defines a soft half space. The half space is defined such that the half
@@ -171,6 +190,14 @@ class SoftGeometry {
   /* Returns a reference to the SoftMesh -- calling this will throw if
    is_half_space() returns `true`.  */
   const SoftMesh& soft_mesh() const {
+    if (is_half_space()) {
+      throw std::runtime_error(
+          "SoftGeometry::soft_mesh() cannot be invoked for soft half space.");
+    }
+    return std::get<SoftMesh>(geometry_);
+  }
+
+  SoftMesh& mutable_soft_mesh() {
     if (is_half_space()) {
       throw std::runtime_error(
           "SoftGeometry::soft_mesh() cannot be invoked for soft half space.");
@@ -371,9 +398,18 @@ class Geometries final : public ShapeReifier {
    primitive). */
   bool is_vanished(GeometryId id) const;
 
+  const std::unordered_map<GeometryId, SoftGeometry>& soft_geometries() const {
+    return soft_geometries_;
+  }
+
   /* Returns the representation of the soft geometry with the given `id`.
    @pre hydroelastic_type(id) returns HydroelasticType::kSoft.  */
   const SoftGeometry& soft_geometry(GeometryId id) const {
+    DRAKE_DEMAND(hydroelastic_type(id) == HydroelasticType::kSoft);
+    return soft_geometries_.at(id);
+  }
+
+  SoftGeometry& mutable_soft_geometry(GeometryId id) {
     DRAKE_DEMAND(hydroelastic_type(id) == HydroelasticType::kSoft);
     return soft_geometries_.at(id);
   }

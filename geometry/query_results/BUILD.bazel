@@ -17,6 +17,7 @@ drake_cc_package_library(
         ":penetration_as_point_pair",
         ":signed_distance_pair",
         ":signed_distance_to_point",
+        ":speculative_contact",
     ],
 )
 
@@ -83,6 +84,18 @@ drake_cc_googletest(
         ":deformable_contact",
         "//common/test_utilities:eigen_matrix_compare",
         "//geometry/proximity:make_box_mesh",
+    ],
+)
+
+drake_cc_library(
+    name = "speculative_contact",
+    srcs = ["speculative_contact.cc"],
+    hdrs = ["speculative_contact.h"],
+    deps = [
+        "//common:default_scalars",
+        "//common:essential",
+        "//geometry:geometry_ids",
+        "//geometry/proximity:ccd",
     ],
 )
 
