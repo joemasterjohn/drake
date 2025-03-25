@@ -79,6 +79,7 @@ drake_cc_library(
         "//geometry/proximity:make_mesh_from_vtk",
         "//geometry/query_results",
         "//math",
+        "//multibody/math:spatial_algebra",
     ],
     implementation_deps = [
         ":read_obj",
@@ -274,6 +275,7 @@ drake_cc_library(
         "//geometry/proximity:make_convex_hull_mesh",
         "//geometry/render:render_engine",
         "//math:gradient",
+        "//multibody/math:spatial_algebra",
     ],
 )
 
@@ -392,6 +394,8 @@ drake_cc_library(
         "//geometry/query_results:penetration_as_point_pair",
         "//geometry/query_results:signed_distance_pair",
         "//geometry/query_results:signed_distance_to_point",
+        "//geometry/query_results:speculative_contact",
+        "//multibody/math:spatial_algebra",
         "//systems/framework",
     ],
 )

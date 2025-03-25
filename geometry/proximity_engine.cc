@@ -793,6 +793,21 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   }
 
   template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                            std::vector<SpeculativeContactSurface<T>>>
+  ComputeSpeculativeContactSurfaces(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
+      const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+          V_WGs,
+      const std::vector<ContactSurface<T>>* hydro_surfaces) const {
+    unused(X_WGs);
+    unused(V_WGs);
+    unused(hydro_surfaces);
+    // TODO(joemasterjohn): Full implementation.
+    return {};
+  }
+
+  template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>
   ComputeContactSurfacesWithFallback(
       HydroelasticContactRepresentation representation,
@@ -1409,6 +1424,17 @@ ProximityEngine<T>::ComputeContactSurfaces(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                          std::vector<SpeculativeContactSurface<T>>>
+ProximityEngine<T>::ComputeSpeculativeContactSurfaces(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
+    const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>& V_WGs,
+    const std::vector<ContactSurface<T>>* hydro_surfaces) const {
+  return impl_->ComputeSpeculativeContactSurfaces(X_WGs, V_WGs, hydro_surfaces);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>
 ProximityEngine<T>::ComputeContactSurfacesWithFallback(
     HydroelasticContactRepresentation representation,
@@ -1473,6 +1499,7 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&ProximityEngine<T>::template ComputeContactSurfaces<T>,
+     &ProximityEngine<T>::template ComputeSpeculativeContactSurfaces<T>,
      &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>));
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(
