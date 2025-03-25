@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "drake/geometry/proximity/aabb.h"
@@ -12,10 +13,12 @@
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
 #include "drake/geometry/query_results/signed_distance_pair.h"
 #include "drake/geometry/query_results/signed_distance_to_point.h"
+#include "drake/geometry/query_results/speculative_contact.h"
 #include "drake/geometry/render/render_camera.h"
 #include "drake/geometry/render/render_engine.h"
 #include "drake/geometry/scene_graph_inspector.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/math/spatial_algebra.h"
 #include "drake/systems/framework/context.h"
 #include "drake/systems/sensors/image.h"
 
@@ -410,6 +413,35 @@ class QueryObject {
                             std::vector<ContactSurface<T>>>
   ComputeContactSurfaces(
       HydroelasticContactRepresentation representation) const;
+
+  /** Reports pairwise intersections and characterizes each non-empty
+   intersection as a SpeculativeContactSurface. The
+   computation is subject to collision filtering.
+
+   The ordering of the _added_ results is guaranteed to be consistent -- for
+   fixed geometry poses, the results will remain the same.
+
+   <h3>Scalar support</h3>
+
+   This method provides support for both double and AutoDiffXd, but not
+   Expression.
+
+   @param[in] V_WGs The spatial velocity of each geometry `G` measured and
+              expressed in the world frame `W` (including geometries which may
+              *not* be registered with the proximity engine or may not be
+              dynamic).
+   @param[in] dt MultibodyPlant time step.
+   @returns A vector populated with all detected intersections characterized as
+            speculative contact surfaces. The ordering of the results is
+            guaranteed to be consistent -- for fixed geometry poses, the results
+            will remain the same. */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                            std::vector<internal::SpeculativeContactSurface<T>>>
+  ComputeSpeculativeContactSurfaces(
+      const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+          V_WGs,
+      double dt) const;
 
   /** Reports pairwise intersections and characterizes each non-empty
    intersection as a ContactSurface _where possible_ and as a

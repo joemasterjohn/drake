@@ -184,6 +184,20 @@ QueryObject<T>::ComputeContactSurfacesWithFallback(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                          std::vector<internal::SpeculativeContactSurface<T>>>
+QueryObject<T>::ComputeSpeculativeContactSurfaces(
+    const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>& V_WGs,
+    double dt) const {
+  ThrowIfNotCallable();
+
+  FullPoseUpdate();
+  const GeometryState<T>& state = geometry_state();
+  return state.ComputeSpeculativeContactSurfaces(V_WGs, dt);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<std::is_same_v<T1, double>, void>
 QueryObject<T>::ComputeDeformableContact(
     internal::DeformableContact<T>* deformable_contact) const {
@@ -299,6 +313,7 @@ const GeometryState<T>& QueryObject<T>::geometry_state() const {
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&QueryObject<T>::template ComputeContactSurfaces<T>,
+     &QueryObject<T>::template ComputeSpeculativeContactSurfaces<T>,
      &QueryObject<T>::template ComputeContactSurfacesWithFallback<T>));
 
 template void QueryObject<double>::ComputeDeformableContact<double>(

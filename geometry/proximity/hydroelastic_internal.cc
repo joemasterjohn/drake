@@ -105,6 +105,26 @@ SoftMesh::SoftMesh(
   surface_mesh_bvh_ =
       std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(*surface_mesh_);
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(*mesh_);
+
+  // Compute the minimum bounding spheres of each element of `mesh_`.
+  // The center of the sphere is p_MSo, measured and expressed in the mesh frame
+  // M.
+  mesh_bounding_spheres_ = std::make_unique<std::vector<PosedSphere<double>>>();
+  for (int i = 0; i < mesh_->num_elements(); ++i) {
+    const VolumeElement e = mesh_->element(i);
+    mesh_bounding_spheres_->emplace_back(MinimumBoundingSphere(
+        mesh_->vertex(e.vertex(0)), mesh_->vertex(e.vertex(1)),
+        mesh_->vertex(e.vertex(2)), mesh_->vertex(e.vertex(3))));
+  }
+
+  // Build the initial DynamicBbv based on the object frame poses of there
+  // bounding spheres. The bvh will be refitted with every query.
+  mesh_dynamic_bvh_ = std::make_unique<DynamicBvh>(
+      mesh_->num_elements(), [this](int i) -> Aabb {
+        return Aabb(
+            (*mesh_bounding_spheres_)[i].p_FSo,
+            Eigen::Vector3d::Constant((*mesh_bounding_spheres_)[i].radius));
+      });
 }
 
 SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
@@ -121,6 +141,10 @@ SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
   surface_mesh_bvh_ = std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(
       s.surface_mesh_bvh());
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(s.mesh_topology());
+
+  mesh_bounding_spheres_ = std::make_unique<std::vector<PosedSphere<double>>>(
+      s.mesh_bounding_spheres());
+  mesh_dynamic_bvh_ = std::make_unique<DynamicBvh>(s.mesh_dynamic_bvh());
   return *this;
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <limits>
+#include <ranges>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -16,18 +17,22 @@
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
+#include "drake/geometry/proximity/ccd.h"
 #include "drake/geometry/proximity/collisions_exist_callback.h"
 #include "drake/geometry/proximity/deformable_contact_geometries.h"
 #include "drake/geometry/proximity/deformable_contact_internal.h"
 #include "drake/geometry/proximity/distance_to_point_callback.h"
 #include "drake/geometry/proximity/distance_to_shape_callback.h"
+#include "drake/geometry/proximity/dynamic_bvh.h"
 #include "drake/geometry/proximity/find_collision_candidates_callback.h"
 #include "drake/geometry/proximity/hydroelastic_calculator.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
 #include "drake/geometry/proximity/make_mesh_from_vtk.h"
+#include "drake/geometry/proximity/minimum_bounding_sphere.h"
 #include "drake/geometry/proximity/obj_to_surface_mesh.h"
 #include "drake/geometry/proximity/penetration_as_point_pair_callback.h"
 #include "drake/geometry/proximity/polygon_to_triangle_mesh.h"
+#include "drake/geometry/proximity/speculative_calculator.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
 #include "drake/geometry/proximity/vtk_to_volume_mesh.h"
 #include "drake/geometry/read_obj.h"
@@ -844,6 +849,87 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   }
 
   template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                            std::vector<SpeculativeContactSurface<T>>>
+  ComputeSpeculativeContactSurfaces(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
+      const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+          V_WGs,
+      double dt) {
+    auto key_view =
+        std::views::keys(hydroelastic_geometries().soft_geometries());
+    std::vector<GeometryId> soft_ids{key_view.begin(), key_view.end()};
+
+    const int num_soft = ssize(soft_ids);
+
+    // Refit all of the soft geometries' local BVHs using X_WG and V_WG.
+    for (int i = 0; i < num_soft; ++i) {
+      hydroelastic::SoftGeometry& soft_geometry =
+          hydroelastic_geometries_.mutable_soft_geometry(soft_ids[i]);
+      const std::vector<PosedSphere<double>>& mesh_bounding_spheres =
+          soft_geometry.soft_mesh().mesh_bounding_spheres();
+      const math::RigidTransform<T>& X_WG = X_WGs.at(soft_ids[i]);
+      const multibody::SpatialVelocity<T>& V_WG = V_WGs.at(soft_ids[i]);
+
+      soft_geometry.mutable_soft_mesh().mutable_mesh_dynamic_bvh().Refit(
+          hydroelastic::MovingBoundingSphereAabbCalculator(
+              mesh_bounding_spheres, X_WG, V_WG, dt));
+    }
+
+    // Leaves of the candidate level broadphase BVH are just the root nodes of
+    // the individual per-geometry dynamic BVH.
+    AabbCalculator broadphase_calculator = [this, &soft_ids](int i) -> Aabb {
+      return this->hydroelastic_geometries()
+          .soft_geometry(soft_ids[i])
+          .soft_mesh()
+          .mesh_dynamic_bvh()
+          .root_node()
+          .bv();
+    };
+    // If the bvh has never been built, build it in the current configuration,
+    // otherwise refit.
+    if (speculative_bvh_.num_leaves() == 0) {
+      speculative_bvh_.Build(num_soft, broadphase_calculator);
+    } else {
+      DRAKE_ASSERT(speculative_bvh_.num_leaves() == num_soft);
+      speculative_bvh_.Refit(broadphase_calculator);
+    }
+
+    // Filter and sort collision candidates
+    std::vector<std::pair<int, int>> geometry_index_pairs =
+        speculative_bvh_.GetCollisionCandidates(speculative_bvh_);
+    std::erase_if(geometry_index_pairs,
+                  [this, &soft_ids](const std::pair<int, int>& pair) {
+                    return !this->collision_filter_.CanCollideWith(
+                        soft_ids[pair.first], soft_ids[pair.second]);
+                  });
+    // Transform the pairs of indices into sorted pairs of GeometryId.
+    std::vector<SortedPair<GeometryId>> geometry_pairs;
+    geometry_pairs.reserve(geometry_index_pairs.size());
+    std::transform(
+        geometry_index_pairs.begin(), geometry_index_pairs.end(),
+        geometry_pairs.begin(), [&soft_ids](const std::pair<int, int>& pair) {
+          return SortedPair(soft_ids[pair.first], soft_ids[pair.second]);
+        });
+    // Sort the sorted pairs of GeometryIds.
+    std::sort(geometry_pairs.begin(), geometry_pairs.end());
+
+    hydroelastic::SpeculativeContactCalculator<T> calculator(
+        &X_WGs, &V_WGs, dt, &hydroelastic_geometries_);
+
+    // Compute a SpeculativeContactSurface for each pair in speculative contact.
+    std::vector<SpeculativeContactSurface<T>> speculative_surfaces;
+    speculative_surfaces.reserve(geometry_pairs.size());
+
+    for (const auto& [id_A, id_B] : geometry_pairs) {
+      calculator.ComputeSpeculativeContactSurface(id_A, id_B,
+                                                  &speculative_surfaces);
+    }
+
+    return speculative_surfaces;
+  }
+
+  template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>
   ComputeContactSurfacesWithFallback(
       HydroelasticContactRepresentation representation,
@@ -1286,6 +1372,9 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
 
   // Data for ComputeSignedDistanceToPoint from meshes (Mesh and Convex).
   std::unordered_map<GeometryId, MeshDistanceBoundary> mesh_sdf_data_{};
+
+  // BVH of AABBs for broad phase collision detection for speculative constraints.
+  DynamicBvh speculative_bvh_;
 };
 
 template <typename T>
@@ -1488,6 +1577,17 @@ ProximityEngine<T>::ComputeContactSurfaces(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                          std::vector<SpeculativeContactSurface<T>>>
+ProximityEngine<T>::ComputeSpeculativeContactSurfaces(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
+    const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>& V_WGs,
+    double dt) {
+  return impl_->ComputeSpeculativeContactSurfaces(X_WGs, V_WGs, dt);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>
 ProximityEngine<T>::ComputeContactSurfacesWithFallback(
     HydroelasticContactRepresentation representation,
@@ -1563,6 +1663,7 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&ProximityEngine<T>::template ComputeContactSurfaces<T>,
+     &ProximityEngine<T>::template ComputeSpeculativeContactSurfaces<T>,
      &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>));
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(

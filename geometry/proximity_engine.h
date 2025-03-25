@@ -22,8 +22,10 @@
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
 #include "drake/geometry/query_results/signed_distance_pair.h"
 #include "drake/geometry/query_results/signed_distance_to_point.h"
+#include "drake/geometry/query_results/speculative_contact.h"
 #include "drake/geometry/shape_specification.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/math/spatial_algebra.h"
 
 namespace drake {
 namespace geometry {
@@ -291,6 +293,21 @@ class ProximityEngine {
       HydroelasticContactRepresentation representation,
       const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
       const;
+
+  /* Implementation of GeometryState::ComputeSpeculativeContactSurfaces().
+   @param X_WGs the current poses of all geometries in World in the
+                current scalar type, keyed on each geometry's GeometryId.
+   @param V_WGs the current spatial velocities of all geometries in World in
+                the current scalar type, keyed on each geometry's GeometryId.
+   @param dt Time step. */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                            std::vector<SpeculativeContactSurface<T>>>
+  ComputeSpeculativeContactSurfaces(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
+      const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+          V_WGs,
+      double dt);
 
   /* Implementation of GeometryState::ComputeContactSurfacesWithFallback().
    @param X_WGs the current poses of all geometries in World in the

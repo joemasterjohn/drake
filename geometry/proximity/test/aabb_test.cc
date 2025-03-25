@@ -57,6 +57,33 @@ GTEST_TEST(AabbTest, Construction) {
   EXPECT_TRUE(CompareMatrices(aabb.pose().translation(), p_HB));
 }
 
+GTEST_TEST(AabbTest, ConstructionTwoAabb) {
+  const Vector3d p_HA{1, 2, 3};
+  const Vector3d p_HB{-1, -2, -3};
+  const Vector3d half_width_A{0.75, 0.875, 1.25};
+  const Vector3d half_width_B{1.5, 0.125, 0.75};
+
+  const Aabb aabbA(p_HA, half_width_A);
+  const Aabb aabbB(p_HB, half_width_B);
+  const Aabb aabbAB(aabbA, aabbB);
+
+  // A contains the point of maximum extent.
+  // B contains the point of minimum extent.
+  const Vector3d expected_center =
+      0.5 * (p_HB - half_width_B + p_HA + half_width_A);
+  const Vector3d expected_half_width =
+      0.5 * (p_HA + half_width_A - p_HB + half_width_B);
+  const double expected_volume = expected_half_width.prod() * 8;
+
+  EXPECT_TRUE(CompareMatrices(aabbAB.center(), expected_center));
+  EXPECT_TRUE(CompareMatrices(aabbAB.half_width(), expected_half_width));
+  EXPECT_EQ(aabbAB.CalcVolume(), expected_volume);
+  EXPECT_TRUE(CompareMatrices(aabbAB.lower(), p_HB - half_width_B));
+  EXPECT_TRUE(CompareMatrices(aabbAB.upper(), p_HA + half_width_A));
+  EXPECT_TRUE(aabbAB.pose().rotation().IsExactlyIdentity());
+  EXPECT_TRUE(CompareMatrices(aabbAB.pose().translation(), expected_center));
+}
+
 /* Confirms that the private set_bounds() appropriately changes the box. */
 GTEST_TEST(AabbTest, UpdateBounds) {
   // Create a baseline Aabb.
@@ -146,6 +173,80 @@ GTEST_TEST(AabbTest, BoxOverlap) {
 
       EXPECT_EQ(Aabb::HasOverlap(aabbA_G, obbB_H, X_GH), expect_overlap);
     }
+  }
+}
+
+GTEST_TEST(AabbTest, HasOverlapSameFrame) {
+  // Self overlap.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    EXPECT_TRUE(Aabb::HasOverlap(a, a));
+  }
+  // No overlap.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(4, 4, 4), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in only x.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(1, 4, 4), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in only y.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(4, 1, 4), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in only z.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(4, 4, 1), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in xy.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(1, 1, 4), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in xz.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(1, 4, 1), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap in yz.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(4, 1, 1), Vector3d(1, 1, 1));
+    EXPECT_FALSE(Aabb::HasOverlap(a, b));
+  }
+  // Generic overlap.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(2, 2, 2), Vector3d(1, 1, 1));
+    EXPECT_TRUE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap just touching at one point.
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(3, 3, 3), Vector3d(1, 1, 1));
+    EXPECT_TRUE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap just touching at one edge (yz).
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(1, 3, 3), Vector3d(1, 1, 1));
+    EXPECT_TRUE(Aabb::HasOverlap(a, b));
+  }
+  // Overlap just touching at one face (z).
+  {
+    Aabb a(Vector3d(1, 1, 1), Vector3d(1, 1, 1));
+    Aabb b(Vector3d(1, 1, 3), Vector3d(1, 1, 1));
+    EXPECT_TRUE(Aabb::HasOverlap(a, b));
   }
 }
 

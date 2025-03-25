@@ -27,6 +27,7 @@
 #include "drake/geometry/render/render_engine.h"
 #include "drake/geometry/scene_graph_config.h"
 #include "drake/geometry/utilities.h"
+#include "drake/multibody/math/spatial_algebra.h"
 
 namespace drake {
 namespace geometry {
@@ -585,6 +586,17 @@ class GeometryState {
       HydroelasticContactRepresentation representation) const {
     return geometry_engine_->ComputeContactSurfaces(representation,
                                                     kinematics_data_.X_WGs);
+  }
+
+  /** Implementation of QueryObject::ComputeSpeculativeContactSurfaces().  */
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool,
+                            std::vector<internal::SpeculativeContactSurface<T>>>
+  ComputeSpeculativeContactSurfaces(
+      const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+          V_WGs, double dt) const {
+    return geometry_engine_->ComputeSpeculativeContactSurfaces(
+        kinematics_data_.X_WGs, V_WGs, dt);
   }
 
   /** Implementation of QueryObject::ComputeContactSurfacesWithFallback().  */
