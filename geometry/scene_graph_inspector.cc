@@ -225,6 +225,14 @@ SceneGraphInspector<T>::maybe_get_hydroelastic_mesh(
 }
 
 template <typename T>
+std::variant<std::monostate, const VolumeMeshFieldLinear<double, double>*>
+SceneGraphInspector<T>::maybe_get_hydroelastic_mesh_field(
+    GeometryId geometry_id) const {
+  DRAKE_DEMAND(state_ != nullptr);
+  return state_->maybe_get_hydroelastic_mesh_field(geometry_id);
+}
+
+template <typename T>
 const GeometryProperties* SceneGraphInspector<T>::GetProperties(
     GeometryId geometry_id, Role role) const {
   DRAKE_DEMAND(state_ != nullptr);

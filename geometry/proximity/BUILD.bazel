@@ -1047,6 +1047,19 @@ drake_cc_binary(
     ],
 )
 
+drake_cc_binary(
+    name = "vtk_mesh_writer",
+    srcs = ["test/vtk_mesh_writer.cc"],
+    deps = [
+        "//multibody/parsing",
+        "//multibody/plant",
+        "//geometry:scene_graph_inspector",
+        "//common:essential",
+        ":mesh_to_vtk",
+        "@gflags",
+    ]
+)
+
 drake_cc_googletest(
     name = "aabb_test",
     deps = [
