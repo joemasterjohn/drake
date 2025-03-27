@@ -1,4 +1,4 @@
-#include "drake/geometry/proximity/bvh.h"
+#include "drake/geometry/proximity/dynamic_bvh.h"
 
 #include <algorithm>
 #include <memory>
@@ -11,6 +11,8 @@ namespace drake {
 namespace geometry {
 namespace internal {
 
+using Eigen::Vector3d;
+
 DynamicBvh::DynamicBvh(int num_leaves, AabbCalculator leafCalculator)
     : num_leaves_(num_leaves) {
   DRAKE_DEMAND(num_leaves > 0);
@@ -19,10 +21,10 @@ DynamicBvh::DynamicBvh(int num_leaves, AabbCalculator leafCalculator)
 
 void DynamicBvh::Refit(AabbCalculator leafCalculator) {
   /* Update the BVs of each node in a DFS manner. */
-  std::stack<const DynamicBvhNode&> nodes;
-  nodes.emplate(root_node());
+  std::stack<DynamicBvNode*> nodes;
+  nodes.emplate(&mutable_root_node());
   while (!nodes.empty()) {
-    const DynamicBvhNode& node = nodes.top();
+    const DynamicBvNode& node = nodes.top();
     nodes.pop();
     if (node.is_leaf()) {
       /* Compute the BV that encompases all of the leaf element BVs. */
@@ -42,8 +44,57 @@ void DynamicBvh::Refit(AabbCalculator leafCalculator) {
   }
 }
 
+Aabb DynamicBvh::CalcAabb(std::vector<std::pair<int, Aabb>>::iterator start,
+                          std::vector<std::pair<int, Aabb>>::iterator end) {
+  Vector3d min_corner = start->second.center() - start->second.half_width();
+  Vector3d max_corner = start->second.center() + start->second.half_width();
+  std::vector<std::pair<int, Aabb>>::iterator current = start + 1;
+  while (current != end) {
+    min_corner = min_corner.cwiseMin(current->second.center() -
+                                     current->second.half_width());
+    max_corner = max_corner.cwiseMax(current->second.center() +
+                                     current->second.half_width());
+  }
+  return Aabb(0.5 * (min_corner + max_corner), 0.5 * (max_corner - min_corner));
+}
+
+std::unique_ptr<DynamicBvNode> DynamicBvh::BuildRecursive(
+    std::vector<std::pair<int, Aabb>>::iterator start,
+    std::vector<std::pair<int, Aabb>>::iterator end) {
+  Aabb bv = CalcAabb(start, end);
+
+  const int num_elements = end - start;
+  if (num_elements <= DynamicBvNode::kMaxElementPerLeaf) {
+    typename DynamicBvNode::LeafData data{num_elements, {}};
+    for (int i = 0; i < num_elements; ++i) {
+      data.indices[i] = (start + i)->first;
+    }
+    // Store element indices in this leaf node.
+    return std::make_unique<DynamicBvNode>(bv, data);
+  } else {
+    int axis{};
+    bv.half_width().maxCoeff(&axis);
+    std::sort(start, end,
+              [](const std::pair<int, Aabb>& a, const std::pair<int, Aabb>& b) {
+                return a.second.center()[axis] < b.second.center()[axis];
+              });
+
+    const typename std::vector<std::pair<int, Aabb>>::iterator mid =
+        start + num_elements / 2;
+    return std::make_unique<DynamicBvNode>(bv, BuildRecursive(start, mid),
+                                           BuildRecursive(mid, end));
+  }
+}
+
 void DynamicBvh::Rebuild(AabbCalculator leafCalculator) {
-  /* */
+  // Simple top-down build.
+  std::vector<std::pair<int, Aabb>> leaf_aabbs;
+  leaf_aabbs.reserve(num_elements_);
+  for (int i = 0; i < num_elements_; ++i) {
+    leaf_aabbs.emplace_back(i, leafCalculator(i));
+  }  // Continue with the next branches.
+
+  root_node_ = BuildRecursive(leaf_aabbs.begin(), leaf_aabbs.end());
 }
 
 void DynamicBvh::Collide(const DynamicBvh& bvh_B, BvttCallback callback) const {

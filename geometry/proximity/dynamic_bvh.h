@@ -85,6 +85,12 @@ class DynamicBvNode {
   bool is_leaf() const { return std::holds_alternative<LeafData>(child_); }
 
  private:
+  static Aabb CalcAabb(std::vector<std::pair<int, Aabb>>::iterator start,
+                       std::vector<std::pair<int, Aabb>>::iterator end);
+
+  static std::unique_ptr<DynamicBvNode> BuildRecursive(
+      std::vector<std::pair<int, Aabb>>::iterator start,
+      std::vector<std::pair<int, Aabb>>::iterator end);
 
   /* Provide disciplined access to DynamicBvhUpdater to a mutable child node. */
   DynamicBvNode& left() {
@@ -166,6 +172,8 @@ class DynamicBvh {
    @param callback        The callback to invoke on each unculled pair.*/
   void Collide(const DynamicBvh& bvh_B, BvttCallback callback) const;
 
+  void SelfCollide(BvttCallback callback) const;
+
   /* Wrapper around `Collide` with a callback that accumulates each pair of
    collision candidates and returns them all.
    @return Vector of element index pairs whose elements are candidates for
@@ -176,7 +184,7 @@ class DynamicBvh {
  private:
   DynamicBvNode& mutable_root_node() { return *root_node_; }
   copyable_unique_ptr<DynamicBvNode> root_node_;
-  const int num_leaves_;
+  int num_leaves_{};
 };
 
 }  // namespace internal
