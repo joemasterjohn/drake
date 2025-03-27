@@ -16,31 +16,27 @@ using Eigen::Vector3d;
 DynamicBvh::DynamicBvh(int num_leaves, AabbCalculator leafCalculator)
     : num_leaves_(num_leaves) {
   DRAKE_DEMAND(num_leaves > 0);
-  Rebuild(leafCalculator);
+  Build(leafCalculator);
 }
 
 void DynamicBvh::Refit(AabbCalculator leafCalculator) {
-  /* Update the BVs of each node in a DFS manner. */
-  std::stack<DynamicBvNode*> nodes;
-  nodes.emplate(&mutable_root_node());
-  while (!nodes.empty()) {
-    const DynamicBvNode& node = nodes.top();
-    nodes.pop();
-    if (node.is_leaf()) {
-      /* Compute the BV that encompases all of the leaf element BVs. */
-      const int num_elements = node.num_elements_indices();
-      DRAKE_DEMAND(num_elements > 0);
-      Aabb bv = leafCalculator(node.element(0));
-      for (int i = 1; i < num_elements; ++i) {
-        bv = Aabb(bv, leafCalculator(node.element(i)));
-      }
-      node.setBV(bv);
-    } else {
-      /* Set BV to the BV encompasing the children's BVs.
-         DFS order ensures the children's BVs have been refitted prior to this
-         line. */
-      node.setBV(Aabb(node.left().bv(), node.right.bv()));
+  RefitRecursive(mutable_root_node(), leafCalculator);
+}
+
+void DynamicBvh::RefitRecursive(DynamicBvNode& node,
+                                AabbCalculator leafCalculator) {
+  if (node.is_leaf()) {
+    /* Compute the BV that encompases all of the leaf element BVs. */
+    const int num_elements = node.num_element_indices();
+    Aabb bv = leafCalculator(node.element_index(0));
+    for (int i = 1; i < num_elements; ++i) {
+      bv = Aabb(bv, leafCalculator(node.element_index(i)));
     }
+    node.setBV(bv);
+  } else {
+    RefitRecursive(node.left(), leafCalculator);
+    RefitRecursive(node.right(), leafCalculator);
+    node.setBV(Aabb(node.left().bv(), node.right().bv()));
   }
 }
 
@@ -74,10 +70,11 @@ std::unique_ptr<DynamicBvNode> DynamicBvh::BuildRecursive(
   } else {
     int axis{};
     bv.half_width().maxCoeff(&axis);
-    std::sort(start, end,
-              [](const std::pair<int, Aabb>& a, const std::pair<int, Aabb>& b) {
-                return a.second.center()[axis] < b.second.center()[axis];
-              });
+    std::sort(
+        start, end,
+        [axis](const std::pair<int, Aabb>& a, const std::pair<int, Aabb>& b) {
+          return a.second.center()(axis) < b.second.center()(axis);
+        });
 
     const typename std::vector<std::pair<int, Aabb>>::iterator mid =
         start + num_elements / 2;
@@ -86,11 +83,11 @@ std::unique_ptr<DynamicBvNode> DynamicBvh::BuildRecursive(
   }
 }
 
-void DynamicBvh::Rebuild(AabbCalculator leafCalculator) {
+void DynamicBvh::Build(AabbCalculator leafCalculator) {
   // Simple top-down build.
   std::vector<std::pair<int, Aabb>> leaf_aabbs;
-  leaf_aabbs.reserve(num_elements_);
-  for (int i = 0; i < num_elements_; ++i) {
+  leaf_aabbs.reserve(num_leaves_);
+  for (int i = 0; i < num_leaves_; ++i) {
     leaf_aabbs.emplace_back(i, leafCalculator(i));
   }  // Continue with the next branches.
 

@@ -64,7 +64,7 @@ bool Aabb::HasOverlap(const Aabb& a_G, const Aabb& b_G) {
       |a.cx - b.cx| <= a.hx + b.hx
       |a.cy - b.cy| <= a.hy + b.hy
       |a.cz - b.cz| <= a.hz + b.hz  */
-  return (((a_B.center() - b_G.center()).cwiseAbs() - a_G.half_width() -
+  return (((a_G.center() - b_G.center()).cwiseAbs() - a_G.half_width() -
            b_G.half_width())
               .array() <= 0)
       .all();

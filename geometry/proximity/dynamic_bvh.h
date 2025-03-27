@@ -85,12 +85,7 @@ class DynamicBvNode {
   bool is_leaf() const { return std::holds_alternative<LeafData>(child_); }
 
  private:
-  static Aabb CalcAabb(std::vector<std::pair<int, Aabb>>::iterator start,
-                       std::vector<std::pair<int, Aabb>>::iterator end);
-
-  static std::unique_ptr<DynamicBvNode> BuildRecursive(
-      std::vector<std::pair<int, Aabb>>::iterator start,
-      std::vector<std::pair<int, Aabb>>::iterator end);
+  friend class DynamicBvh;
 
   /* Provide disciplined access to DynamicBvhUpdater to a mutable child node. */
   DynamicBvNode& left() {
@@ -158,9 +153,9 @@ class DynamicBvh {
    * leafCalculator. Topology of the tree is unchanged. */
   void Refit(AabbCalculator leafCalculator);
 
-  /* Complately rebuild the tree given the provided AabbCalculator and build
+  /* Complately Build the tree given the provided AabbCalculator and build
    * strategy. */
-  void Rebuild(AabbCalculator leafCalculator);
+  void Build(AabbCalculator leafCalculator);
 
   /* Perform a query of this %DynamicBvh's mesh elements (measured and expressed
    in Frame A) against the given %DynamicBvh's mesh elements (measured and
@@ -182,6 +177,16 @@ class DynamicBvh {
       const DynamicBvh& bvh_B) const;
 
  private:
+  static void RefitRecursive(DynamicBvNode& node,
+                             AabbCalculator leafCalculator);
+
+  static Aabb CalcAabb(std::vector<std::pair<int, Aabb>>::iterator start,
+                       std::vector<std::pair<int, Aabb>>::iterator end);
+
+  static std::unique_ptr<DynamicBvNode> BuildRecursive(
+      std::vector<std::pair<int, Aabb>>::iterator start,
+      std::vector<std::pair<int, Aabb>>::iterator end);
+
   DynamicBvNode& mutable_root_node() { return *root_node_; }
   copyable_unique_ptr<DynamicBvNode> root_node_;
   int num_leaves_{};
