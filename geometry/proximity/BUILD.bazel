@@ -53,6 +53,7 @@ drake_cc_package_library(
         ":mesh_to_vtk",
         ":mesh_traits",
         ":meshing_utilities",
+        ":minimum_bounding_sphere",
         ":obj_to_surface_mesh",
         ":plane",
         ":polygon_surface_mesh",
@@ -791,6 +792,19 @@ drake_cc_library(
     deps = [
         ":triangle_surface_mesh",
         ":volume_mesh",
+    ],
+)
+
+drake_cc_library(
+    name = "minimum_bounding_sphere",
+    srcs = ["minimum_bounding_sphere.cc"],
+    hdrs = ["minimum_bounding_sphere.h"],
+    deps = [
+        "//common:essential",
+    ],
+    implementation_deps = [
+        "//common:default_scalars",
+        "//math:linear_solve",
     ],
 )
 
@@ -1618,6 +1632,14 @@ drake_cc_googletest(
         ":meshing_utilities",
         ":obj_to_surface_mesh",
         "//common:find_resource",
+    ],
+)
+
+drake_cc_googletest(
+    name = "minimum_bounding_sphere_test",
+    deps = [
+        ":minimum_bounding_sphere",
+        "//common:default_scalars",
     ],
 )
 
