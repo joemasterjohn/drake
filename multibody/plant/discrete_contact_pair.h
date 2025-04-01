@@ -24,6 +24,28 @@ namespace internal {
  @tparam T The underlying scalar type. Must be a valid Eigen scalar. */
 template <typename T>
 struct DiscreteContactPair {
+  // TODO(amcastro-tri): consider consolidating with constraints and geometry
+  // code, since there are similar lil structs.
+  struct SpeculativeParameters {
+    bool operator==(const SpeculativeParameters& other) const = default;
+
+    /* Effective pressure gradient, in N/m³. Positive or zero. */
+    T kappa{0.0};
+
+    /* Volume constant. i.e. V(z) = volume_factor⋅z₊³. Positive or zero. */
+    T volume_factor{0.0};
+
+    /* Cosine of the angle between (physical) normal n̂ and geometric normal ẑ.
+      i.e. cos(θ) = n̂⋅ẑ. */
+    T cos_theta{0};
+
+    /* Initial distance between tets, in meters. Positive or zero. */
+    T distance0{0.0};
+
+    /* Estimated time of contact, in seconds. Positive or zero. */
+    T toc{0.0};
+  };
+
   /* Struct to store the block contribution from a given tree to the contact
    Jacobian for a contact pair. */
   struct JacobianTreeBlock {
@@ -117,6 +139,8 @@ struct DiscreteContactPair {
    pair corresponds to. No value if the pair does not correspond to point
    contact. */
   std::optional<int> point_pair_index{};
+
+  std::optional<SpeculativeParameters> speculative_params;
 };
 
 }  // namespace internal

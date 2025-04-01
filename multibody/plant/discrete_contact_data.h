@@ -35,7 +35,7 @@ class DiscreteContactData {
    deformable contacts. */
   int size() const {
     return num_point_contacts() + num_hydro_contacts() +
-           num_deformable_contacts();
+           num_deformable_contacts() + num_speculative_hydro_contacts();
   }
 
   /* Increases the capacity of the containers for point, hydroelastic, and
@@ -54,10 +54,16 @@ class DiscreteContactData {
 
   int num_point_contacts() const { return point_.size(); }
   int num_hydro_contacts() const { return hydro_.size(); }
+  int num_speculative_hydro_contacts() const {
+    return speculative_hydro_.size();
+  }
   int num_deformable_contacts() const { return deformable_.size(); }
 
   const std::vector<Data>& point_contact_data() const { return point_; }
   const std::vector<Data>& hydro_contact_data() const { return hydro_; }
+  const std::vector<Data>& speculative_hydro_contact_data() const {
+    return speculative_hydro_;
+  }
   const std::vector<Data>& deformable_contact_data() const {
     return deformable_;
   }
@@ -75,8 +81,10 @@ class DiscreteContactData {
     DRAKE_THROW_UNLESS(0 <= i && i < size());
     if (i < hydro_contact_start()) {
       return point_[i];
-    } else if (i < deformable_contact_start()) {
+    } else if (i < speculative_hydro_contact_start()) {
       return hydro_[i - hydro_contact_start()];
+    } else if (i < deformable_contact_start()) {
+      return speculative_hydro_[i - speculative_hydro_contact_start()];
     } else {
       return deformable_[i - deformable_contact_start()];
     }
@@ -89,6 +97,9 @@ class DiscreteContactData {
   void AppendHydroData(Data&& data) {
     hydro_.push_back(std::forward<Data>(data));
   }
+  void AppendSpeculativeHydroData(Data&& data) {
+    speculative_hydro_.push_back(std::forward<Data>(data));
+  }
   void AppendDeformableData(Data&& data) {
     deformable_.push_back(std::forward<Data>(data));
   }
@@ -98,6 +109,7 @@ class DiscreteContactData {
   void Clear() {
     point_.clear();
     hydro_.clear();
+    speculative_hydro_.clear();
     deformable_.clear();
   }
 
@@ -105,13 +117,17 @@ class DiscreteContactData {
    stacked in that order. */
   int point_contact_start() const { return 0; }
   int hydro_contact_start() const { return num_point_contacts(); }
+  int speculative_hydro_contact_start() const {
+    return hydro_contact_start() + num_hydro_contacts();
+  }
   int deformable_contact_start() const {
-    return num_point_contacts() + num_hydro_contacts();
+    return speculative_hydro_contact_start() + num_speculative_hydro_contacts();
   }
 
  private:
   std::vector<Data> point_;
   std::vector<Data> hydro_;
+  std::vector<Data> speculative_hydro_;
   std::vector<Data> deformable_;
 };
 
