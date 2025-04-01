@@ -450,6 +450,11 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
       DiscreteContactData<DiscreteContactPair<T>>* contact_kinematics) const
     requires scalar_predicate<T>::is_bool;
 
+  void AppendDiscreteContactPairsForSpeculativeHydroelasticContact(
+      const systems::Context<T>& context,
+      DiscreteContactData<DiscreteContactPair<T>>* result) const
+    requires scalar_predicate<T>::is_bool;
+
   /* Helper function for CalcDiscreteContactPairs() that computes all contact
    pairs from point contact, if any. */
   void AppendDiscreteContactPairsForPointContact(

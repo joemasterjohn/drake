@@ -30,7 +30,12 @@ void ExpectEqual(const SapHuntCrossleyConstraint<double>& c1,
   ExpectBaseIsEqual(c1, c2);
 
   // SapHuntCrossleyConstraint specific.
-  EXPECT_EQ(c1.parameters(), c2.parameters());
+  EXPECT_EQ(c1.is_speculative(), c2.is_speculative());
+  if (c1.is_speculative()) {
+    EXPECT_EQ(c1.speculative_parameters(), c2.speculative_parameters());
+  } else {
+    EXPECT_EQ(c1.parameters(), c2.parameters());
+  }
   EXPECT_EQ(c1.configuration(), c2.configuration());
 }
 
@@ -216,10 +221,18 @@ class SapHuntCrossleyConstraintTest
     const SapHuntCrossleyApproximation approximation =
         this->GetParam().approximation;
 
+    std::optional<SapHuntCrossleyConstraint<AutoDiffXd>::SpeculativeParameters>
+        s_ad;
+    if (p.speculative) {
+      const auto& s = *p.speculative;
+      s_ad = SapHuntCrossleyConstraint<AutoDiffXd>::SpeculativeParameters{
+          s.kappa, s.volume_factor, s.cos_theta, s.distance0, s.toc};
+    }
+
     // Instantiate constraint on AutoDiffXd for automatic differentiation.
     SapHuntCrossleyConstraint<AutoDiffXd>::Parameters p_ad{
-        approximation, p.friction,           p.stiffness,
-        p.dissipation, p.stiction_tolerance, p.sigma};
+        approximation,        p.friction, p.stiffness, p.dissipation,
+        p.stiction_tolerance, p.sigma,    s_ad};
 
     // The Jacobian is irrelevant for this tests. Therefore we set it to
     // garbage.
@@ -303,6 +316,16 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsWhenInStiction) {
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitraryStictionVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  CombineAndValidateGradients(p, vt, vn);
 }
 
 // Validate gradients for when ‖vₜ‖ is much larger than the stiction tolerance.
@@ -316,6 +339,16 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsWhenSliding) {
 
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
+  CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
   CombineAndValidateGradients(p, vt, vn);
 }
 
@@ -336,6 +369,19 @@ TEST_P(SapHuntCrossleyConstraintTest, ValidateGradientsForBreakingContact) {
   // Sliding.
   const auto vt_sliding = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt_sliding, vn);
+
+  // Speculative.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 1.0e7,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  // In stiction.
+  CombineAndValidateGradients(p, vt_stiction, vn);
+  // Sliding.
+  CombineAndValidateGradients(p, vt_sliding, vn);
 }
 
 // When stiffness and dissipation are zero, the impulse is constant and the
@@ -352,6 +398,18 @@ TEST_P(SapHuntCrossleyConstraintTest,
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitraryStictionVelocities(p.stiction_tolerance);
   CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  // N.B. Only for completeness. The impulses are trivially zero for a
+  // speculative constraint with zero stiffness.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 0.0,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
+  CombineAndValidateGradients(p, vt, vn);
 }
 
 // When stiffness and dissipation are zero, the impulse is constant and the
@@ -367,6 +425,18 @@ TEST_P(SapHuntCrossleyConstraintTest,
 
   const auto vn = MakeArbitraryInContactVelocities();
   const auto vt = MakeArbitrarySlidingVelocities(p.stiction_tolerance);
+  CombineAndValidateGradients(p, vt, vn);
+
+  // Speculative.
+  // N.B. Only for completeness. The impulses are trivially zero for a
+  // speculative constraint with zero stiffness.
+  SapHuntCrossleyConstraint<double>::SpeculativeParameters s{
+      .kappa = 0.0,
+      .volume_factor = 1.5,
+      .cos_theta = 0.9,
+      .distance0 = 0.0001,
+      .toc = 0.015};
+  p.speculative = s;
   CombineAndValidateGradients(p, vt, vn);
 }
 
