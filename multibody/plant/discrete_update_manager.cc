@@ -16,6 +16,8 @@ namespace internal {
 using drake::geometry::ContactSurface;
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
+using drake::geometry::internal::ClosestPointResult;
+using drake::geometry::internal::SpeculativeContactSurface;
 using drake::math::RigidTransform;
 using drake::math::RotationMatrix;
 using drake::multibody::contact_solvers::internal::ContactSolverResults;
@@ -622,6 +624,8 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
     throw std::logic_error("This method doesn't support T = Expression.");
   } else {
     AppendDiscreteContactPairsForHydroelasticContact(context, result);
+    AppendDiscreteContactPairsForSpeculativeHydroelasticContact(context,
+                                                                result);
   }
   if constexpr (std::is_same_v<T, double>) {
     if (deformable_driver_ != nullptr) {
@@ -784,6 +788,225 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForPointContact(
                                         .face_index = {} /* no face index */,
                                         .point_pair_index = point_pair_index};
     contact_pairs->AppendPointData(std::move(contact_pair));
+  }
+}
+
+template <typename T>
+void DiscreteUpdateManager<T>::
+    AppendDiscreteContactPairsForSpeculativeHydroelasticContact(
+        const systems::Context<T>& context,
+        DiscreteContactData<DiscreteContactPair<T>>* contact_pairs) const
+  requires scalar_predicate<T>::is_bool
+{  // NOLINT(whitespace/braces)
+  const std::vector<SpeculativeContactSurface<T>>& speculative_surfaces =
+      EvalGeometryContactData(context).get().speculative_surfaces;
+
+  int num_hydro_contacts = 0;
+  for (const auto& s : speculative_surfaces) {
+    // One point per tet pair.
+    num_hydro_contacts += s.num_contact_points();
+  }
+  if (num_hydro_contacts == 0) {
+    return;
+  }
+
+  contact_pairs->Reserve(0, num_hydro_contacts, 0);
+  const geometry::SceneGraphInspector<T>& inspector =
+      plant().EvalSceneGraphInspector(context);
+  const MultibodyTreeTopology& topology = internal_tree().get_topology();
+  const Eigen::VectorBlock<const VectorX<T>> v = plant().GetVelocities(context);
+  const Frame<T>& frame_W = plant().world_frame();
+
+  // Scratch workspace variables.
+  const int nv = plant().num_velocities();
+  Matrix3X<T> Jv_WAc_W(3, nv);
+  Matrix3X<T> Jv_WBc_W(3, nv);
+  Matrix3X<T> Jv_AcBc_W(3, nv);
+
+  const int num_surfaces = speculative_surfaces.size();
+  for (int surface_index = 0; surface_index < num_surfaces; ++surface_index) {
+    const auto& s = speculative_surfaces[surface_index];
+
+    const BodyIndex body_A_index = FindBodyByGeometryId(s.id_A());
+    const RigidBody<T>& body_A = plant().get_body(body_A_index);
+    const BodyIndex body_B_index = FindBodyByGeometryId(s.id_B());
+    const RigidBody<T>& body_B = plant().get_body(body_B_index);
+
+    const TreeIndex& tree_A_index = topology.body_to_tree_index(body_A_index);
+    const TreeIndex& tree_B_index = topology.body_to_tree_index(body_B_index);
+    const bool treeA_has_dofs = topology.tree_has_dofs(tree_A_index);
+    const bool treeB_has_dofs = topology.tree_has_dofs(tree_B_index);
+
+    // TODO(amcastro-tri): Consider making the modulus required, instead of
+    // a default infinite value.
+    const T hydro_modulus_M = GetHydroelasticModulus(
+        s.id_A(), std::numeric_limits<double>::infinity(), inspector);
+    const T hydro_modulus_N = GetHydroelasticModulus(
+        s.id_B(), std::numeric_limits<double>::infinity(), inspector);
+    // Hunt & Crossley dissipation. Used by the Tamsi, Lagged, and Similar
+    // contact models. Ignored by Sap. See
+    // multibody::DiscreteContactApproximation for details about these contact
+    // models.
+    const T d = GetCombinedHuntCrossleyDissipation(
+        s.id_A(), s.id_B(), hydro_modulus_M, hydro_modulus_N,
+        default_contact_dissipation(), inspector);
+    // Combine friction coefficients.
+    const T mu =
+        GetCombinedDynamicCoulombFriction(s.id_A(), s.id_B(), inspector);
+
+    for (int face = 0; face < s.num_contact_points(); ++face) {
+      // From SpeculativeContactSurface's docs: Geometric "normal" from geometry
+      // B into A.
+      const Vector3<T>& zhat_BA_W = s.zhat_BA_W()[face];
+
+      // Pressure gradients.
+      const Vector3<T>& gA = s.grad_eA_W()[face];
+      const Vector3<T>& gB = s.grad_eB_W()[face];
+
+      // nhat_BA_W = (grad_eA_W - grad_eB_W).normalized().
+      // Vector from B into A.
+      // N.B. We'll use the normal from A int B for the contact frame.
+      // Then, since we then use v_AcBc_W for the contact velocity, vn > 0
+      // implies separation.
+      const Vector3<T>& nhat_BA_W = s.grad_eB_W()[face];
+
+      // One dimensional pressure gradient (in Pa/m). Unlike [Masterjohn
+      // 2022], for convenience we define both pressure gradients
+      // to be positive in the direction "into" the bodies. Therefore,
+      // we use the minus sign for gN.
+      // [Masterjohn 2022] Velocity Level Approximation of Pressure
+      // Field Contact Patches.
+      const T kappaA = nhat_BA_W.dot(gA);
+      const T kappaB = -nhat_BA_W.dot(gB);
+
+      constexpr double kGradientEpsilon = 1.0e-14;
+      if (kappaA < kGradientEpsilon || kappaB < kGradientEpsilon) {
+        // kappaA + kappaB = ‖g‖ > 0.
+        // kappa = kappaA*kappaB/(kappaA+kappaB). Negative kappaA or kappaB
+        // indicate a configuration for which pushing tets together leads to a
+        // decrease of the force, rather than an increase. This is unstable and
+        // cannot be written as a convex constraint. However it seldom happens
+        // and can be neglected.
+        continue;
+      }
+
+      // Effective hydroelastic pressure gradient s result of
+      // compliant-compliant interaction, see [Masterjohn 2022].
+      // The expression below is mathematically equivalent to kappa =
+      // kappaA*kappaB/(kappaA+gB) but it has the advantage of also being valid
+      // if one of the gradients is infinity.
+      const T kappa = 1.0 / (1.0 / kappaA + 1.0 / kappaB);
+
+      // Estimate of the (speculative) contact point position at ToC in the
+      // future.
+      const Vector3<T>& p_WC = s.p_WC()[face];
+
+      // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian
+      // will be:
+      //   J_AcBc_W = Jv_WBc_W - Jv_WAc_W.
+      // That is the relative velocity at C is v_AcBc_W = J_AcBc_W * v.
+      internal_tree().CalcJacobianTranslationalVelocity(
+          context, JacobianWrtVariable::kV, body_A.body_frame(), frame_W, p_WC,
+          frame_W, frame_W, &Jv_WAc_W);
+      internal_tree().CalcJacobianTranslationalVelocity(
+          context, JacobianWrtVariable::kV, body_B.body_frame(), frame_W, p_WC,
+          frame_W, frame_W, &Jv_WBc_W);
+      Jv_AcBc_W = Jv_WBc_W - Jv_WAc_W;
+
+      // Define a contact frame C at the contact point such that the
+      // z-axis Cz equals nhat_AB_W. The tangent vectors are arbitrary,
+      // with the only requirement being that they form a valid right
+      // handed basis with nhat_AB_W.
+      const Vector3<T> nhat_AB_W = -nhat_BA_W;
+      math::RotationMatrix<T> R_WC =
+          math::RotationMatrix<T>::MakeFromOneVector(nhat_AB_W, 2);
+
+      // Contact velocity stored in the current context (previous time
+      // step).
+      const Vector3<T> v_AcBc_W = Jv_AcBc_W * v;
+      const Vector3<T> v_AcBc_C = R_WC.transpose() * v_AcBc_W;
+      const T vn0 = v_AcBc_C(2);
+
+      // We have at most two blocks per contact.
+      std::vector<typename DiscreteContactPair<T>::JacobianTreeBlock>
+          jacobian_blocks;
+      jacobian_blocks.reserve(2);
+
+      // Tree A contribution to contact Jacobian Jv_W_AcBc_C.
+      if (treeA_has_dofs) {
+        Matrix3X<T> J =
+            R_WC.matrix().transpose() *
+            Jv_AcBc_W.middleCols(
+                tree_topology().tree_velocities_start_in_v(tree_A_index),
+                tree_topology().num_tree_velocities(tree_A_index));
+        jacobian_blocks.emplace_back(tree_A_index,
+                                     MatrixBlock<T>(std::move(J)));
+      }
+
+      // Tree B contribution to contact Jacobian Jv_W_AcBc_C.
+      // This contribution must be added only if B is different from A.
+      if ((treeB_has_dofs && !treeA_has_dofs) ||
+          (treeB_has_dofs && tree_B_index != tree_A_index)) {
+        Matrix3X<T> J =
+            R_WC.matrix().transpose() *
+            Jv_AcBc_W.middleCols(
+                tree_topology().tree_velocities_start_in_v(tree_B_index),
+                tree_topology().num_tree_velocities(tree_B_index));
+        jacobian_blocks.emplace_back(tree_B_index,
+                                     MatrixBlock<T>(std::move(J)));
+      }
+
+      // Collect speculative contact parameters.
+      const T& volume_coefficient = s.coefficient()[face];  // V(z) = C * z³.
+      const ClosestPointResult<T>& cpr = s.closest_points()[face];
+      using std::sqrt;
+      const T distance = sqrt(cpr.squared_dist);
+      // N.B. Speculative constraints use abs(cos_theta)), and therefore here we
+      // can use nhat_BA_W or nhat_AB_W.
+      const T cos_theta = nhat_BA_W.dot(zhat_BA_W);
+
+      // TODO(amcastro-tri): for now a value larger than the time step that will
+      // get ignored.
+      const T toc = 2.0 * plant().time_step();
+
+      typename DiscreteContactPair<T>::SpeculativeParameters spec_params{
+          kappa, volume_coefficient, cos_theta, distance, toc};
+
+      // Contact point position relative to each body.
+      const RigidTransform<T>& X_WA =
+          plant().EvalBodyPoseInWorld(context, body_A);
+      const Vector3<T>& p_WA = X_WA.translation();
+      const Vector3<T> p_AC_W = p_WC - p_WA;
+      const RigidTransform<T>& X_WB =
+          plant().EvalBodyPoseInWorld(context, body_B);
+      const Vector3<T>& p_WB = X_WB.translation();
+      const Vector3<T> p_BC_W = p_WC - p_WB;
+
+      // Entries not relevant to speculative constraints are filled with NANs.
+      DiscreteContactPair<T> contact_pair{
+          .jacobian = std::move(jacobian_blocks),
+          .id_A = s.id_A(),
+          .object_A = body_A_index,
+          .id_B = s.id_B(),
+          .object_B = body_B_index,
+          .R_WC = R_WC,
+          .p_WC = p_WC,
+          .p_ApC_W = p_AC_W,
+          .p_BqC_W = p_BC_W,
+          .nhat_BA_W = nhat_BA_W,
+          .phi0 = NAN,
+          .vn0 = vn0,
+          .fn0 = NAN,
+          .stiffness = NAN,
+          .damping = d,
+          .dissipation_time_scale = NAN,
+          .friction_coefficient = mu,
+          .surface_index = surface_index,
+          .face_index = face,
+          .point_pair_index = {} /* no point pair index */,
+          .speculative_params = spec_params};
+      contact_pairs->AppendSpeculativeHydroData(std::move(contact_pair));
+    }
   }
 }
 

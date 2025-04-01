@@ -215,6 +215,12 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
       manager().EvalDiscreteContactPairs(context);
   const int num_contacts = contact_pairs.size();
 
+  // Appending here allows us to control what velocity approximation to use (v0,
+  // v*, both, etc.) N.B. Moved to DUM for now. In principle the statement above
+  // is not true. We can always Eval v* if needed from anywhere in the plant
+  // code (MbP, DUM, or driver)
+  // AppendSpeculativeDiscreteContactPairs(context, &contact_pairs);
+
   // Quick no-op exit.
   if (num_contacts == 0) return std::vector<RotationMatrix<T>>();
 
@@ -236,6 +242,8 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
     };
 
     auto make_hunt_crossley_parameters = [&]() {
+      using SpeculativeParameters =
+          typename SapHuntCrossleyConstraint<T>::SpeculativeParameters;
       const double vs = plant().stiction_tolerance();
       SapHuntCrossleyApproximation model;
       switch (plant().get_discrete_contact_approximation()) {
@@ -248,8 +256,16 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
         default:
           DRAKE_UNREACHABLE();
       }
+
+      std::optional<SpeculativeParameters> s;
+      if (pair.speculative_params) {
+        const auto& p = *pair.speculative_params;
+        s = SpeculativeParameters{p.kappa, p.volume_factor, p.cos_theta,
+                                  p.distance0, p.toc};
+      }
+
       return typename SapHuntCrossleyConstraint<T>::Parameters{
-          model, friction, stiffness, damping, vs, sigma};
+          model, friction, stiffness, damping, vs, sigma, s};
     };
 
     R_WC.push_back(pair.R_WC);

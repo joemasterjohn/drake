@@ -2922,6 +2922,13 @@ void MultibodyPlant<T>::CalcGeometryContactData(
       if constexpr (scalar_predicate<T>::is_bool) {
         storage.surfaces = query_object.ComputeContactSurfaces(
             get_contact_surface_representation());
+        // TODO(amcastro-tri): Consider evaluating at v* or some other
+        // intermediate veolocity and/or configuration.
+        const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+            V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
+        storage.speculative_surfaces =
+            query_object.ComputeSpeculativeContactSurfaces(V_WGs,
+                                                           &storage.surfaces);
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -2936,6 +2943,13 @@ void MultibodyPlant<T>::CalcGeometryContactData(
         query_object.ComputeContactSurfacesWithFallback(
             get_contact_surface_representation(), &storage.surfaces,
             &storage.point_pairs);
+        // TODO(amcastro-tri): Consider evaluating at v* or some other
+        // intermediate veolocity and/or configuration.
+        const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
+            V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
+        storage.speculative_surfaces =
+            query_object.ComputeSpeculativeContactSurfaces(V_WGs,
+                                                           &storage.surfaces);
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -3577,6 +3591,17 @@ void MultibodyPlant<T>::DeclareCacheEntries() {
   cache_indices_.geometry_contact_data =
       geometry_contact_data_cache_entry.cache_index();
 
+  auto& geometry_spatial_velocities_cache_entry = this->DeclareCacheEntry(
+      std::string("GeometrySpatialVelocities"),
+      // We can't just depend on state ticket here because the results
+      // from query objects also depend on other things in GeometryState such
+      // as collision filters.
+      &MultibodyPlant::CalcGeometrySpatialVelocitiesInWorld,
+      {state_ticket, this->all_parameters_ticket(),
+       get_geometry_query_input_port().ticket()});
+  cache_indices_.geometry_spatial_velocities =
+      geometry_spatial_velocities_cache_entry.cache_index();
+
   // Cache entry for HydroelasticContactForcesContinuous.
   const bool use_hydroelastic =
       contact_model_ == ContactModel::kHydroelastic ||
@@ -3911,6 +3936,28 @@ void MultibodyPlant<T>::CalcBodySpatialAccelerationsOutput(
     const auto mobod_index = get_body(body_index).mobod_index();
     output->at(body_index) = ac.get_A_WB(mobod_index);
   }
+}
+
+template <typename T>
+void MultibodyPlant<T>::CalcGeometrySpatialVelocitiesInWorld(
+    const systems::Context<T>& context,
+    std::unordered_map<geometry::GeometryId, multibody::SpatialVelocity<T>>*
+        V_WGs) const {
+  DRAKE_DEMAND(V_WGs != nullptr);
+  for (const auto& [id, body_index] : geometry_id_to_body_index_) {
+    const auto& body = get_body(body_index);
+    (*V_WGs)[id] = EvalBodySpatialVelocityInWorld(context, body);
+  }
+}
+
+template <typename T>
+const std::unordered_map<geometry::GeometryId, multibody::SpatialVelocity<T>>&
+MultibodyPlant<T>::EvalGeometrySpatialVelocitiesInWorld(
+    const systems::Context<T>& context) const {
+  return this->get_cache_entry(cache_indices_.geometry_spatial_velocities)
+      .template Eval<std::unordered_map<geometry::GeometryId,
+                                        multibody::SpatialVelocity<T>>>(
+          context);
 }
 
 template <typename T>

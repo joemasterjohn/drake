@@ -5750,6 +5750,7 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
   // MultibodyPlant cache entries. These are initialized at Finalize().
   struct CacheIndices {
     systems::CacheIndex geometry_contact_data;
+    systems::CacheIndex geometry_spatial_velocities;
     systems::CacheIndex joint_locking;
 
     // This is only valid for a continuous-time, hydroelastic-contact plant.
@@ -6184,6 +6185,15 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
   void CalcInstanceGeneralizedAccelerationOutput(
       ModelInstanceIndex model_instance, const systems::Context<T>& context,
       systems::BasicVector<T>* output) const;
+
+  void CalcGeometrySpatialVelocitiesInWorld(
+      const systems::Context<T>& context,
+      std::unordered_map<geometry::GeometryId, multibody::SpatialVelocity<T>>*
+          V_WGs) const;
+
+  const std::unordered_map<geometry::GeometryId, multibody::SpatialVelocity<T>>&
+  EvalGeometrySpatialVelocitiesInWorld(
+      const systems::Context<T>& context) const;
 
   // Method to compute spatial contact forces for continuous plants.
   // @note This version zeros out the forces in @p F_BBo_W_array before adding

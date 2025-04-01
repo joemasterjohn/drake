@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
@@ -22,8 +24,21 @@ struct SapHuntCrossleyConstraintData {
   // MakeData().
   struct InvariantData {
     T dt;            // Time step.
-    T n0;            // Normal impulse evaluated at previous time step.
     T epsilon_soft;  // Regularization parameter, εₛ.
+    // N.B. n0 = 0 for speculative constraints, always.
+    T n0{0.0};  // Normal impulse evaluated at previous time step.
+
+    // TODO(amcastro-tri): Speculative constraints with kLagged do not introduce
+    // friction since n0 = 0 always. Therefore we could make them a more
+    // efficient 1-equation constraint.
+    // TODO(amcastro-tri): For speculative constraints, consider ignoring
+    // friction even if we use kSimilar. Then they will always be a 1-equation
+    // constraint.
+
+    // Speculative constraint parameters. Not used if not speculative.
+    T c{NAN};          // = dt * volume_factor * kappa. c > 0.
+    T a{NAN}, b{NAN};  // z = b − a⋅vₙ. Both a, b ≥ 0.
+    T d{NAN};          // Hunt & Crossley dissipation.
   };
   InvariantData invariant_data;
 
@@ -113,6 +128,26 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
   SapHuntCrossleyConstraint& operator=(SapHuntCrossleyConstraint&&) = delete;
   //@}
 
+  struct SpeculativeParameters {
+    bool operator==(const SpeculativeParameters& other) const = default;
+
+    /* Effective pressure gradient, in N/m³. Positive or zero. */
+    T kappa{0.0};
+
+    /* Volume constant. i.e. V(z) = volume_factor⋅z₊³. Positive or zero. */
+    T volume_factor{0.0};
+
+    /* Cosine of the angle between (physical) normal n̂ and geometric normal ẑ.
+      i.e. cos(θ) = n̂⋅ẑ. */
+    T cos_theta{0};
+
+    /* Initial distance between tets, in meters. Positive or zero. */
+    T distance0{0.0};
+
+    /* Estimated time of contact, in seconds. Positive or zero. */
+    T toc{0.0};
+  };
+
   /* Numerical parameters that define the constraint. Refer to this class's
    documentation for details. */
   struct Parameters {
@@ -141,6 +176,8 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
      parameter, estimated to be σ = 10⁻³ for a tight approximation of stiction,
      [Castro et al., 2022]. */
     double sigma{1.0e-3};
+
+    std::optional<SpeculativeParameters> speculative{};
   };
 
   /* Constructor for a H&C contact constraint between two objects A and B. The
@@ -160,7 +197,16 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
   SapHuntCrossleyConstraint(ContactConfiguration<T> configuration,
                             SapConstraintJacobian<T> J, Parameters parameters);
 
+  /* Returns true if it is a speculative H&C constraint. */
+  bool is_speculative() const { return parameters_.speculative.has_value(); }
+
   const Parameters& parameters() const { return parameters_; }
+
+  const SpeculativeParameters& speculative_parameters() const {
+    DRAKE_THROW_UNLESS(is_speculative());
+    return *parameters_.speculative;
+  }
+
   const ContactConfiguration<T>& configuration() const {
     return configuration_;
   }
@@ -178,6 +224,13 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
     const T soft_norm = sqrt(x2 + eps * eps) - eps;
     return soft_norm;
   }
+
+  std::unique_ptr<AbstractValue> MakeConstraintData(
+      const T& time_step,
+      const Eigen::Ref<const VectorX<T>>& delassus_estimation) const;
+  std::unique_ptr<AbstractValue> MakeSpeculativeConstraintData(
+      const T& time_step,
+      const Eigen::Ref<const VectorX<T>>& delassus_estimation) const;
 
   // Implementations of SapConstraint NVIs.
   std::unique_ptr<AbstractValue> DoMakeData(
@@ -217,17 +270,29 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
   // Computes antiderivative N(vₙ; fₑ₀) such that n(vₙ; fe0) = N'(vₙ; fₑ₀).
   // @param dt The fixed time step size.
   // @param vn Normal component of the contact velocity.
-  T CalcDiscreteHuntCrossleyAntiderivative(const T& dt, const T& vn) const;
+  T CalcHuntCrossleyAntiderivative(const T& dt, const T& vn) const;
+
+  T CalcSpeculativeHuntCrossleyAntiderivative(
+      const typename SapHuntCrossleyConstraintData<T>::InvariantData& data,
+      const T& vn) const;
 
   // Computes discrete impulse function n(vₙ; fₑ₀) = N'(vₙ; fₑ₀).
   // @param dt The fixed time step size.
   // @param vn Normal component of the contact velocity.
-  T CalcDiscreteHuntCrossleyImpulse(const T& dt, const T& vn) const;
+  T CalcHuntCrossleyImpulse(const T& dt, const T& vn) const;
+
+  T CalcSpeculativeHuntCrossleyImpulse(
+      const typename SapHuntCrossleyConstraintData<T>::InvariantData& data,
+      const T& vn) const;
 
   // Computes derivative n'(vₙ; fₑ₀) of the discrete impulse function.
   // @param dt The fixed time step size.
   // @param vn Normal component of the contact velocity.
-  T CalcDiscreteHuntCrossleyImpulseGradient(const T& dt, const T& vn) const;
+  T CalcHuntCrossleyImpulseGradient(const T& dt, const T& vn) const;
+
+  T CalcSpeculativeHuntCrossleyImpulseGradient(
+      const typename SapHuntCrossleyConstraintData<T>::InvariantData& data,
+      const T& vn) const;
 
   Parameters parameters_;
   ContactConfiguration<T> configuration_;

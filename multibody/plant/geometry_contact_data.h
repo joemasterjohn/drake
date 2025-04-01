@@ -7,6 +7,7 @@
 #include "drake/geometry/query_results/contact_surface.h"
 #include "drake/geometry/query_results/deformable_contact.h"
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
+#include "drake/geometry/query_results/speculative_contact.h"
 
 namespace drake {
 namespace multibody {
@@ -29,6 +30,8 @@ template <typename T>
 struct NestedGeometryContactData {
   std::vector<geometry::PenetrationAsPointPair<T>> point_pairs;
   std::vector<geometry::ContactSurface<T>> surfaces;
+  std::vector<geometry::internal::SpeculativeContactSurface<T>>
+      speculative_surfaces;
   geometry::internal::DeformableContact<T> deformable;
 };
 
@@ -39,6 +42,8 @@ struct NestedGeometryContactData<AutoDiffXd> {
   using T = AutoDiffXd;
   std::vector<geometry::PenetrationAsPointPair<T>> point_pairs;
   std::vector<geometry::ContactSurface<T>> surfaces;
+  std::vector<geometry::internal::SpeculativeContactSurface<T>>
+      speculative_surfaces;
 };
 
 /* Full specialization of NestedGeometryContactData for T = Expression.
