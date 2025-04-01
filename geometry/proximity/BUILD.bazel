@@ -21,6 +21,7 @@ drake_cc_package_library(
         ":bv",
         ":bvh",
         ":bvh_updater",
+        ":ccd",
         ":collision_filter",
         ":contact_surface_utility",
         ":deformable_contact_geometries",
@@ -152,6 +153,18 @@ drake_cc_library(
     implementation_deps = [
         ":distance_to_point_callback",
         "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "ccd",
+    srcs = ["ccd.cc"],
+    hdrs = ["ccd.h"],
+    deps = [
+        "//common:essential",
+    ],
+    implementation_deps = [
+        "//common:default_scalars",
     ],
 )
 
@@ -1108,6 +1121,15 @@ drake_cc_googletest(
         ":volume_to_surface_mesh",
         "//common/test_utilities:eigen_matrix_compare",
         "//common/test_utilities:expect_throws_message",
+    ],
+)
+
+drake_cc_googletest(
+    name = "ccd_test",
+    deps = [
+        ":ccd",
+        "//common:default_scalars",
+        "//math:geometric_transform",
     ],
 )
 
