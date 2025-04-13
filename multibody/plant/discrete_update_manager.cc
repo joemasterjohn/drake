@@ -868,7 +868,7 @@ void DiscreteUpdateManager<T>::
       // N.B. We'll use the normal from A int B for the contact frame.
       // Then, since we then use v_AcBc_W for the contact velocity, vn > 0
       // implies separation.
-      const Vector3<T>& nhat_BA_W = s.grad_eB_W()[face];
+      const Vector3<T>& nhat_BA_W = s.nhat_BA_W()[face];
 
       // One dimensional pressure gradient (in Pa/m). Unlike [Masterjohn
       // 2022], for convenience we define both pressure gradients
@@ -967,7 +967,7 @@ void DiscreteUpdateManager<T>::
 
       // TODO(amcastro-tri): for now a value larger than the time step that will
       // get ignored.
-      const T toc = 2.0 * plant().time_step();
+      const T toc = s.time_of_contact()[face];
 
       typename DiscreteContactPair<T>::SpeculativeParameters spec_params{
           kappa, volume_coefficient, cos_theta, distance, toc};

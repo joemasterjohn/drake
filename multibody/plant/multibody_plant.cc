@@ -2927,8 +2927,7 @@ void MultibodyPlant<T>::CalcGeometryContactData(
         const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
             V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
         storage.speculative_surfaces =
-            query_object.ComputeSpeculativeContactSurfaces(V_WGs,
-                                                           &storage.surfaces);
+            query_object.ComputeSpeculativeContactSurfaces(V_WGs, time_step_);
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -2948,8 +2947,7 @@ void MultibodyPlant<T>::CalcGeometryContactData(
         const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
             V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
         storage.speculative_surfaces =
-            query_object.ComputeSpeculativeContactSurfaces(V_WGs,
-                                                           &storage.surfaces);
+            query_object.ComputeSpeculativeContactSurfaces(V_WGs, time_step_);
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -3944,9 +3942,14 @@ void MultibodyPlant<T>::CalcGeometrySpatialVelocitiesInWorld(
     std::unordered_map<geometry::GeometryId, multibody::SpatialVelocity<T>>*
         V_WGs) const {
   DRAKE_DEMAND(V_WGs != nullptr);
+  const auto& query_object = EvalGeometryQueryInput(context, __func__);
   for (const auto& [id, body_index] : geometry_id_to_body_index_) {
     const auto& body = get_body(body_index);
-    (*V_WGs)[id] = EvalBodySpatialVelocityInWorld(context, body);
+    const RigidTransform<T> X_WB = body.EvalPoseInWorld(context);
+    const RigidTransform<T> X_WG = query_object.GetPoseInWorld(id);
+    const Vector3<T> p_BoGo_W = X_WB.InvertAndCompose(X_WG).translation();
+    (*V_WGs)[id] =
+        EvalBodySpatialVelocityInWorld(context, body).Shift(p_BoGo_W);
   }
 }
 
