@@ -66,6 +66,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   std::vector<Vector3<T>> grad_eA_W;
   std::vector<Vector3<T>> grad_eB_W;
   std::vector<ClosestPointResult<T>> closest_points;
+  std::vector<std::pair<int, int>> valid_element_pairs;
 
   std::vector<std::pair<int, int>> element_pairs =
       soft_A.soft_mesh().mesh_dynamic_bvh().GetCollisionCandidates(
@@ -73,6 +74,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
              soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
+
 
   // Quick exit.
   if (ssize(element_pairs) == 0) return;
@@ -86,6 +88,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   grad_eA_W.reserve(element_pairs.size());
   grad_eB_W.reserve(element_pairs.size());
   closest_points.reserve(element_pairs.size());
+  valid_element_pairs.reserve(element_pairs.size());
 
   // For each element pair compute the necessary data.
   for (const auto& [tet_A, tet_B] : element_pairs) {
@@ -347,6 +350,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // Calculate the contact normal, defined in the same manner as discrete
     // hydro.
     nhat_BA_W.emplace_back((grad_eA_W.back() - grad_eB_W.back()).normalized());
+
+    // Add the element pair to the valid element pairs.
+    valid_element_pairs.emplace_back(std::make_pair(tet_A, tet_B));
   }
 
   // Quick exit if no speculative contacts are found.
@@ -354,7 +360,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,
-      grad_eA_W, grad_eB_W, closest_points, element_pairs);
+      grad_eA_W, grad_eB_W, closest_points, valid_element_pairs);
 }
 
 template <typename T>

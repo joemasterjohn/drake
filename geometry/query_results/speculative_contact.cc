@@ -1,5 +1,7 @@
 #include "drake/geometry/query_results/speculative_contact.h"
 
+#include <fstream>
+
 #include "drake/common/ssize.h"
 
 namespace drake {
@@ -33,11 +35,78 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
   DRAKE_DEMAND(num_contact_points == ssize(grad_eA_W_));
   DRAKE_DEMAND(num_contact_points == ssize(grad_eB_W_));
   DRAKE_DEMAND(num_contact_points == ssize(closest_points_));
-  //DRAKE_DEMAND(num_contact_points == ssize(element_pairs_));
+  // DRAKE_DEMAND(num_contact_points == ssize(element_pairs_));
 }
 
 template <typename T>
 SpeculativeContactSurface<T>::~SpeculativeContactSurface() = default;
+
+template <typename T>
+void SpeculativeContactSurface<T>::SaveToFile(const std::string& filename) const {
+  if constexpr (!std::is_same_v<T, double>) {
+    throw std::logic_error(
+        "SpeculativeContactSurface<T>::SaveToFile() is only supported for T = "
+        "double.");
+  } else {
+    std::ofstream out(filename);
+    if (!out) {
+      throw std::runtime_error("Could not open file");
+    }
+
+    for (int i = 0; i < num_contact_points(); ++i) {
+      out << fmt::format("{} {} {} ", p_WC()[i](0), p_WC()[i](1), p_WC()[i](2));
+      out << fmt::format("{} ", time_of_contact()[i]);
+      out << fmt::format("{} {} {} ", zhat_BA_W()[i](0), zhat_BA_W()[i](1),
+                         zhat_BA_W()[i](2));
+      out << fmt::format("{} ", coefficient()[i]);
+      out << fmt::format("{} {} {} ", nhat_BA_W()[i](0), nhat_BA_W()[i](1),
+                         nhat_BA_W()[i](2));
+      out << fmt::format("{} {} {} ", grad_eA_W()[i](0), grad_eA_W()[i](1),
+                         grad_eA_W()[i](2));
+      out << fmt::format("{} {} {} ", grad_eB_W()[i](0), grad_eB_W()[i](1),
+                         grad_eB_W()[i](2));
+      const ClosestPointResult<double>& result = closest_points()[i];
+      out << fmt::format("{} {} {} ", result.closest_A.p(0),
+                         result.closest_A.p(1), result.closest_A.p(2));
+      switch (result.closest_A.type) {
+        case ClosestPointType::Vertex:
+          out << fmt::format("VERTEX ");
+          break;
+        case ClosestPointType::Edge:
+          out << fmt::format("EDGE ");
+          break;
+        case ClosestPointType::Face:
+          out << fmt::format("FACE ");
+          break;
+      }
+      out << fmt::format("{} {} {} ", result.closest_A.indices[0],
+                         result.closest_A.indices[1],
+                         result.closest_A.indices[2]);
+
+      out << fmt::format("{} {} {} ", result.closest_B.p(0),
+                         result.closest_B.p(1), result.closest_B.p(2));
+      switch (result.closest_B.type) {
+        case ClosestPointType::Vertex:
+          out << fmt::format("VERTEX ");
+          break;
+        case ClosestPointType::Edge:
+          out << fmt::format("EDGE ");
+          break;
+        case ClosestPointType::Face:
+          out << fmt::format("FACE ");
+          break;
+      }
+      out << fmt::format("{} {} {} ", result.closest_B.indices[0],
+                         result.closest_B.indices[1],
+                         result.closest_B.indices[2]);
+      out << fmt::format("{} ", result.squared_dist);
+      out << fmt::format("{} {}\n", element_pairs()[i].first,
+                         element_pairs()[i].second);
+    }
+
+    out << "\n";
+  }
+}
 
 }  // namespace internal
 }  // namespace geometry

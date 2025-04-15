@@ -937,6 +937,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     for (const auto& [id_A, id_B] : geometry_pairs) {
       calculator.ComputeSpeculativeContactSurface(id_A, id_B,
                                                   &speculative_surfaces);
+      speculative_surfaces.back().SaveToFile(
+          fmt::format("speculative_{}_{}.txt", id_A, id_B));
     }
 
     return speculative_surfaces;

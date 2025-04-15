@@ -97,6 +97,8 @@ class SpeculativeContactSurface {
     return element_pairs_;
   }
 
+  void SaveToFile(const std::string& filename) const;
+
  private:
   GeometryId id_A_;
   GeometryId id_B_;

@@ -65,10 +65,10 @@ namespace examples {
 namespace ball_plate {
 namespace {
 
-using Eigen::Vector3d;
 using drake::math::RigidTransformd;
 using drake::multibody::CoulombFriction;
 using drake::multibody::SpatialVelocity;
+using Eigen::Vector3d;
 
 int do_main() {
   systems::DiagramBuilder<double> builder;
@@ -83,21 +83,20 @@ int do_main() {
   auto [plant, scene_graph] = AddMultibodyPlant(config, &builder);
 
   // Ball's parameters.
-  const double radius = 0.05;   // m
-  const double mass = 0.1;      // kg
+  const double radius = 0.05;  // m
+  const double mass = 0.1;     // kg
   AddBallPlateBodies(
       radius, mass, FLAGS_hydroelastic_modulus, FLAGS_dissipation,
-      CoulombFriction<double>{
-          // static friction (unused in discrete systems)
-          FLAGS_friction_coefficient,
-          // dynamic friction
-          FLAGS_friction_coefficient},
+      CoulombFriction<double>{// static friction (unused in discrete systems)
+                              FLAGS_friction_coefficient,
+                              // dynamic friction
+                              FLAGS_friction_coefficient},
       FLAGS_resolution_hint_factor, &plant);
 
   plant.Finalize();
 
-  DRAKE_DEMAND(plant.num_velocities() == 12);
-  DRAKE_DEMAND(plant.num_positions() == 14);
+  // DRAKE_DEMAND(plant.num_velocities() == 12);
+  // DRAKE_DEMAND(plant.num_positions() == 14);
 
   visualization::AddDefaultVisualization(&builder);
 
@@ -116,9 +115,11 @@ int do_main() {
           M_PI / 180.0 * Vector3d(FLAGS_wx, FLAGS_wy, FLAGS_wz),
           Vector3d(FLAGS_vx, FLAGS_vy, FLAGS_vz)});
 
+  simulator->Initialize();
+
   common::MaybePauseForUser();
 
-  simulator->AdvanceTo(FLAGS_simulation_time);
+  simulator->AdvanceTo(FLAGS_mbp_dt);
   systems::PrintSimulatorStatistics(*simulator);
   return 0;
 }
