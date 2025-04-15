@@ -25,7 +25,6 @@ SapHuntCrossleyConstraint<T>::SapHuntCrossleyConstraint(
       parameters_(std::move(params)),
       configuration_(std::move(configuration)) {
   DRAKE_DEMAND(parameters().friction >= 0.0);
-  DRAKE_DEMAND(parameters().stiffness >= 0.0);
   DRAKE_DEMAND(parameters().dissipation >= 0.0);
   DRAKE_DEMAND(parameters().sigma >= 0.0);
   DRAKE_DEMAND(parameters().stiction_tolerance > 0.0);
@@ -38,6 +37,8 @@ SapHuntCrossleyConstraint<T>::SapHuntCrossleyConstraint(
     DRAKE_DEMAND(speculative.distance0 >= 0.0);
     DRAKE_DEMAND(speculative.toc >= 0.0);
     DRAKE_DEMAND(speculative.kappa >= 0.0);
+  } else {
+    DRAKE_DEMAND(parameters().stiffness >= 0.0);
   }
 }
 

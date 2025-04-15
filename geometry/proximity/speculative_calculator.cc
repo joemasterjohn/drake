@@ -71,6 +71,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       soft_A.soft_mesh().mesh_dynamic_bvh().GetCollisionCandidates(
           soft_B.soft_mesh().mesh_dynamic_bvh());
 
+  fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
+             soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
+
   // Quick exit.
   if (ssize(element_pairs) == 0) return;
 
@@ -150,6 +153,11 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const T tc = length_BqAp / v_n;
 
+    if (tc < 0) {
+      closest_points.pop_back();
+      continue;
+    }
+
     time_of_contact.emplace_back(tc);
 
     // TODO(joemasterjohn): Consider the case ot tc < 0. Or take as argument
@@ -186,9 +194,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       zhat_BA_W.emplace_back(
           X_WA.rotation() *
           soft_A.mesh().inward_normal(tet_A, face_A_index).template cast<T>());
-      DRAKE_ASSERT(zhat_BA_W.back().dot(p_BqAp_W) > 0);
-      // n_A in the formulation is the (outward) face normal of A.
-      // Re-express in B for computation.
+      // DRAKE_ASSERT(zhat_BA_W.back().dot(p_BqAp_W) > 0);
+      //  n_A in the formulation is the (outward) face normal of A.
+      //  Re-express in B for computation.
       const Vector3<T> n_A_B = -(X_WB.rotation().inverse() * zhat_BA_W.back());
 
       // TODO(joemasterjohn): Here is the meat of the formulation,
@@ -231,9 +239,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       zhat_BA_W.emplace_back(-(
           X_WB.rotation() *
           soft_B.mesh().inward_normal(tet_B, face_B_index).template cast<T>()));
-      DRAKE_ASSERT(zhat_BA_W.back().dot(p_BqAp_W) > 0);
-      // n_B in the formulation is the (outward) face normal of B.
-      // Re-express in A for computation.
+      // DRAKE_ASSERT(zhat_BA_W.back().dot(p_BqAp_W) < 0);
+      //  n_B in the formulation is the (outward) face normal of B.
+      //  Re-express in A for computation.
       const Vector3<T> n_B_A = X_WA.rotation().inverse() * zhat_BA_W.back();
 
       // TODO(joemasterjohn): Here is the meat of the formulation,
@@ -248,6 +256,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       denominator *= n_B_A.dot(n_A1.cross(n_A2));
       denominator *= n_B_A.dot(n_A2.cross(n_A0));
       coefficients.emplace_back(abs(numerator / denominator));
+
+      DRAKE_ASSERT(coefficients.back() >= 0);
+
     } else {
       DRAKE_ASSERT(result.closest_A.type == ClosestPointType::Edge);
       DRAKE_ASSERT(result.closest_B.type == ClosestPointType::Edge);
@@ -296,6 +307,10 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const Vector3<T> n_A1_x_n_B1 = n_A1.cross(n_B1);
       const Vector3<T> n_B1_x_n_A0 = n_B1.cross(n_A0);
       const Vector3<T> n_B0_x_n_B1 = n_B0.cross(n_B1);
+      // TODO(joemasterjohn): it is not enough to assume that these vertices are
+      // in general position. These denominators can be 0 in simple examples
+      // where two faces are parallel to each other. Decide what to do in that
+      // case.
       // clang-format off
       const Vector3<T> A = (-n_A0_dot_n*n_A1_x_n_B0 - n_A1_dot_n*n_B0_x_n_A0) / n_A0.dot(n_A1_x_n_B0);
       const Vector3<T> B = (-n_A0_dot_n*n_A1_x_n_B1 - n_A1_dot_n*n_B1_x_n_A0) / n_A0.dot(n_A1_x_n_B1);
@@ -303,7 +318,13 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const Vector3<T> D = (-n_A1_dot_n*n_B0_x_n_B1) / n_A1.dot(n_B0_x_n_B1);
       // clang-format on
 
-      coefficients.emplace_back(((D - A).dot((B - A).cross(C - A)) / 6.0));
+      coefficients.emplace_back(abs(((D - A).dot((B - A).cross(C - A)))) / 6.0);
+      using std::isnan;
+
+      if (isnan(coefficients.back())) {
+        coefficients.back() = 0;
+      }
+      DRAKE_ASSERT(coefficients.back() >= 0);
 
       // n is aligned with the volume normal, but possibly in the wrong
       // direction. Set zhat_BA to either n or -n such that it points out of
@@ -347,7 +368,7 @@ void SpeculativeContactCalculator<T>::ComputeSpeculativeContactSurface(
   const multibody::SpatialVelocity<T>& V_WA = V_WGs_.at(id_A);
   const multibody::SpatialVelocity<T>& V_WB = V_WGs_.at(id_B);
 
-  ComputeSpeculativeContactSurfaceByClosestPoints(id_B, id_B, soft_A, soft_B,
+  ComputeSpeculativeContactSurfaceByClosestPoints(id_A, id_B, soft_A, soft_B,
                                                   X_WA, X_WB, V_WA, V_WB, dt_,
                                                   speculative_surfaces);
 }

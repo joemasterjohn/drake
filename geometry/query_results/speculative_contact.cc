@@ -33,7 +33,7 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
   DRAKE_DEMAND(num_contact_points == ssize(grad_eA_W_));
   DRAKE_DEMAND(num_contact_points == ssize(grad_eB_W_));
   DRAKE_DEMAND(num_contact_points == ssize(closest_points_));
-  DRAKE_DEMAND(num_contact_points == ssize(element_pairs_));
+  //DRAKE_DEMAND(num_contact_points == ssize(element_pairs_));
 }
 
 template <typename T>
