@@ -3,6 +3,7 @@
 #include <gflags/gflags.h>
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/test_utilities/maybe_pause_for_user.h"
 #include "drake/examples/hydroelastic/ball_plate/make_ball_plate_plant.h"
 #include "drake/geometry/scene_graph.h"
 #include "drake/multibody/plant/multibody_plant_config.h"
@@ -114,6 +115,8 @@ int do_main() {
       SpatialVelocity<double>{
           M_PI / 180.0 * Vector3d(FLAGS_wx, FLAGS_wy, FLAGS_wz),
           Vector3d(FLAGS_vx, FLAGS_vy, FLAGS_vz)});
+
+  common::MaybePauseForUser();
 
   simulator->AdvanceTo(FLAGS_simulation_time);
   systems::PrintSimulatorStatistics(*simulator);
