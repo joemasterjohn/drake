@@ -214,13 +214,14 @@ void MeshcatVisualizer<T>::SetObjects(
               overloaded{[](std::monostate) {},
                          [&](const TriangleSurfaceMesh<double>* mesh) {
                            DRAKE_DEMAND(mesh != nullptr);
-                           meshcat_->SetObject(path, *mesh, rgba);
+                           meshcat_->SetObject(path, *mesh, rgba, true);
                            geometry_already_set = true;
                          },
                          [&](const VolumeMesh<double>* mesh) {
                            DRAKE_DEMAND(mesh != nullptr);
                            meshcat_->SetObject(
-                               path, ConvertVolumeToSurfaceMesh(*mesh), rgba);
+                               path, ConvertVolumeToSurfaceMesh(*mesh), rgba,
+                               true);
                            geometry_already_set = true;
                          }},
               maybe_mesh);

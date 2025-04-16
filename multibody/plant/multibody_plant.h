@@ -6050,11 +6050,11 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
   // Calc function for the like-named cache entry (geometry_contact_data).
   void CalcGeometryContactData(const systems::Context<T>& context,
                                internal::GeometryContactData<T>* result) const;
-
+public:
   // Eval function for the like-named cache entry (geometry_contact_data).
   const internal::GeometryContactData<T>& EvalGeometryContactData(
       const systems::Context<T>& context) const;
-
+private:
   // Helper method to fill in the ContactResults given the current context when
   // the model is continuous.
   // @param[out] contact_results is fully overwritten

@@ -863,6 +863,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     const int num_soft = ssize(soft_ids);
     fmt::print("num_soft: {}\n", num_soft);
 
+    const multibody::SpatialVelocity<T> V_zero = multibody::SpatialVelocity<T>::Zero();
+
     // Refit all of the soft geometries' local BVHs using X_WG and V_WG.
     for (int i = 0; i < num_soft; ++i) {
       hydroelastic::SoftGeometry& soft_geometry =
@@ -872,9 +874,19 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
       const math::RigidTransform<T>& X_WG = X_WGs.at(soft_ids[i]);
       const multibody::SpatialVelocity<T>& V_WG = V_WGs.at(soft_ids[i]);
 
-      soft_geometry.mutable_soft_mesh().mutable_mesh_dynamic_bvh().Refit(
-          hydroelastic::MovingBoundingSphereAabbCalculator(
-              mesh_bounding_spheres, X_WG, V_WG, dt));
+      // For truly static geometries, just use their normal Aabb of the
+      // tetrahedra.
+      // TODO(joemasterjohn): Compute these once, for geometries that are
+      // actually welded to the world or locked.
+      if (V_WG.IsApprox(V_zero, 0.0)) {
+        soft_geometry.mutable_soft_mesh().mutable_mesh_dynamic_bvh().Refit(
+            hydroelastic::StaticMeshAabbCalculator(soft_geometry.mesh(), X_WG));
+      } else {
+        soft_geometry.mutable_soft_mesh().mutable_mesh_dynamic_bvh().Refit(
+            hydroelastic::MovingBoundingSphereAabbCalculator(
+                mesh_bounding_spheres, X_WG, V_WG, dt));
+      }
+
       fmt::print("id({}): v: ({} {} {})\n", soft_ids[i],
                  V_WG.translational().x(), V_WG.translational().y(),
                  V_WG.translational().z());
@@ -937,8 +949,6 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     for (const auto& [id_A, id_B] : geometry_pairs) {
       calculator.ComputeSpeculativeContactSurface(id_A, id_B,
                                                   &speculative_surfaces);
-      speculative_surfaces.back().SaveToFile(
-          fmt::format("speculative_{}_{}.txt", id_A, id_B));
     }
 
     return speculative_surfaces;
