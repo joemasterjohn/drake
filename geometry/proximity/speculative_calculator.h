@@ -20,6 +20,10 @@ AabbCalculator MovingBoundingSphereAabbCalculator(
     const multibody::SpatialVelocity<T>& V_WG, double dt);
 
 template <typename T>
+AabbCalculator StaticMeshAabbCalculator(const VolumeMesh<double>& mesh,
+                                        const math::RigidTransform<T>& X_WG);
+
+template <typename T>
 void ComputeSpeculativeContactSurfaceByClosestPoints(
     GeometryId id_A, GeometryId id_B, const SoftGeometry& soft_A,
     const SoftGeometry& soft_B, const math::RigidTransform<T>& X_WA,
@@ -80,7 +84,8 @@ class SpeculativeContactCalculator {
   /* The T-valued spatial velocities of all geometries. */
   const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>& V_WGs_;
 
-  const double dt_;  
+  /* Plant time step. */
+  const double dt_;
 
   /* The hydroelastic geometric representations.  */
   const Geometries& geometries_;

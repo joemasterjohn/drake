@@ -48,6 +48,25 @@ AabbCalculator MovingBoundingSphereAabbCalculator(
 }
 
 template <typename T>
+AabbCalculator StaticMeshAabbCalculator(const VolumeMesh<double>& mesh,
+                                        const math::RigidTransform<T>& X_WG) {
+  return [&mesh, &X_WG](int e) -> Aabb {
+    VolumeElement tet = mesh.element(e);
+    Vector3d min_corner = ExtractDoubleOrThrow(
+        X_WG * mesh.vertex(tet.vertex(0)).template cast<T>());
+    Vector3d max_corner = min_corner;
+    for (int i = 1; i < 4; ++i) {
+      const Vector3d p_WV = ExtractDoubleOrThrow(
+          X_WG * mesh.vertex(tet.vertex(i)).template cast<T>());
+      min_corner = min_corner.cwiseMin(p_WV);
+      max_corner = max_corner.cwiseMax(p_WV);
+    }
+
+    return Aabb((max_corner + min_corner) / 2, (max_corner - min_corner) / 2);
+  };
+}
+
+template <typename T>
 void ComputeSpeculativeContactSurfaceByClosestPoints(
     GeometryId id_A, GeometryId id_B, const SoftGeometry& soft_A,
     const SoftGeometry& soft_B, const math::RigidTransform<T>& X_WA,
@@ -74,7 +93,6 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
              soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
-
 
   // Quick exit.
   if (ssize(element_pairs) == 0) return;
@@ -156,7 +174,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const T tc = length_BqAp / v_n;
 
-    if (tc < 0) {
+    if (tc < 0 || tc > dt) {
       closest_points.pop_back();
       continue;
     }
@@ -380,7 +398,7 @@ void SpeculativeContactCalculator<T>::ComputeSpeculativeContactSurface(
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    (&MovingBoundingSphereAabbCalculator<T>,
+    (&MovingBoundingSphereAabbCalculator<T>, &StaticMeshAabbCalculator<T>,
      &ComputeSpeculativeContactSurfaceByClosestPoints<T>));
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
