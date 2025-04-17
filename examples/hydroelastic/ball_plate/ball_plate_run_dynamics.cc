@@ -69,6 +69,7 @@ namespace {
 
 using drake::geometry::Meshcat;
 using drake::geometry::Rgba;
+using drake::geometry::Sphere;
 using drake::geometry::internal::ClosestPointType;
 using drake::geometry::internal::SpeculativeContactSurface;
 using drake::math::RigidTransformd;
@@ -175,9 +176,11 @@ int do_main() {
   //       }
   //     }
 
-  //     meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF, 2.0,
+  //     meshcat->SetLineSegments("speculative_surface_VF", start_VF,
+  //     end_VF, 2.0,
   //                              color_VF);
-  //     meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE, 2.0,
+  //     meshcat->SetLineSegments("speculative_surface_EE", start_EE,
+  //     end_EE, 2.0,
   //                              color_EE);
   //   }
   //   speculative_surface.SaveToFile(fmt::format("speculative_{}_{}.txt",
@@ -195,24 +198,47 @@ int do_main() {
   const Vector3d v_WB(0.1, 0.1, 0.1);
   const Vector3d w_WB(0, 0, 1);
   const double w = 4;
-  const int num_samples = 200;
+  const int num_samples = 100;
   const double dt = 0.01;
   Matrix3Xd trajectory(3, num_samples);
   Matrix3Xd quadratic_trajectory(3, num_samples);
+  const Vector3d w_x_p = (w * w_WB).cross(p_BP);
+  const Vector3d w_x_w_x_p = (w * w_WB).cross(w_x_p);
 
   for (int i = 0; i < num_samples; ++i) {
     trajectory.col(i) =
         p_WB + i * dt * v_WB +
         RotationMatrixd(Eigen::AngleAxisd(i * dt * w, w_WB)) * p_BP;
-    const Vector3d w_x_p = (w * w_WB).cross(p_BP);
-    const Vector3d w_x_w_x_p = (w * w_WB).cross(w_x_p);
     quadratic_trajectory.col(i) = p_WB + p_BP + i * dt * (v_WB + w_x_p) +
                                   0.5 * (i * i * dt * dt) * (w_x_w_x_p);
   }
+
+  const Vector3d critical_t = -(v_WB + w_x_p).array() / w_x_w_x_p.array();
+
   meshcat->SetLine("trajectory", trajectory, 2.0);
   meshcat->SetLine("quadratic trajectory", quadratic_trajectory, 2.0,
                    Rgba(0.8, 0.0, 0.0, 1.0));
 
+  meshcat->SetObject("quadratic_trajectory_q0", Sphere(0.003));
+  meshcat->SetTransform("quadratic_trajectory_q0",
+                        RigidTransformd(quadratic_trajectory.col(0)));
+  meshcat->SetObject("quadratic_trajectory_qf", Sphere(0.003));
+  meshcat->SetTransform(
+      "quadratic_trajectory_qf",
+      RigidTransformd(quadratic_trajectory.col(num_samples - 1)));
+
+  for (int i = 0; i < 3; ++i) {
+    const Vector3d q_critical =
+        p_WB + p_BP + critical_t(i) * (v_WB + w_x_p) +
+        0.5 * (critical_t(i) * critical_t(i)) * (w_x_w_x_p);
+    fmt::print("critical_t: {}\n", critical_t(i));
+    fmt::print("q_critical({}): {} {} {}\n", i, q_critical(0), q_critical(1),
+               q_critical(2));
+    meshcat->SetObject(fmt::format("quadratic_trajectory_q_critical_{}", i),
+                       Sphere(0.003));
+    meshcat->SetTransform(fmt::format("quadratic_trajectory_q_critical_{}", i),
+                          RigidTransformd(q_critical));
+  }
   common::MaybePauseForUser();
 
   return 0;
