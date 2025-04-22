@@ -63,6 +63,9 @@ DEFINE_double(x0, 0.10, "Ball's initial position in the x-axis.");
 DEFINE_double(y0, 0.10, "Ball's initial position in the y-axis.");
 DEFINE_double(z0, 0.10, "Ball's initial position in the z-axis.");
 
+// Real time rate override
+DEFINE_double(rtr, 1.0, "Simulator target real time rate");
+
 namespace drake {
 namespace examples {
 namespace ball_plate {
@@ -292,5 +295,6 @@ resorting to their convex hulls. Launch meldis before running this example.
 See the README.md file for more information.)""");
   FLAGS_simulator_publish_every_time_step = true;
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+  FLAGS_simulator_target_realtime_rate = FLAGS_rtr;
   return drake::examples::ball_plate::do_main();
 }

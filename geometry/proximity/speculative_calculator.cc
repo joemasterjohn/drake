@@ -356,16 +356,18 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // Avoid nans in the coefficients. I think this is happening because of
     // co-planar faces in the volume formulation, but need to confirm. For now
     // just ignore the problematic pairs.
+    using std::isinf;
     using std::isnan;
-    if (isnan(coefficients.back()) || isnan(time_of_contact.back()) ||
-        zhat_BA_W.back().array().isNaN().any() ||
-        p_WC.back().array().isNaN().any()) {
+    // if (isinf(coefficients.back()) || isnan(coefficients.back()) ||
+    //     isnan(time_of_contact.back()) ||
+    //     zhat_BA_W.back().array().isNaN().any() ||
+    //     p_WC.back().array().isNaN().any()) {
+    if (isinf(coefficients.back()) || isnan(coefficients.back())) {
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
       zhat_BA_W.pop_back();
       coefficients.pop_back();
-      fmt::print("NANNANNANANANANANANANANANA\n");
       continue;
     }
 
