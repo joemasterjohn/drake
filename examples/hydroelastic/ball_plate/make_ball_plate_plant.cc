@@ -134,18 +134,20 @@ void AddRollingBallBodies(double radius, double mass,
   const double lx = 0.5;
   const double ly = 0.5;
   const double lz = 0.2;
-  const int num_tiles = 4;
+  const int num_tiles_x = 20;
+  const int num_tiles_y = 4;
   Box box(lx, ly, lz);
   const Vector4<double> grey(0.5, 0.5, 0.7, 0.2);
   const RigidBody<double>& tile = plant->AddRigidBody(
-      "tile", SpatialInertia<double>::SolidBoxWithMass(mass, num_tiles * lx,
-                                                       num_tiles * ly, lz));
-  plant->WeldFrames(plant->world_frame(), tile.body_frame(),
-                    RigidTransformd(Vector3d(0, 0, -0.5 * lz)));
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      RigidTransformd X_GT(Vector3d(0.5 * lx * (2 * i + 1 - num_tiles),
-                                    0.5 * ly * (2 * j + 1 - num_tiles), 0));
+      "tile", SpatialInertia<double>::SolidBoxWithMass(mass, num_tiles_x * lx,
+                                                       num_tiles_y * ly, lz));
+  plant->WeldFrames(
+      plant->world_frame(), tile.body_frame(),
+      RigidTransformd(Vector3d(0.5 * num_tiles_x * lx, 0, -0.5 * lz)));
+  for (int i = 0; i < num_tiles_x; ++i) {
+    for (int j = 0; j < num_tiles_y; ++j) {
+      RigidTransformd X_GT(Vector3d(0.5 * lx * (2 * i + 1 - num_tiles_x),
+                                    0.5 * ly * (2 * j + 1 - num_tiles_y), 0));
       ProximityProperties tile_props(props);
       plant->RegisterCollisionGeometry(tile, X_GT, box,
                                        fmt::format("collision_{}_{}", i, j),
