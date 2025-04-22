@@ -51,17 +51,16 @@ DEFINE_double(vy, 0.0,
               "Ball's initial translational velocity in the y-axis in m/s.");
 DEFINE_double(vz, -5.0,
               "Ball's initial translational velocity in the z-axis in m/s.");
-DEFINE_double(wx, 0,
+DEFINE_double(wx, 0.001,
               "Ball's initial angular velocity in the x-axis in degrees/s.");
-DEFINE_double(wy, 0,
+DEFINE_double(wy, 0.001,
               "Ball's initial angular velocity in the y-axis in degrees/s.");
-DEFINE_double(wz, 0,
+DEFINE_double(wz, 0.001,
               "Ball's initial angular velocity in the z-axis in degrees/s.");
 
 // Ball's initial pose.
-DEFINE_double(x0, 0.10, "Ball's initial position in the x-axis.");
-DEFINE_double(y0, 0.10, "Ball's initial position in the y-axis.");
 DEFINE_double(z0, 0.10, "Ball's initial position in the z-axis.");
+DEFINE_double(x0, 0.10, "Ball's initial position in the x-axis.");
 
 namespace drake {
 namespace examples {
@@ -97,7 +96,7 @@ int do_main() {
   // Ball's parameters.
   const double radius = 0.05;  // m
   const double mass = 0.1;     // kg
-  AddRollingBallBodies(
+  AddBallPlateBodies(
       radius, mass, FLAGS_hydroelastic_modulus, FLAGS_dissipation,
       CoulombFriction<double>{// static friction (unused in discrete systems)
                               FLAGS_friction_coefficient,
@@ -123,7 +122,7 @@ int do_main() {
       math::RigidTransformd{
           math::RollPitchYaw(M_PI * FLAGS_wx / 180.0, M_PI * FLAGS_wz / 180.0,
                              M_PI * FLAGS_wz / 180.0),
-          Vector3d(FLAGS_x0, FLAGS_y0, FLAGS_z0)});
+          Vector3d(FLAGS_x0, 0.0, FLAGS_z0)});
   plant.SetFreeBodySpatialVelocity(
       &plant_context, plant.GetBodyByName("Ball"),
       SpatialVelocity<double>{Vector3d(0, 0, 0),

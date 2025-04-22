@@ -922,11 +922,11 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     std::vector<std::pair<int, int>> geometry_index_pairs =
         speculative_bvh_.GetCollisionCandidates(speculative_bvh_);
     fmt::print("broad phase candidates: {}\n", ssize(geometry_index_pairs));
-    // std::erase_if(geometry_index_pairs,
-    //               [this, &soft_ids](const std::pair<int, int>& pair) {
-    //                 return !this->collision_filter_.CanCollideWith(
-    //                     soft_ids[pair.first], soft_ids[pair.second]);
-    //               });
+    std::erase_if(geometry_index_pairs,
+                  [this, &soft_ids](const std::pair<int, int>& pair) {
+                    return !this->collision_filter_.CanCollideWith(
+                        soft_ids[pair.first], soft_ids[pair.second]);
+                  });
     // Transform the pairs of indices into sorted pairs of GeometryId.
     std::vector<SortedPair<GeometryId>> geometry_pairs(
         geometry_index_pairs.size());
