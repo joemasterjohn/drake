@@ -34,7 +34,7 @@ DEFINE_double(resolution_hint_factor, 0.3,
               "the ball gives the target edge length of the mesh of the ball "
               "on the surface of its hydroelastic representation. The smaller "
               "number gives a finer mesh with more tetrahedral elements.");
-DEFINE_double(dissipation, 0.0,
+DEFINE_double(dissipation, 20.0,
               "Hunt & Crossley dissipation, [s/m], for the ball");
 DEFINE_double(friction_coefficient, 0.3,
               "coefficient for both static and dynamic friction, [unitless], "

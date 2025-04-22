@@ -861,7 +861,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     std::vector<GeometryId> soft_ids{key_view.begin(), key_view.end()};
 
     const int num_soft = ssize(soft_ids);
-    fmt::print("num_soft: {}\n", num_soft);
+    // fmt::print("num_soft: {}\n", num_soft);
 
     const multibody::SpatialVelocity<T> V_zero = multibody::SpatialVelocity<T>::Zero();
 
@@ -887,14 +887,14 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
                 mesh_bounding_spheres, X_WG, V_WG, dt));
       }
 
-      fmt::print("id({}): v: ({} {} {})\n", soft_ids[i],
-                 V_WG.translational().x(), V_WG.translational().y(),
-                 V_WG.translational().z());
-      const auto& bv =
-          soft_geometry.soft_mesh().mesh_dynamic_bvh().root_node().bv();
-      fmt::print("BB c: ({} {} {}) hw ({} {} {})\n", bv.center()(0),
-                 bv.center()(1), bv.center()(2), bv.half_width()(0),
-                 bv.half_width()(1), bv.half_width()(2));
+      // fmt::print("id({}): v: ({} {} {})\n", soft_ids[i],
+      //            V_WG.translational().x(), V_WG.translational().y(),
+      //            V_WG.translational().z());
+      // const auto& bv =
+      //     soft_geometry.soft_mesh().mesh_dynamic_bvh().root_node().bv();
+      // fmt::print("BB c: ({} {} {}) hw ({} {} {})\n", bv.center()(0),
+      //            bv.center()(1), bv.center()(2), bv.half_width()(0),
+      //            bv.half_width()(1), bv.half_width()(2));
     }
 
     // Leaves of the candidate level broadphase BVH are just the root nodes of
@@ -911,17 +911,17 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     // otherwise refit.
     if (speculative_bvh_.num_leaves() == 0) {
       speculative_bvh_.Build(num_soft, broadphase_calculator);
-      fmt::print("Build\n");
+      // fmt::print("Build\n");
     } else {
       DRAKE_ASSERT(speculative_bvh_.num_leaves() == num_soft);
       speculative_bvh_.Refit(broadphase_calculator);
-      fmt::print("Refit\n");
+      // fmt::print("Refit\n");
     }
 
     // Filter and sort collision candidates
     std::vector<std::pair<int, int>> geometry_index_pairs =
         speculative_bvh_.GetCollisionCandidates(speculative_bvh_);
-    fmt::print("broad phase candidates: {}\n", ssize(geometry_index_pairs));
+    // fmt::print("broad phase candidates: {}\n", ssize(geometry_index_pairs));
     std::erase_if(geometry_index_pairs,
                   [this, &soft_ids](const std::pair<int, int>& pair) {
                     return !this->collision_filter_.CanCollideWith(
@@ -937,7 +937,7 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
         });
     // Sort the sorted pairs of GeometryIds.
     std::sort(geometry_pairs.begin(), geometry_pairs.end());
-    fmt::print("filtered pairs: {}\n", ssize(geometry_pairs));
+    // fmt::print("filtered pairs: {}\n", ssize(geometry_pairs));
 
     hydroelastic::SpeculativeContactCalculator<T> calculator(
         &X_WGs, &V_WGs, dt, &hydroelastic_geometries_);

@@ -91,8 +91,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       soft_A.soft_mesh().mesh_dynamic_bvh().GetCollisionCandidates(
           soft_B.soft_mesh().mesh_dynamic_bvh());
 
-  fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
-             soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
+  // fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
+  //            soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
 
   // Quick exit.
   if (ssize(element_pairs) == 0) return;
@@ -362,7 +362,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     //     isnan(time_of_contact.back()) ||
     //     zhat_BA_W.back().array().isNaN().any() ||
     //     p_WC.back().array().isNaN().any()) {
-    if (isinf(coefficients.back()) || isnan(coefficients.back())) {
+    if (isinf(coefficients.back()) || isnan(coefficients.back()) || coefficients.back() > 1e15) {
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
@@ -390,7 +390,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   // Quick exit if no speculative contacts are found.
   if (ssize(p_WC) == 0) return;
 
-  fmt::print("num_speculative: {}\n", ssize(p_WC));
+  // fmt::print("num_speculative: {}\n", ssize(p_WC));
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,

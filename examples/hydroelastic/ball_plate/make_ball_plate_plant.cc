@@ -21,6 +21,7 @@ using geometry::ProximityProperties;
 using geometry::Sphere;
 using math::RigidTransformd;
 using math::RotationMatrixd;
+using math::RollPitchYawd;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
 using multibody::RigidBody;
@@ -125,7 +126,7 @@ void AddRollingBallBodies(double radius, double mass,
   plant->RegisterCollisionGeometry(ball, RigidTransformd::Identity(),
                                    Sphere(radius), "collision",
                                    std::move(ball_props));
-  const Vector4<double> orange(1.0, 0.55, 0.0, 0.2);
+  const Vector4<double> orange(1.0, 0.55, 0.0, 0.8);
   plant->RegisterVisualGeometry(ball, RigidTransformd::Identity(),
                                 Sphere(radius), "visual", orange);
   AddTinyVisualCylinders(ball, radius, plant);
@@ -134,10 +135,11 @@ void AddRollingBallBodies(double radius, double mass,
   const double lx = 0.5;
   const double ly = 0.5;
   const double lz = 0.2;
-  const int num_tiles_x = 20;
-  const int num_tiles_y = 4;
+  const int num_tiles_x = 6;
+  const int num_tiles_y = 2;
+  const int num_tiles_z = 2;
   Box box(lx, ly, lz);
-  const Vector4<double> grey(0.5, 0.5, 0.7, 0.2);
+  const Vector4<double> grey(0.5, 0.5, 0.7, 0.8);
   const RigidBody<double>& tile = plant->AddRigidBody(
       "tile", SpatialInertia<double>::SolidBoxWithMass(mass, num_tiles_x * lx,
                                                        num_tiles_y * ly, lz));
@@ -154,6 +156,21 @@ void AddRollingBallBodies(double radius, double mass,
                                        std::move(tile_props));
       plant->RegisterVisualGeometry(tile, X_GT, box,
                                     fmt::format("visual_{}_{}", i, j), grey);
+    }
+  }
+
+  for (int i = 0; i < num_tiles_z; ++i) {
+    for (int j = 0; j < num_tiles_y; ++j) {
+      RigidTransformd X_GT(RollPitchYawd(0, M_PI_2, 0),
+                           Vector3d(0.5 * num_tiles_x * lx + 0.5 * lz,
+                                    0.5 * ly * (2 * j + 1 - num_tiles_y),
+                                    0.5 * (lz + (2 * i + 1) * lx)));
+      ProximityProperties tile_props(props);
+      plant->RegisterCollisionGeometry(
+          tile, X_GT, box, fmt::format("collision_wall_{}_{}", i, j),
+          std::move(tile_props));
+      plant->RegisterVisualGeometry(
+          tile, X_GT, box, fmt::format("visual_wall_{}_{}", i, j), grey);
     }
   }
 
