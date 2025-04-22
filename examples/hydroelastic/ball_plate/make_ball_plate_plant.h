@@ -42,6 +42,11 @@ void AddBallPlateBodies(
     double resolution_hint_factor,
     multibody::MultibodyPlant<double>* plant);
 
+void AddRollingBallBodies(
+    double radius, double mass, double hydroelastic_modulus, double dissipation,
+    const multibody::CoulombFriction<double>& surface_friction,
+    double resolution_hint_factor, multibody::MultibodyPlant<double>* plant);
+
 }  // namespace ball_plate
 }  // namespace examples
 }  // namespace drake

@@ -12,17 +12,19 @@ namespace drake {
 namespace examples {
 namespace ball_plate {
 
-using geometry::AddContactMaterial;
+using Eigen::Vector3d;
 using geometry::AddCompliantHydroelasticProperties;
+using geometry::AddContactMaterial;
+using geometry::Box;
+using geometry::GeometrySet;
 using geometry::ProximityProperties;
 using geometry::Sphere;
+using math::RigidTransformd;
+using math::RotationMatrixd;
 using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
 using multibody::RigidBody;
 using multibody::SpatialInertia;
-using math::RigidTransformd;
-using math::RotationMatrixd;
-using Eigen::Vector3d;
 
 namespace {
 
@@ -43,8 +45,8 @@ void AddTinyVisualCylinders(const RigidBody<double>& ball, double radius,
   // aligned with p_SC, with Cx and Cy arbitrary.
   // @return X_SC the pose of the spot cylinder given p_SC.
   auto spot_pose = [](const Vector3<double>& p_SC) {
-    return RigidTransformd(
-        RotationMatrixd::MakeFromOneVector(p_SC, 2 /*z*/), p_SC);
+    return RigidTransformd(RotationMatrixd::MakeFromOneVector(p_SC, 2 /*z*/),
+                           p_SC);
   };
   plant->RegisterVisualGeometry(ball, spot_pose({radial_offset, 0., 0.}), spot,
                                 "sphere_x+", red);
@@ -62,10 +64,11 @@ void AddTinyVisualCylinders(const RigidBody<double>& ball, double radius,
 
 }  // namespace
 
-void AddBallPlateBodies(
-    double radius, double mass, double hydroelastic_modulus,
-    double dissipation, const CoulombFriction<double>& surface_friction,
-    double resolution_hint_factor, MultibodyPlant<double>* plant) {
+void AddBallPlateBodies(double radius, double mass, double hydroelastic_modulus,
+                        double dissipation,
+                        const CoulombFriction<double>& surface_friction,
+                        double resolution_hint_factor,
+                        MultibodyPlant<double>* plant) {
   DRAKE_DEMAND(plant != nullptr);
 
   // Add the ball. Let B be the ball's frame (at its center). The ball's
@@ -95,6 +98,66 @@ void AddBallPlateBodies(
       "package://drake/examples/hydroelastic/ball_plate/floor.sdf");
   plant->WeldFrames(plant->world_frame(), plant->GetFrameByName("Floor"),
                     RigidTransformd::Identity());
+
+  // Gravity acting in the -z direction.
+  plant->mutable_gravity_field().set_gravity_vector(Vector3d{0, 0, -9.81});
+}
+
+void AddRollingBallBodies(double radius, double mass,
+                          double hydroelastic_modulus, double dissipation,
+                          const CoulombFriction<double>& surface_friction,
+                          double resolution_hint_factor,
+                          MultibodyPlant<double>* plant) {
+  DRAKE_DEMAND(plant != nullptr);
+
+  ProximityProperties props;
+  AddContactMaterial(dissipation, {} /* point stiffness */, surface_friction,
+                     &props);
+  AddCompliantHydroelasticProperties(radius * resolution_hint_factor,
+                                     hydroelastic_modulus, &props);
+
+  // Add the ball. Let B be the ball's frame (at its center). The ball's
+  // center of mass Bcm is coincident with Bo.
+  ProximityProperties ball_props(props);
+  const RigidBody<double>& ball = plant->AddRigidBody(
+      "Ball", SpatialInertia<double>::SolidSphereWithMass(mass, radius));
+  // Set up mechanical properties of the ball.
+  plant->RegisterCollisionGeometry(ball, RigidTransformd::Identity(),
+                                   Sphere(radius), "collision",
+                                   std::move(ball_props));
+  const Vector4<double> orange(1.0, 0.55, 0.0, 0.2);
+  plant->RegisterVisualGeometry(ball, RigidTransformd::Identity(),
+                                Sphere(radius), "visual", orange);
+  AddTinyVisualCylinders(ball, radius, plant);
+
+  // Add the tiled floor.
+  const double lx = 0.5;
+  const double ly = 0.5;
+  const double lz = 0.2;
+  const int num_tiles = 4;
+  Box box(lx, ly, lz);
+  const Vector4<double> grey(0.5, 0.5, 0.7, 0.2);
+  const RigidBody<double>& tile = plant->AddRigidBody(
+      "tile", SpatialInertia<double>::SolidBoxWithMass(mass, num_tiles * lx,
+                                                       num_tiles * ly, lz));
+  plant->WeldFrames(plant->world_frame(), tile.body_frame(),
+                    RigidTransformd(Vector3d(0, 0, -0.5 * lz)));
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      RigidTransformd X_GT(Vector3d(0.5 * lx * (2 * i + 1 - num_tiles),
+                                    0.5 * ly * (2 * j + 1 - num_tiles), 0));
+      ProximityProperties tile_props(props);
+      plant->RegisterCollisionGeometry(tile, X_GT, box,
+                                       fmt::format("collision_{}_{}", i, j),
+                                       std::move(tile_props));
+      plant->RegisterVisualGeometry(tile, X_GT, box,
+                                    fmt::format("visual_{}_{}", i, j), grey);
+    }
+  }
+
+  const std::pair<std::string, GeometrySet> pair = {
+      "tiles", plant->CollectRegisteredGeometries({&tile})};
+  plant->ExcludeCollisionGeometriesWithCollisionFilterGroupPair(pair, pair);
 
   // Gravity acting in the -z direction.
   plant->mutable_gravity_field().set_gravity_vector(Vector3d{0, 0, -9.81});
