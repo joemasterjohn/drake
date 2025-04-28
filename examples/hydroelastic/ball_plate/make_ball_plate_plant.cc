@@ -7,6 +7,7 @@
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/tree/multibody_tree_indexes.h"
 #include "drake/multibody/tree/uniform_gravity_field_element.h"
+#include "drake/multibody/tree/planar_joint.h"
 
 namespace drake {
 namespace examples {
@@ -26,6 +27,7 @@ using multibody::CoulombFriction;
 using multibody::MultibodyPlant;
 using multibody::RigidBody;
 using multibody::SpatialInertia;
+using multibody::PlanarJoint;
 
 namespace {
 
@@ -105,9 +107,10 @@ void AddBallPlateBodies(double radius, double mass, double hydroelastic_modulus,
 }
 
 void AddRollingBallBodies(double radius, double mass,
-                          double hydroelastic_modulus, double dissipation,
+                          double hydroelastic_modulus, double tile_modulus,
+                          double dissipation,
                           const CoulombFriction<double>& surface_friction,
-                          double resolution_hint_factor,
+                          double resolution_hint_factor, int num_dofs,
                           MultibodyPlant<double>* plant) {
   DRAKE_DEMAND(plant != nullptr);
 
@@ -131,12 +134,18 @@ void AddRollingBallBodies(double radius, double mass,
                                 Sphere(radius), "visual", orange);
   AddTinyVisualCylinders(ball, radius, plant);
 
+  if (num_dofs == 3) {
+    RigidTransformd X_WF(RotationMatrixd::MakeXRotation(M_PI_2));
+    plant->AddJoint<PlanarJoint>("xz_planar", plant->world_body(), X_WF, ball,
+                                 X_WF, Vector3d::Zero());
+  }
+
   // Add the tiled floor.
   const double lx = 0.5;
   const double ly = 0.5;
   const double lz = 0.2;
   const int num_tiles_x = 6;
-  const int num_tiles_y = 2;
+  const int num_tiles_y = 3;
   const int num_tiles_z = 2;
   Box box(lx, ly, lz);
   const Vector4<double> grey(0.5, 0.5, 0.7, 0.8);
@@ -151,6 +160,8 @@ void AddRollingBallBodies(double radius, double mass,
       RigidTransformd X_GT(Vector3d(0.5 * lx * (2 * i + 1 - num_tiles_x),
                                     0.5 * ly * (2 * j + 1 - num_tiles_y), 0));
       ProximityProperties tile_props(props);
+      tile_props.UpdateProperty(drake::geometry::internal::kHydroGroup,
+                                drake::geometry::internal::kElastic, tile_modulus);
       plant->RegisterCollisionGeometry(tile, X_GT, box,
                                        fmt::format("collision_{}_{}", i, j),
                                        std::move(tile_props));
@@ -166,6 +177,8 @@ void AddRollingBallBodies(double radius, double mass,
                                     0.5 * ly * (2 * j + 1 - num_tiles_y),
                                     0.5 * (lz + (2 * i + 1) * lx)));
       ProximityProperties tile_props(props);
+      tile_props.UpdateProperty(drake::geometry::internal::kHydroGroup,
+        drake::geometry::internal::kElastic, tile_modulus);
       plant->RegisterCollisionGeometry(
           tile, X_GT, box, fmt::format("collision_wall_{}_{}", i, j),
           std::move(tile_props));
