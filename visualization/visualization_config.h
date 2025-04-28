@@ -39,7 +39,7 @@ struct VisualizationConfig {
   visualization. (To help avoid small simulation time steps, we use a default
   period that has an exact representation in binary floating point;
   see drake#15021 for details.) */
-  double publish_period{1 / 64.0};
+  double publish_period{1 / 100.0};
 
   /** Whether to show illustration geometry. */
   bool publish_illustration{true};

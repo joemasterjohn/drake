@@ -4986,6 +4986,11 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
   /// @see MultibodyPlant::MultibodyPlant(double)
   double time_step() const { return time_step_; }
 
+  bool use_speculative() const { return use_speculative_; }
+  void set_use_speculative(bool use_speculative) {
+    use_speculative_ = use_speculative;
+  }
+
   /// Returns `true` if this %MultibodyPlant was finalized with a call to
   /// Finalize().
   /// @see Finalize().
@@ -6454,6 +6459,8 @@ private:
   double time_step_{0};
 
   bool use_sampled_output_ports_{};
+
+  bool use_speculative_{};
 
   // This manager class is used to advance discrete states.
   // Post-finalize, it is never null (for a discrete-time plant).

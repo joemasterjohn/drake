@@ -1,0 +1,22 @@
+function [error_q, rms_erro] = calc_error(data)
+  % calculate the error based on a reference trajectory located at data(end)
+  s = size(data,2);
+  error_q = [];
+  error_v = [];
+  for i=1:s-1
+    ref_q = interp1(data(end).t, data(end).q, data(i).t);
+    ref_v = interp1(data(end).t, data(end).v, data(i).t);
+    error_q(end+1) = trajectory_error(ref_q, data(i).q);
+    mean_error_v(end+1) = trajectory_error(ref_v, data(i).v);
+  end
+end
+
+function err = trajectory_error(t1, t2)
+
+    % Position and angle error
+    n = length(t1);
+    err = norm(t1(:, 1:2) - t2(:, 1:2)) / sqrt(n);
+    % theta_diff = wrapToPi(t1(:,3) - t2(:,3));
+    % rot_err = abs(theta_diff);
+    % rot_err = 0;
+end

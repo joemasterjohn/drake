@@ -36,16 +36,16 @@ namespace ball_plate {
  https://drake.mit.edu/doxygen_cxx/group__hydroelastic__user__guide.html
 */
 void AddBallPlateBodies(
-    double radius, double mass, double hydroelastic_modulus,
-    double dissipation,
-    const multibody::CoulombFriction<double>& surface_friction,
-    double resolution_hint_factor,
-    multibody::MultibodyPlant<double>* plant);
-
-void AddRollingBallBodies(
     double radius, double mass, double hydroelastic_modulus, double dissipation,
     const multibody::CoulombFriction<double>& surface_friction,
     double resolution_hint_factor, multibody::MultibodyPlant<double>* plant);
+
+void AddRollingBallBodies(
+    double radius, double mass, double hydroelastic_modulus,
+    double tile_modulus, double dissipation,
+    const multibody::CoulombFriction<double>& surface_friction,
+    double resolution_hint_factor, int num_dofs,
+    multibody::MultibodyPlant<double>* plant);
 
 }  // namespace ball_plate
 }  // namespace examples

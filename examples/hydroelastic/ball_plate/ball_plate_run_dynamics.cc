@@ -1,8 +1,10 @@
+#include <fstream>
 #include <memory>
 
 #include <gflags/gflags.h>
 
 #include "drake/common/drake_assert.h"
+#include "drake/common/fmt_eigen.h"
 #include "drake/common/test_utilities/maybe_pause_for_user.h"
 #include "drake/examples/hydroelastic/ball_plate/make_ball_plate_plant.h"
 #include "drake/geometry/query_results/speculative_contact.h"
@@ -10,13 +12,14 @@
 #include "drake/multibody/plant/geometry_contact_data.h"
 #include "drake/multibody/plant/multibody_plant_config.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
+#include "drake/multibody/tree/planar_joint.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/analysis/simulator_gflags.h"
 #include "drake/systems/analysis/simulator_print_stats.h"
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/visualization/visualization_config_functions.h"
 
-DEFINE_double(simulation_time, 3,
+DEFINE_double(simulation_time, 1.5,
               "Desired duration of the simulation in seconds.");
 // See MultibodyPlantConfig for the valid strings of contact_model.
 DEFINE_string(contact_model, "hydroelastic",
@@ -27,8 +30,9 @@ DEFINE_string(contact_model, "hydroelastic",
 DEFINE_string(contact_surface_representation, "polygon",
               "Contact-surface representation for hydroelastics. "
               "Options are: 'triangle' or 'polygon'. Default is 'polygon'.");
-DEFINE_double(hydroelastic_modulus, 1.0e6,
+DEFINE_double(hydroelastic_modulus, 1.0e7,
               "Hydroelastic modulus of the ball, [Pa].");
+DEFINE_double(tile_modulus, 1.0e7, "Hydroelastic modulus of the tiles, [Pa].");
 DEFINE_double(resolution_hint_factor, 0.3,
               "This scaling factor, [unitless], multiplied by the radius of "
               "the ball gives the target edge length of the mesh of the ball "
@@ -49,7 +53,7 @@ DEFINE_double(vx, 0.0,
               "Ball's initial translational velocity in the x-axis in m/s.");
 DEFINE_double(vy, 0.0,
               "Ball's initial translational velocity in the y-axis in m/s.");
-DEFINE_double(vz, -5.0,
+DEFINE_double(vz, 0.0,
               "Ball's initial translational velocity in the z-axis in m/s.");
 DEFINE_double(wx, 0,
               "Ball's initial angular velocity in the x-axis in degrees/s.");
@@ -59,12 +63,20 @@ DEFINE_double(wz, 0,
               "Ball's initial angular velocity in the z-axis in degrees/s.");
 
 // Ball's initial pose.
-DEFINE_double(x0, 0.10, "Ball's initial position in the x-axis.");
-DEFINE_double(y0, 0.10, "Ball's initial position in the y-axis.");
-DEFINE_double(z0, 0.10, "Ball's initial position in the z-axis.");
+DEFINE_double(x0, 0.0, "Ball's initial position in the x-axis.");
+DEFINE_double(y0, 0.0, "Ball's initial position in the y-axis.");
+DEFINE_double(z0, 0.0, "Ball's initial position in the z-axis.");
 
 // Real time rate override
 DEFINE_double(rtr, 1.0, "Simulator target real time rate");
+
+DEFINE_string(mode, "viz",
+              "Which mode to run the simulation in: viz, data, timing");
+DEFINE_string(data_file, "data.txt",
+              "State data per timestep: t, q, v, Fcontact_Bcm_W");
+DEFINE_int32(num_dofs, 6, "Number of dofs of the system: 3 or 6");
+
+DEFINE_bool(use_speculative, false, "If true uses speculative consraints.");
 
 namespace drake {
 namespace examples {
@@ -79,10 +91,12 @@ using drake::geometry::internal::SpeculativeContactSurface;
 using drake::math::RigidTransformd;
 using drake::math::RotationMatrixd;
 using drake::multibody::CoulombFriction;
+using drake::multibody::PlanarJoint;
 using drake::multibody::SpatialVelocity;
 using drake::multibody::internal::GeometryContactData;
 using Eigen::AngleAxisd;
 using Eigen::Matrix3Xd;
+using Eigen::Vector2d;
 using Eigen::Vector3d;
 
 int do_main() {
@@ -101,105 +115,165 @@ int do_main() {
   const double radius = 0.05;  // m
   const double mass = 0.1;     // kg
   AddRollingBallBodies(
-      radius, mass, FLAGS_hydroelastic_modulus, FLAGS_dissipation,
+      radius, mass, FLAGS_hydroelastic_modulus, FLAGS_tile_modulus,
+      FLAGS_dissipation,
       CoulombFriction<double>{// static friction (unused in discrete systems)
                               FLAGS_friction_coefficient,
                               // dynamic friction
                               FLAGS_friction_coefficient},
-      FLAGS_resolution_hint_factor, &plant);
+      FLAGS_resolution_hint_factor, FLAGS_num_dofs, &plant);
 
+  fmt::print("Use speculative: {}\n", FLAGS_use_speculative);
+
+  plant.set_use_speculative(FLAGS_use_speculative);
   plant.Finalize();
 
-  // DRAKE_DEMAND(plant.num_velocities() == 12);
-  // DRAKE_DEMAND(plant.num_positions() == 14);
-  std::shared_ptr<Meshcat> meshcat = std::make_shared<Meshcat>();
-  visualization::AddDefaultVisualization(&builder, meshcat);
+  // Set up visualization.
+  std::shared_ptr<Meshcat> meshcat;
+  if (FLAGS_mode == "viz") {
+    meshcat = std::make_shared<Meshcat>();
+    visualization::AddDefaultVisualization(&builder, meshcat);
+  }
 
   auto diagram = builder.Build();
   auto simulator = MakeSimulatorFromGflags(*diagram);
 
-  // Set the ball's initial pose.
+  // Set the ball's initial state.
   systems::Context<double>& plant_context =
       plant.GetMyMutableContextFromRoot(&simulator->get_mutable_context());
-  plant.SetFreeBodyPose(
-      &plant_context, plant.GetBodyByName("Ball"),
-      math::RigidTransformd{
-          math::RollPitchYaw(M_PI * FLAGS_wx / 180.0, M_PI * FLAGS_wz / 180.0,
-                             M_PI * FLAGS_wz / 180.0),
-          Vector3d(FLAGS_x0, FLAGS_y0, FLAGS_z0)});
-  plant.SetFreeBodySpatialVelocity(
-      &plant_context, plant.GetBodyByName("Ball"),
-      SpatialVelocity<double>{Vector3d(0, 0, 0),
-                              Vector3d(FLAGS_vx, FLAGS_vy, FLAGS_vz)});
 
-  simulator->Initialize();
-  common::MaybePauseForUser();
+  // Set the initial conditions.
+  if (FLAGS_num_dofs == 6) {
+    plant.SetFreeBodyPose(
+        &plant_context, plant.GetBodyByName("Ball"),
+        math::RigidTransformd{
+            math::RollPitchYaw(M_PI * FLAGS_wx / 180.0, M_PI * FLAGS_wz / 180.0,
+                               M_PI * FLAGS_wz / 180.0),
+            Vector3d(FLAGS_x0, FLAGS_y0, FLAGS_z0)});
+    plant.SetFreeBodySpatialVelocity(
+        &plant_context, plant.GetBodyByName("Ball"),
+        SpatialVelocity<double>{Vector3d(0, 0, 0),
+                                Vector3d(FLAGS_vx, FLAGS_vy, FLAGS_vz)});
+  } else if (FLAGS_num_dofs == 3) {
+    const PlanarJoint<double>& xz_planar =
+        plant.GetJointByName<PlanarJoint>("xz_planar");
+    xz_planar.set_translation(&plant_context, Vector2d(FLAGS_x0, FLAGS_z0));
+    xz_planar.set_translational_velocity(&plant_context,
+                                         Vector2d(FLAGS_vx, FLAGS_vz));
+    xz_planar.set_angular_velocity(&plant_context, FLAGS_wy);
+  } else {
+    throw std::logic_error("num_dofs must be 3 or 6.");
+  }
 
-  double t = 0;
-  while (t < FLAGS_simulation_time) {
-    // Visualize the speculative contact data.
-    const GeometryContactData<double>& contact_data =
-        plant.EvalGeometryContactData(plant_context);
-    if (contact_data.get().speculative_surfaces.size() > 0) {
-      const SpeculativeContactSurface<double>& speculative_surface =
-          contact_data.get().speculative_surfaces[0];
+  if (FLAGS_mode == "viz") {
+    meshcat->StartRecording();
+    simulator->Initialize();
+    common::MaybePauseForUser();
 
-      const int num_points = speculative_surface.num_contact_points();
-      int num_VF = 0;
-      int num_EE = 0;
-      for (int i = 0; i < num_points; ++i) {
-        if (speculative_surface.closest_points()[i].closest_A.type ==
-            ClosestPointType::Edge) {
-          ++num_EE;
-        } else {
-          ++num_VF;
-        }
-      }
+    double t = 0;
+    while (t <= FLAGS_simulation_time) {
+      // Visualize the speculative contact data.
+      const GeometryContactData<double>& contact_data =
+          plant.EvalGeometryContactData(plant_context);
+      if (contact_data.get().speculative_surfaces.size() > 0) {
+        const SpeculativeContactSurface<double>& speculative_surface =
+            contact_data.get().speculative_surfaces[0];
 
-      if (num_points > 0) {
-        Eigen::Matrix3Xd start_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-        Eigen::Matrix3Xd end_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-        Eigen::Matrix3Xd start_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-        Eigen::Matrix3Xd end_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-
-        Rgba color_VF(0.3, 0.6, 0.3, 1.0);
-        Rgba color_EE(0.3, 0.3, 0.6, 1.0);
-        int index_VF = 0;
-        int index_EE = 0;
-
+        const int num_points = speculative_surface.num_contact_points();
+        int num_VF = 0;
+        int num_EE = 0;
         for (int i = 0; i < num_points; ++i) {
           if (speculative_surface.closest_points()[i].closest_A.type ==
               ClosestPointType::Edge) {
-            start_EE.col(index_EE) =
-                speculative_surface.closest_points()[i].closest_A.p;
-            end_EE.col(index_EE) =
-                speculative_surface.closest_points()[i].closest_B.p;
-            ++index_EE;
+            ++num_EE;
           } else {
-            start_VF.col(index_VF) =
-                speculative_surface.closest_points()[i].closest_A.p;
-            end_VF.col(index_VF) =
-                speculative_surface.closest_points()[i].closest_B.p;
-            ++index_VF;
+            ++num_VF;
           }
         }
 
-        meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF,
-                                 2.0, color_VF);
-        meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE,
-                                 2.0, color_EE);
+        if (num_points > 0) {
+          Eigen::Matrix3Xd start_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
+          Eigen::Matrix3Xd end_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
+          Eigen::Matrix3Xd start_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
+          Eigen::Matrix3Xd end_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
+
+          Eigen::Matrix3Xd start_normals =
+              Eigen::Matrix3Xd::Zero(3, num_points);
+          Eigen::Matrix3Xd end_normals = Eigen::Matrix3Xd::Zero(3, num_points);
+
+          Rgba color_VF(0.3, 0.6, 0.3, 1.0);
+          Rgba color_EE(0.3, 0.3, 0.6, 1.0);
+          Rgba color_normal(0.6, 0.2, 0.2, 1.0);
+          int index_VF = 0;
+          int index_EE = 0;
+
+          for (int i = 0; i < num_points; ++i) {
+            if (speculative_surface.closest_points()[i].closest_A.type ==
+                ClosestPointType::Edge) {
+              start_EE.col(index_EE) =
+                  speculative_surface.closest_points()[i].closest_A.p;
+              end_EE.col(index_EE) =
+                  speculative_surface.closest_points()[i].closest_B.p;
+              ++index_EE;
+            } else {
+              start_VF.col(index_VF) =
+                  speculative_surface.closest_points()[i].closest_A.p;
+              end_VF.col(index_VF) =
+                  speculative_surface.closest_points()[i].closest_B.p;
+              ++index_VF;
+            }
+            start_normals.col(i) = speculative_surface.p_WC()[i];
+            end_normals.col(i) =
+                start_normals.col(i) + 0.005*speculative_surface.nhat_BA_W()[i];
+          }
+
+          meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF,
+                                   2.0, color_VF);
+          meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE,
+                                   2.0, color_EE);
+          meshcat->SetLineSegments("speculative_normals", start_normals,
+                                   end_normals, 2.0, color_normal);
+        }
       }
-      // speculative_surface.SaveToFile(fmt::format("speculative_{}_{}.txt",
-      //                                            speculative_surface.id_A(),
-      //                                            speculative_surface.id_B()));
+
+      simulator->AdvanceTo(t);
+
+      t += FLAGS_mbp_dt;
+    }
+    meshcat->StopRecording();
+    meshcat->PublishRecording();
+
+    common::MaybePauseForUser();
+  }
+
+  if (FLAGS_mode == "data") {
+    simulator->Initialize();
+
+    std::ofstream out(FLAGS_data_file);
+    if (!out) {
+      throw std::runtime_error(
+          fmt::format("Could not open file: {}", FLAGS_data_file));
     }
 
-    simulator->AdvanceTo(t);
+    double t = 0;
+    while (t <= FLAGS_simulation_time) {
+      const VectorX<double> qv = plant.GetPositionsAndVelocities(plant_context);
+      const VectorX<double> F_contact =
+          plant
+              .get_generalized_contact_forces_output_port(
+                  multibody::default_model_instance())
+              .Eval(plant_context);
 
-    t += FLAGS_mbp_dt;
+      out << fmt::format("{} {} {}\n", t, fmt_eigen(qv.transpose()),
+                         fmt_eigen(F_contact.transpose()));
+      simulator->AdvanceTo(t);
+      t += FLAGS_mbp_dt;
+    }
   }
-  common::MaybePauseForUser();
 
+  // // Extra code to visualize truncated Taylor series for vertex trajectories
+  // of
+  // // bodies undergoing constant spatial velocity.
   // const Vector3d p_BP(0.05, 0.05, 0.05);
   // const Vector3d p_WB(0, 0, 0);
   // const Vector3d v_WB(1, 1, 1);
@@ -273,7 +347,7 @@ int do_main() {
   //     }
   //   }
   // }
-  common::MaybePauseForUser();
+  // common::MaybePauseForUser();
 
   return 0;
 }

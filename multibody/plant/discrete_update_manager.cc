@@ -798,6 +798,9 @@ void DiscreteUpdateManager<T>::
         DiscreteContactData<DiscreteContactPair<T>>* contact_pairs) const
   requires scalar_predicate<T>::is_bool
 {  // NOLINT(whitespace/braces)
+  if (!plant().use_speculative()) {
+    return;
+  }
   const std::vector<SpeculativeContactSurface<T>>& speculative_surfaces =
       EvalGeometryContactData(context).get().speculative_surfaces;
 
@@ -853,6 +856,22 @@ void DiscreteUpdateManager<T>::
     // Combine friction coefficients.
     const T mu =
         GetCombinedDynamicCoulombFriction(s.id_A(), s.id_B(), inspector);
+
+    // // Use the pairs with the `count` smallest times of contact.
+    // const size_t count = static_cast<const size_t>(s.num_contact_points());
+    // //const size_t count = 0;
+    // std::vector<int> indices(s.num_contact_points());
+    // std::iota(indices.begin(), indices.end(), 0);
+
+    // if (indices.size() > count) {
+    //   std::partial_sort(
+    //       indices.begin(), indices.begin() + std::min(count, indices.size()),
+    //       indices.end(), [&s](size_t a, size_t b) {
+    //         return s.time_of_contact()[a] < s.time_of_contact()[b];
+    //       });
+    //   indices.resize(count);
+    // }
+    // for(int face : indices) {
 
     for (int face = 0; face < s.num_contact_points(); ++face) {
       // From SpeculativeContactSurface's docs: Geometric "normal" from geometry

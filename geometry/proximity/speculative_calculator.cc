@@ -8,6 +8,8 @@ namespace internal {
 namespace hydroelastic {
 
 using Eigen::Vector3d;
+using math::RotationMatrix;
+using multibody::SpatialVelocity;
 
 template <typename T>
 AabbCalculator MovingBoundingSphereAabbCalculator(
@@ -138,9 +140,13 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     const Vector3<T>& p_WAp = result.closest_A.p;
     const Vector3<T>& p_WBq = result.closest_B.p;
     const Vector3<T> p_AoAp_W = p_WAp - X_WA.translation();
-    const Vector3<T> v_WAp = V_WA.Shift(p_AoAp_W).translational();
+    const SpatialVelocity<T> V_WAp = V_WA.Shift(p_AoAp_W);
+    const Vector3<T> v_WAp = V_WAp.translational();
+    //const Vector3<T> w_WAp = V_WAp.rotational();
     const Vector3<T> p_BoBq_W = p_WBq - X_WB.translation();
-    const Vector3<T> v_WBq = V_WB.Shift(p_BoBq_W).translational();
+    const SpatialVelocity<T> V_WBq = V_WB.Shift(p_BoBq_W);
+    const Vector3<T> v_WBq = V_WBq.translational();
+    //const Vector3<T> w_WBq = V_WBq.rotational();
 
     const Vector3<T> p_BqAp_W = p_WAp - p_WBq;
     const T length_BqAp = p_BqAp_W.norm();
@@ -362,7 +368,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     //     isnan(time_of_contact.back()) ||
     //     zhat_BA_W.back().array().isNaN().any() ||
     //     p_WC.back().array().isNaN().any()) {
-    if (isinf(coefficients.back()) || isnan(coefficients.back()) || coefficients.back() > 1e15) {
+    if (isinf(coefficients.back()) || isnan(coefficients.back()) || coefficients.back() > 1e12) {
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
