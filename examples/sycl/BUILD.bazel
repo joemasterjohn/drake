@@ -1,0 +1,24 @@
+load(
+    "//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_library",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+drake_cc_library(
+    name = "simple",
+    srcs = ["simple.cc"],
+    hdrs = ["simple.h"],
+    copts = ["-fsycl"],
+    linkopts = ["-fsycl"],
+)
+
+drake_cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
+    deps = [
+        ":simple",
+        "//common:essential",
+    ]
+)

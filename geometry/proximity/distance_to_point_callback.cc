@@ -409,6 +409,7 @@ DistanceToPoint<T>::ComputeDistanceToBox(const Vector<double, dim>& h,
                                          const Vector<T, dim>& p_GQ_G) {
   using std::abs;
 
+
   // TODO(DamrongGuoy): Revisit this implementation based on a recommendation
   // made in PR 11208:
   // https://reviewable.io/reviews/robotlocomotion/drake/11208#-Lc6yion1LIgZrj5yohz:-Lc6yion1LIgZrj5yoi-:b-1qyfoi
@@ -589,3 +590,8 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
     class ::drake::geometry::internal::point_distance::DistanceToPoint);
+
+template std::tuple<Eigen::Vector<double, 3>, Eigen::Vector<double, 3>, bool>
+drake::geometry::internal::point_distance::DistanceToPoint<
+    double>::ComputeDistanceToBox<3>(const Eigen::Vector<double, 3>& h,
+                                     const Eigen::Vector<double, 3>& p_GQ_G);
