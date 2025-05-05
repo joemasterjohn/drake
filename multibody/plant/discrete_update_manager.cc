@@ -623,7 +623,7 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
   if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error("This method doesn't support T = Expression.");
   } else {
-    AppendDiscreteContactPairsForHydroelasticContact(context, result);
+    //AppendDiscreteContactPairsForHydroelasticContact(context, result);
     AppendDiscreteContactPairsForSpeculativeHydroelasticContact(context,
                                                                 result);
   }
@@ -857,23 +857,22 @@ void DiscreteUpdateManager<T>::
     const T mu =
         GetCombinedDynamicCoulombFriction(s.id_A(), s.id_B(), inspector);
 
-    // // Use the pairs with the `count` smallest times of contact.
-    // const size_t count = static_cast<const size_t>(s.num_contact_points());
-    // //const size_t count = 0;
-    // std::vector<int> indices(s.num_contact_points());
-    // std::iota(indices.begin(), indices.end(), 0);
+    // Use the pairs with the `count` smallest times of contact.
+    const size_t count = static_cast<const size_t>(s.num_contact_points());
+    // const size_t count = 1;
+    std::vector<int> indices(s.num_contact_points());
+    std::iota(indices.begin(), indices.end(), 0);
 
-    // if (indices.size() > count) {
-    //   std::partial_sort(
-    //       indices.begin(), indices.begin() + std::min(count, indices.size()),
-    //       indices.end(), [&s](size_t a, size_t b) {
-    //         return s.time_of_contact()[a] < s.time_of_contact()[b];
-    //       });
-    //   indices.resize(count);
-    // }
-    // for(int face : indices) {
-
-    for (int face = 0; face < s.num_contact_points(); ++face) {
+    if (indices.size() > count) {
+      std::partial_sort(
+          indices.begin(), indices.begin() + std::min(count, indices.size()),
+          indices.end(), [&s](size_t a, size_t b) {
+            return s.time_of_contact()[a] < s.time_of_contact()[b];
+          });
+      indices.resize(count);
+    }
+    for(int face : indices) {
+    // for (int face = 0; face < s.num_contact_points(); ++face) {
       // From SpeculativeContactSurface's docs: Geometric "normal" from geometry
       // B into A.
       const Vector3<T>& zhat_BA_W = s.zhat_BA_W()[face];
