@@ -77,7 +77,6 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     const multibody::SpatialVelocity<T>& V_WB, const double dt,
     std::vector<SpeculativeContactSurface<T>>* speculative_surfaces) {
   constexpr double kEps = std::numeric_limits<double>::epsilon();
-  unused(dt);
   // Data for each point of the speculative contact surface.
   std::vector<Vector3<T>> p_WC;
   std::vector<T> time_of_contact;
@@ -191,7 +190,14 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // to this query a range, such that tc ∈ [-k⁻⋅δt, k⁺⋅δt] for valid
     // constraints.
 
-    p_WC.emplace_back(p_WAp + tc * (n_hat_BqAp_W.dot(v_WAp)) * n_hat_BqAp_W);
+    // TEST
+    // Do one step of advancement of the witness points to the time of contact.
+    // Take their average as the contact point.
+    const Vector3<T> p_WAp_tc = p_WAp + tc*v_WAp;
+    const Vector3<T> p_WBq_tc = p_WBq + tc*v_WBq;
+    p_WC.emplace_back(0.5*(p_WAp_tc + p_WBq_tc));
+
+    //p_WC.emplace_back(p_WAp + tc * (n_hat_BqAp_W.dot(v_WAp)) * n_hat_BqAp_W);
 
     // Consider all of the closest point cases.
     // TODO(joemasterjohn): Document or reference written document for the
