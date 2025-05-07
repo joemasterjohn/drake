@@ -44,6 +44,8 @@ struct DiscreteContactPair {
 
     /* Estimated time of contact, in seconds. Positive or zero. */
     T toc{0.0};
+
+    T effective_radius{0.0};
   };
 
   /* Struct to store the block contribution from a given tree to the contact

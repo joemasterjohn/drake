@@ -87,6 +87,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   std::vector<Vector3<T>> grad_eB_W;
   std::vector<ClosestPointResult<T>> closest_points;
   std::vector<std::pair<int, int>> valid_element_pairs;
+  std::vector<T> effective_radius;
 
   std::vector<std::pair<int, int>> element_pairs =
       soft_A.soft_mesh().mesh_dynamic_bvh().GetCollisionCandidates(
@@ -108,6 +109,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   grad_eB_W.reserve(element_pairs.size());
   closest_points.reserve(element_pairs.size());
   valid_element_pairs.reserve(element_pairs.size());
+  effective_radius.reserve(element_pairs.size());
 
   // For each element pair compute the necessary data.
   for (const auto& [tet_A, tet_B] : element_pairs) {
@@ -384,10 +386,11 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     }
 
     // Calculate representative radii of tetrahdra based on their volume.
+    using std::cbrt;
     const T vA = soft_A.mesh().CalcTetrahedronVolume(tet_A);
     const T vB = soft_B.mesh().CalcTetrahedronVolume(tet_B);
-    const T rA = std::cbrt(3*vA / (4*std::numbers::pi));
-    const T rB = std::cbrt(3*vB / (4*std::numbers::pi));
+    const T rA = cbrt(3*ExtractDoubleOrThrow(vA) / (4*std::numbers::pi));
+    const T rB = cbrt(3*ExtractDoubleOrThrow(vB) / (4*std::numbers::pi));
     // Calculate "effective" radius of the two representative sphere coming into contact.
     const T R = rA*rB / (rA + rB);
     effective_radius.emplace_back(R);

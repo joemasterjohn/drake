@@ -468,6 +468,9 @@ AutoDiff pow(AutoDiff base, double exp);
 /** ADL overload to mimic std::sqrt from `<cmath>`. */
 AutoDiff sqrt(AutoDiff x);
 
+/** ADL overload to mimic std::cbrt from `<cmath>`. */
+AutoDiff cbrt(AutoDiff x);
+
 //@}
 
 /// @name Math functions: Trigonometric functions

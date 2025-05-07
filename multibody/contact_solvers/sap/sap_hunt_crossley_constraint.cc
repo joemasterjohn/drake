@@ -116,7 +116,8 @@ SapHuntCrossleyConstraint<T>::MakeSpeculativeConstraintData(
     p.a = dt * abs_cos_theta;
     p.b = z0;
   }
-  p.c = dt * kappa * s.volume_factor;
+  // p.c = dt * kappa * s.volume_factor;
+  p.c = dt * kappa * s.effective_radius * std::numbers::pi;
   p.d = params.dissipation;
 
   return AbstractValue::Make(data);
@@ -205,9 +206,11 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyAntiderivative(
 
   auto N_plus = [&a, &b, &c, &d](const T& v) {
     const T z = b - a * v;
-    const T z4 = z * z * z * z;
+    // const T z4 = z * z * z * z;
+    const T z3 = z*z*z;
     const T a2 = a * a;
-    const T N = c / a2 * z4 * ((d * b - a) / 4.0 - d * z / 5.0);
+    // const T N = c / a2 * z4 * ((d * b - a) / 4.0 - d * z / 5.0);
+    const T N = c / a2 * z3 * ((d * b - a) / 3.0 - d * z / 4.0);
     return N;
   };
 
@@ -246,7 +249,7 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyImpulse(
   const T damping = 1.0 - data.d * vn;
   if (damping <= 0.0) return 0.0;
 
-  const T volume = z * z * z;
+  const T volume = z * z;
   const T gamma = data.c * volume * damping;
 
   return gamma;
@@ -267,8 +270,9 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyImpulseGradient(
   const T damping = 1.0 - d * vn;
   if (damping <= 0.0) return 0.0;
 
-  const T z2 = z * z;
-  const T dn_dvn = -c * z2 * (3.0 * a * damping + d * z);
+  // const T z2 = z * z;
+  // const T dn_dvn = -c * z2 * (3.0 * a * damping + d * z);
+  const T dn_dvn = -c * z * (2.0 * a * damping + d * z);
   return dn_dvn;
 }
 

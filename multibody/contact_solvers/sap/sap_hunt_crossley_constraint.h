@@ -146,6 +146,8 @@ class SapHuntCrossleyConstraint final : public SapConstraint<T> {
 
     /* Estimated time of contact, in seconds. Positive or zero. */
     T toc{0.0};
+
+    T effective_radius;
   };
 
   /* Numerical parameters that define the constraint. Refer to this class's

@@ -991,8 +991,11 @@ void DiscreteUpdateManager<T>::
       // get ignored.
       const T toc = s.time_of_contact()[face];
 
+      const T effective_radius = s.effective_radius()[face];
+
       typename DiscreteContactPair<T>::SpeculativeParameters spec_params{
-          kappa, volume_coefficient, cos_theta, distance, toc};
+          kappa, volume_coefficient, cos_theta, distance,
+          toc,   effective_radius};
 
       // Contact point position relative to each body.
       const RigidTransform<T>& X_WA =

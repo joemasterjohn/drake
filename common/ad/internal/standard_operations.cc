@@ -274,6 +274,14 @@ AutoDiff sqrt(AutoDiff x) {
   return x;
 }
 
+AutoDiff cbrt(AutoDiff x) {
+  // ∂/∂x x¹ᐟ³ = ⅓x⁻²ᐟ³ = 1/(3x²ᐟ³)
+  const double new_value = std::cbrt(x.value());
+  x.partials().Div(3 * new_value * new_value);
+  x.value() = new_value();
+  return x;
+}
+
 AutoDiff ceil(AutoDiff x) {
   x.value() = std::ceil(x.value());
   x.partials().SetZero();

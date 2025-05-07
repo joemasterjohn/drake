@@ -261,7 +261,7 @@ std::vector<RotationMatrix<T>> SapDriver<T>::AddContactConstraints(
       if (pair.speculative_params) {
         const auto& p = *pair.speculative_params;
         s = SpeculativeParameters{p.kappa, p.volume_factor, p.cos_theta,
-                                  p.distance0, p.toc};
+                                  p.distance0, p.toc, p.effective_radius};
       }
 
       return typename SapHuntCrossleyConstraint<T>::Parameters{
