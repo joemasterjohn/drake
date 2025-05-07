@@ -2,6 +2,7 @@
 
 #include <utility>
 #include <vector>
+#include <string>
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
@@ -47,7 +48,8 @@ class SpeculativeContactSurface {
       std::vector<T> coefficient, std::vector<Vector3<T>> nhat_BA_W,
       std::vector<Vector3<T>> grad_eA_W, std::vector<Vector3<T>> grad_eB_W,
       std::vector<ClosestPointResult<T>> closest_points,
-      std::vector<std::pair<int, int>> element_pairs);
+      std::vector<std::pair<int, int>> element_pairs,
+      std::vector<T> effective_radius);
 
   ~SpeculativeContactSurface();
 
@@ -97,6 +99,13 @@ class SpeculativeContactSurface {
     return element_pairs_;
   }
 
+  const std::vector<T>& effective_radius() const {
+    return effective_radius_;
+  }
+
+  std::string ToString() const;
+  std::string ToString(int i) const;
+
   void SaveToFile(const std::string& filename) const;
 
  private:
@@ -113,6 +122,7 @@ class SpeculativeContactSurface {
   /* Extra info for debugging. */
   std::vector<ClosestPointResult<T>> closest_points_;
   std::vector<std::pair<int, int>> element_pairs_;
+  std::vector<T> effective_radius_;
 };
 
 }  // namespace internal

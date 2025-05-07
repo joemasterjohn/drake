@@ -623,7 +623,7 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
   if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error("This method doesn't support T = Expression.");
   } else {
-    //AppendDiscreteContactPairsForHydroelasticContact(context, result);
+    AppendDiscreteContactPairsForHydroelasticContact(context, result);
     AppendDiscreteContactPairsForSpeculativeHydroelasticContact(context,
                                                                 result);
   }
@@ -857,9 +857,13 @@ void DiscreteUpdateManager<T>::
     const T mu =
         GetCombinedDynamicCoulombFriction(s.id_A(), s.id_B(), inspector);
 
-    // Use the pairs with the `count` smallest times of contact.
-    const size_t count = static_cast<const size_t>(s.num_contact_points());
-    // const size_t count = 1;
+    // Use the pairs with the `count` smallest times of contact, number is set
+    // in the plant.
+
+    const size_t count =
+        plant().num_speculative() >= 0
+            ? static_cast<const size_t>(plant().num_speculative())
+            : static_cast<const size_t>(s.num_contact_points());
     std::vector<int> indices(s.num_contact_points());
     std::iota(indices.begin(), indices.end(), 0);
 

@@ -4991,6 +4991,14 @@ class MultibodyPlant final : public internal::MultibodyTreeSystem<T> {
     use_speculative_ = use_speculative;
   }
 
+  // -1 means use all speculative constraints. Otherwise use the
+  // num_speculative() smallest constraints, ordered by time of contact.
+  int num_speculative() const { return num_speculative_; }
+  void set_num_speculative(int num_speculative) {
+    DRAKE_DEMAND(num_speculative >= -1);
+    num_speculative_ = num_speculative;
+  }
+
   /// Returns `true` if this %MultibodyPlant was finalized with a call to
   /// Finalize().
   /// @see Finalize().
@@ -6461,6 +6469,7 @@ private:
   bool use_sampled_output_ports_{};
 
   bool use_speculative_{};
+  int num_speculative_{-1};
 
   // This manager class is used to advance discrete states.
   // Post-finalize, it is never null (for a discrete-time plant).

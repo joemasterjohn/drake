@@ -1,5 +1,6 @@
 #include <fstream>
 #include <memory>
+#include <algorithm>
 
 #include <gflags/gflags.h>
 
@@ -43,7 +44,7 @@ DEFINE_double(dissipation, 20.0,
 DEFINE_double(friction_coefficient, 0.3,
               "coefficient for both static and dynamic friction, [unitless], "
               "of the ball.");
-DEFINE_double(mbp_dt, 0.01,
+DEFINE_double(dt, 0.01,
               "The fixed time step period (in seconds) of discrete updates "
               "for the multibody plant modeled as a discrete system. "
               "Strictly positive.");
@@ -74,9 +75,15 @@ DEFINE_string(mode, "viz",
               "Which mode to run the simulation in: viz, data, timing");
 DEFINE_string(data_file, "data.txt",
               "State data per timestep: t, q, v, Fcontact_Bcm_W");
+DEFINE_string(
+    surface_file, "surface.txt",
+    "Contact surface data per timestep. Expect only one surface per timestep.");
 DEFINE_int32(num_dofs, 6, "Number of dofs of the system: 3 or 6");
 
 DEFINE_bool(use_speculative, false, "If true uses speculative consraints.");
+DEFINE_int32(num_speculative, -1,
+             "If use_speculative=true, sets the number of speculative "
+             "constraints to use.");
 
 namespace drake {
 namespace examples {
@@ -104,8 +111,8 @@ int do_main() {
 
   multibody::MultibodyPlantConfig config;
   // We allow only discrete systems.
-  DRAKE_DEMAND(FLAGS_mbp_dt > 0.0);
-  config.time_step = FLAGS_mbp_dt;
+  DRAKE_DEMAND(FLAGS_dt > 0.0);
+  config.time_step = FLAGS_dt;
   config.penetration_allowance = 0.001;
   config.contact_model = FLAGS_contact_model;
   config.contact_surface_representation = FLAGS_contact_surface_representation;
@@ -126,6 +133,7 @@ int do_main() {
   fmt::print("Use speculative: {}\n", FLAGS_use_speculative);
 
   plant.set_use_speculative(FLAGS_use_speculative);
+  plant.set_num_speculative(FLAGS_num_speculative);
   plant.Finalize();
 
   // Set up visualization.
@@ -172,73 +180,76 @@ int do_main() {
 
     double t = 0;
     while (t <= FLAGS_simulation_time) {
-      // Visualize the speculative contact data.
-      const GeometryContactData<double>& contact_data =
-          plant.EvalGeometryContactData(plant_context);
-      if (contact_data.get().speculative_surfaces.size() > 0) {
-        const SpeculativeContactSurface<double>& speculative_surface =
-            contact_data.get().speculative_surfaces[0];
+      if (plant.use_speculative()) {
+        // Visualize the speculative contact data.
+        const GeometryContactData<double>& contact_data =
+            plant.EvalGeometryContactData(plant_context);
+        if (contact_data.get().speculative_surfaces.size() > 0) {
+          const SpeculativeContactSurface<double>& speculative_surface =
+              contact_data.get().speculative_surfaces[0];
 
-        const int num_points = speculative_surface.num_contact_points();
-        int num_VF = 0;
-        int num_EE = 0;
-        for (int i = 0; i < num_points; ++i) {
-          if (speculative_surface.closest_points()[i].closest_A.type ==
-              ClosestPointType::Edge) {
-            ++num_EE;
-          } else {
-            ++num_VF;
-          }
-        }
-
-        if (num_points > 0) {
-          Eigen::Matrix3Xd start_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-          Eigen::Matrix3Xd end_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-          Eigen::Matrix3Xd start_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-          Eigen::Matrix3Xd end_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-
-          Eigen::Matrix3Xd start_normals =
-              Eigen::Matrix3Xd::Zero(3, num_points);
-          Eigen::Matrix3Xd end_normals = Eigen::Matrix3Xd::Zero(3, num_points);
-
-          Rgba color_VF(0.3, 0.6, 0.3, 1.0);
-          Rgba color_EE(0.3, 0.3, 0.6, 1.0);
-          Rgba color_normal(0.6, 0.2, 0.2, 1.0);
-          int index_VF = 0;
-          int index_EE = 0;
-
+          const int num_points = speculative_surface.num_contact_points();
+          int num_VF = 0;
+          int num_EE = 0;
           for (int i = 0; i < num_points; ++i) {
             if (speculative_surface.closest_points()[i].closest_A.type ==
                 ClosestPointType::Edge) {
-              start_EE.col(index_EE) =
-                  speculative_surface.closest_points()[i].closest_A.p;
-              end_EE.col(index_EE) =
-                  speculative_surface.closest_points()[i].closest_B.p;
-              ++index_EE;
+              ++num_EE;
             } else {
-              start_VF.col(index_VF) =
-                  speculative_surface.closest_points()[i].closest_A.p;
-              end_VF.col(index_VF) =
-                  speculative_surface.closest_points()[i].closest_B.p;
-              ++index_VF;
+              ++num_VF;
             }
-            start_normals.col(i) = speculative_surface.p_WC()[i];
-            end_normals.col(i) =
-                start_normals.col(i) + 0.005*speculative_surface.nhat_BA_W()[i];
           }
 
-          meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF,
-                                   2.0, color_VF);
-          meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE,
-                                   2.0, color_EE);
-          meshcat->SetLineSegments("speculative_normals", start_normals,
-                                   end_normals, 2.0, color_normal);
+          if (num_points > 0) {
+            Eigen::Matrix3Xd start_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
+            Eigen::Matrix3Xd end_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
+            Eigen::Matrix3Xd start_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
+            Eigen::Matrix3Xd end_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
+
+            Eigen::Matrix3Xd start_normals =
+                Eigen::Matrix3Xd::Zero(3, num_points);
+            Eigen::Matrix3Xd end_normals =
+                Eigen::Matrix3Xd::Zero(3, num_points);
+
+            Rgba color_VF(0.3, 0.6, 0.3, 1.0);
+            Rgba color_EE(0.3, 0.3, 0.6, 1.0);
+            Rgba color_normal(0.6, 0.2, 0.2, 1.0);
+            int index_VF = 0;
+            int index_EE = 0;
+
+            for (int i = 0; i < num_points; ++i) {
+              if (speculative_surface.closest_points()[i].closest_A.type ==
+                  ClosestPointType::Edge) {
+                start_EE.col(index_EE) =
+                    speculative_surface.closest_points()[i].closest_A.p;
+                end_EE.col(index_EE) =
+                    speculative_surface.closest_points()[i].closest_B.p;
+                ++index_EE;
+              } else {
+                start_VF.col(index_VF) =
+                    speculative_surface.closest_points()[i].closest_A.p;
+                end_VF.col(index_VF) =
+                    speculative_surface.closest_points()[i].closest_B.p;
+                ++index_VF;
+              }
+              start_normals.col(i) = speculative_surface.p_WC()[i];
+              end_normals.col(i) = start_normals.col(i) +
+                                   0.005 * speculative_surface.nhat_BA_W()[i];
+            }
+
+            meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF,
+                                     2.0, color_VF);
+            meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE,
+                                     2.0, color_EE);
+            meshcat->SetLineSegments("speculative_normals", start_normals,
+                                     end_normals, 2.0, color_normal);
+          }
         }
       }
 
       simulator->AdvanceTo(t);
 
-      t += FLAGS_mbp_dt;
+      t += FLAGS_dt;
     }
     meshcat->StopRecording();
     meshcat->PublishRecording();
@@ -250,9 +261,15 @@ int do_main() {
     simulator->Initialize();
 
     std::ofstream out(FLAGS_data_file);
+    std::ofstream surface_out(FLAGS_surface_file);
     if (!out) {
       throw std::runtime_error(
           fmt::format("Could not open file: {}", FLAGS_data_file));
+    }
+
+    if(!surface_out) {
+      throw std::runtime_error(
+        fmt::format("Could not open file: {}", FLAGS_surface_file));
     }
 
     double t = 0;
@@ -266,8 +283,40 @@ int do_main() {
 
       out << fmt::format("{} {} {}\n", t, fmt_eigen(qv.transpose()),
                          fmt_eigen(F_contact.transpose()));
+
+      // Save just the single smallest contact point to file.
+      const GeometryContactData<double>& contact_data =
+          plant.EvalGeometryContactData(plant_context);
+      if (contact_data.get().speculative_surfaces.size() > 0) {
+        const SpeculativeContactSurface<double>& speculative_surface =
+            contact_data.get().speculative_surfaces[0];
+
+        const size_t count =
+            plant.num_speculative() >= 0
+                ? static_cast<size_t>(1)
+                : static_cast<size_t>(
+                      speculative_surface.num_contact_points());
+        std::vector<int> indices(speculative_surface.num_contact_points());
+        std::iota(indices.begin(), indices.end(), 0);
+
+        if (indices.size() > count) {
+          std::partial_sort(indices.begin(),
+                            indices.begin() + std::min(count, indices.size()),
+                            indices.end(),
+                            [&speculative_surface](size_t a, size_t b) {
+                              return speculative_surface.time_of_contact()[a] <
+                                     speculative_surface.time_of_contact()[b];
+                            });
+          indices.resize(count);
+        }
+
+        surface_out << fmt::format("{} ", t);
+        for (int i : indices) {
+          surface_out << speculative_surface.ToString(i);
+        }
+      }
       simulator->AdvanceTo(t);
-      t += FLAGS_mbp_dt;
+      t += FLAGS_dt;
     }
   }
 
