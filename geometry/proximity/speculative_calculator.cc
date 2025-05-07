@@ -383,6 +383,15 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       continue;
     }
 
+    // Calculate representative radii of tetrahdra based on their volume.
+    const T vA = soft_A.mesh().CalcTetrahedronVolume(tet_A);
+    const T vB = soft_B.mesh().CalcTetrahedronVolume(tet_B);
+    const T rA = std::cbrt(3*vA / (4*std::numbers::pi));
+    const T rB = std::cbrt(3*vB / (4*std::numbers::pi));
+    // Calculate "effective" radius of the two representative sphere coming into contact.
+    const T R = rA*rB / (rA + rB);
+    effective_radius.emplace_back(R);
+
     // Get the gradient of the pressure field on each tet, and re-express in
     // world.
     grad_eA_W.emplace_back(
@@ -406,7 +415,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,
-      grad_eA_W, grad_eB_W, closest_points, valid_element_pairs);
+      grad_eA_W, grad_eB_W, closest_points, valid_element_pairs, effective_radius);
 }
 
 template <typename T>
