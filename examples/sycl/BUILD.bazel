@@ -10,15 +10,62 @@ drake_cc_library(
     name = "simple",
     srcs = ["simple.cc"],
     hdrs = ["simple.h"],
-    copts = ["-fsycl"],
-    linkopts = ["-fsycl"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+    ],
 )
+
 
 drake_cc_binary(
     name = "main",
     srcs = ["main.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+    ],
     deps = [
         ":simple",
         "//common:essential",
+    ],
+)
+
+
+drake_cc_library(
+    name = "simple_mesh",
+    srcs = ["simple_mesh.cc"],
+    hdrs = ["simple_mesh.h"],
+
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=spir64_x86_64",
+    ],
+
+    deps = [
+        "//common:essential"
     ]
+)
+
+drake_cc_binary(
+    name = "mesh_test",
+    srcs = ["mesh_test.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=spir64_x86_64",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=spir64_x86_64",
+    ],
+
+    deps = [
+        ":simple_mesh",
+        "//common:essential",
+        "//math:geometric_transform"
+    ],
+
 )
