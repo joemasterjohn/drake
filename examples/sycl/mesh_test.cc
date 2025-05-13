@@ -5,50 +5,63 @@
 
 using namespace drake;
 using namespace drake::math;
-void InitializeRandomPositions(std::vector<Vector3<double>>& p_MV) {
-    for (size_t i = 0; i < p_MV.size(); i++) {
+
+// Populate allocated USM memory with random positions
+void InitializeRandomPositions(Vector3<double>* p_MV, size_t num_points) {
+    for (size_t i = 0; i < num_points; i++) {
         p_MV[i] = Vector3<double>(rand() % 100, rand() % 100, rand() % 100);
     }
 }
 
-void InitializeRandomElements(std::vector<int>& elements) {
-    for (size_t i = 0; i < elements.size(); i++) {
+// Populate allocated USM memory with random elements
+void InitializeRandomElements(int* elements, size_t num_elements) {
+    // Assuming 4 vertices per element (tet)
+    for (size_t i = 0; i < num_elements * 4; i++) {
         elements[i] = rand() % 100;
     }
 }
 
 // Construct a bunch of simple meshes and do transforms on them using SYCL
 int main() {
-
-    sycl::queue q(sycl::cpu_selector_v);
-    // Create 5 meshes each with 100 vertices and 100 elements
+    sycl::queue q(sycl::gpu_selector_v);
+    
+    // Create 5 meshes each with 100 vertices and 25 elements (each with 4 vertices)
     size_t num_meshes = 5;
-    // Allocate memory for these meshes using USM
+    size_t points_per_mesh = 100;
+    size_t elements_per_mesh = 100;
+    
+    // Allocate memory for meshes using USM
     SimpleMesh* meshes = sycl::malloc_shared<SimpleMesh>(num_meshes, q);
-    // Each mesh will undergo a rigid transform
+    
+    // Allocate memory for transforms
     RigidTransformd* X_MBs = sycl::malloc_shared<RigidTransformd>(num_meshes, q);
-
-    // Store transformed output meshes
-    SimpleMesh* output_meshes = sycl::malloc_shared<SimpleMesh>(num_meshes, q);
-    for (size_t i = 0; i < num_meshes; i++) {   
-        std::vector<Vector3<double>> p_MV(100);
-        InitializeRandomPositions(p_MV);
-
-        std::vector<int> elements(100);
-        InitializeRandomElements(elements);
-
-        // Class private members within SimpleMesh are allocated using USM
-        SimpleMesh mesh(p_MV, elements, q);
-        meshes[i] = mesh;
+    
+    // Allocate memory for vertices and elements directly using USM
+    Vector3<double>** vertex_arrays = sycl::malloc_shared<Vector3<double>*>(num_meshes, q);
+    int** element_arrays = sycl::malloc_shared<int*>(num_meshes, q);
+    
+    // Initialize data and create meshes with pre-allocated memory
+    for (size_t i = 0; i < num_meshes; i++) {
+        // Allocate memory for vertices
+        vertex_arrays[i] = sycl::malloc_shared<Vector3<double>>(points_per_mesh, q);
+        InitializeRandomPositions(vertex_arrays[i], points_per_mesh);
+        
+        // Allocate memory for elements (4 vertices per element)
+        element_arrays[i] = sycl::malloc_shared<int>(elements_per_mesh * 4, q);
+        InitializeRandomElements(element_arrays[i], elements_per_mesh);
+        
+        // Create mesh with pre-allocated memory
+        meshes[i] = SimpleMesh(vertex_arrays[i], element_arrays[i], 
+                               points_per_mesh, elements_per_mesh);
+        
+        // Initialize transform
         X_MBs[i] = RigidTransformd::Identity();
-    }   
+    }
 
     // Transform the meshes with a kernel
     // Parallelize across the meshes
     sycl::range<1> num_items{num_meshes};
     
-
-
     auto e = q.parallel_for(num_items, [=](auto idx) { 
         // Get the mesh and transform
         SimpleMesh& mesh = meshes[idx];
@@ -61,13 +74,13 @@ int main() {
 
     e.wait();
 
-    
-
-    // Deallocate memory
-    sycl::free(meshes, q);
+    // Deallocate memory in reverse order of allocation
+    for (size_t i = 0; i < num_meshes; i++) {
+        sycl::free(element_arrays[i], q);
+        sycl::free(vertex_arrays[i], q);
+    }
+    sycl::free(element_arrays, q);
+    sycl::free(vertex_arrays, q);
     sycl::free(X_MBs, q);
-    sycl::free(output_meshes, q);
-
-
-
+    sycl::free(meshes, q);
 }

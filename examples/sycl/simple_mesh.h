@@ -2,45 +2,35 @@
 #include <sycl/sycl.hpp>
 #include <vector>
 
-// Define SYCL_EXTERNAL if not already defined
-#ifndef SYCL_EXTERNAL
-#define SYCL_EXTERNAL [[sycl::external]]
-#endif
-
 namespace drake {
 // A simple mesh class that contains all the information about the mesh 
 // necessary on the GPU for narrow and broad phase collision detection.
 
 // Contract:
-// Class allocates USM memory using malloc_shared and copies data provided by user.
-// The destructor frees this memory using sycl::free.
+// Class does NOT allocate or deallocate USM memory.
+// The user is responsible for allocating and deallocating USM memory and
+// passing pointers to this class.
 class SimpleMesh {
     private:
         Vector3<double>* p_MV_; // vertex positions in frame M (USM memory)
         int* elements_; // elements[4*i,....,4*i + 3] are tets (USM memory)
         size_t num_points_; // number of vertices
         size_t num_elements_; // number of tets
-        sycl::queue* q_; // Store queue for deallocation
     public:
-        // Constructor taking std::vector
-        SimpleMesh(const std::vector<Vector3<double>>& p_MV, 
-                  const std::vector<int>& elements,
-                  sycl::queue& q);
-        
-        // Constructor taking raw pointers
-        SimpleMesh(const Vector3<double>* p_MV, 
-                  const int* elements,
+        // Constructor taking pre-allocated USM memory pointers
+        SimpleMesh(Vector3<double>* p_MV, 
+                  int* elements,
                   size_t num_points,
-                  size_t num_elements,
-                  sycl::queue& q);
-                  
-        ~SimpleMesh();
+                  size_t num_elements);
+        
+        // Default destructor (no memory deallocation)
+        ~SimpleMesh() = default;
 
-        // // Copy assignment operator
-        SYCL_EXTERNAL SimpleMesh& operator=(const SimpleMesh& other);
+        // Copy assignment operator
+        SimpleMesh& operator=(const SimpleMesh& other);
 
         // Move assignment operator
-        SYCL_EXTERNAL SimpleMesh& operator=(SimpleMesh&& other);
+        SimpleMesh& operator=(SimpleMesh&& other);
 
         // Copy constructor
         SimpleMesh(const SimpleMesh& other);

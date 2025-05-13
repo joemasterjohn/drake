@@ -42,7 +42,8 @@ drake_cc_library(
 
     copts = [
         "-fsycl",
-        "-fsycl-targets=spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-DEIGEN_DONT_VECTORIZE"
     ],
 
     deps = [
@@ -55,11 +56,12 @@ drake_cc_binary(
     srcs = ["mesh_test.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-DEIGEN_DONT_VECTORIZE"
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
     ],
 
     deps = [
