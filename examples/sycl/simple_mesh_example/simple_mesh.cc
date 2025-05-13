@@ -1,4 +1,4 @@
-#include "drake/examples/sycl/simple_mesh.h"
+#include "drake/examples/sycl/simple_mesh_example/simple_mesh.h"
 #include <sycl/sycl.hpp>
 
 namespace drake {
