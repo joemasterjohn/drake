@@ -1,23 +1,14 @@
-#include <gflags/gflags.h>
 #include "drake/examples/sycl/simple_mesh_example/simple_mesh.h"
 #include <fmt/format.h>
 #include <random>
 #include <chrono>
 #include <vector>
 #include <numeric>
+#include <fstream>
 #include "drake/math/rigid_transform.h"
 
 using namespace drake;
 using namespace drake::math;
-
-DEFINE_int32(num_meshes, 1000,
-              "Number of meshes to transform.");
-DEFINE_int32(points_per_mesh, 100,
-              "Number of points per mesh.");
-DEFINE_int32(elements_per_mesh, 100,
-              "Number of elements per mesh.");
-DEFINE_int32(num_runs, 5,
-              "Number of runs to include in average (excluding warm-up).");
 
 // Populate allocated USM memory with random positions
 void InitializeRandomPositions(Vector3<double>* p_MV, size_t num_points) {
@@ -37,7 +28,7 @@ void InitializeRandomElements(int* elements, size_t num_elements) {
 // Run the mesh transformation benchmark with the given queue
 std::pair<double, double> runBenchmarkOnce(sycl::queue& q, const std::string& device_name, 
                                          size_t num_meshes, size_t points_per_mesh, 
-                                         size_t elements_per_mesh, bool print_results = true) {
+                                         size_t elements_per_mesh, bool print_results = false) {
     auto start = std::chrono::high_resolution_clock::now();
     
     // Allocate memory for meshes using USM
@@ -111,10 +102,13 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q, const std::string& de
     return {kernel_duration.count(), total_duration.count()};
 }
 
-void runBenchmark(sycl::queue& q, const std::string& device_name, 
+std::pair<double, double> runBenchmark(sycl::queue& q, const std::string& device_name, 
                 size_t num_meshes, size_t points_per_mesh, size_t elements_per_mesh, 
-                int num_runs = 5) {
-    fmt::print("{} benchmark:\n", device_name);
+                int num_runs = 5, bool print_details = false) {
+    if (print_details) {
+        fmt::print("{} benchmark for meshes={}, points={}, elements={}:\n", 
+                  device_name, num_meshes, points_per_mesh, elements_per_mesh);
+    }
     
     std::vector<double> kernel_times;
     std::vector<double> total_times;
@@ -123,11 +117,13 @@ void runBenchmark(sycl::queue& q, const std::string& device_name,
     int total_runs = num_runs + 1;
     
     for (int i = 0; i < total_runs; i++) {
-        fmt::print("  Run {} of {} {}:\n", i + 1, total_runs, 
-                 (i == 0 ? "(warm-up, excluded from average)" : ""));
+        if (print_details) {
+            fmt::print("  Run {} of {} {}:\n", i + 1, total_runs, 
+                     (i == 0 ? "(warm-up, excluded from average)" : ""));
+        }
         auto [kernel_time, total_time] = runBenchmarkOnce(q, device_name, 
-                                                       num_meshes, points_per_mesh, 
-                                                       elements_per_mesh);
+                                                        num_meshes, points_per_mesh, 
+                                                        elements_per_mesh, print_details);
         
         // Only include the last num_runs (exclude the first/warm-up run)
         if (i > 0) {
@@ -140,25 +136,32 @@ void runBenchmark(sycl::queue& q, const std::string& device_name,
     double avg_kernel_time = std::accumulate(kernel_times.begin(), kernel_times.end(), 0.0) / num_runs;
     double avg_total_time = std::accumulate(total_times.begin(), total_times.end(), 0.0) / num_runs;
     
-    fmt::print("\n{} AVERAGE RESULTS (over {} runs, excluding warm-up):\n", device_name, num_runs);
-    fmt::print("  - Average kernel execution time: {:.3f} ms\n", avg_kernel_time);
-    fmt::print("  - Average total execution time:  {:.3f} ms\n\n", avg_total_time);
+    if (print_details) {
+        fmt::print("\n{} AVERAGE RESULTS (over {} runs, excluding warm-up):\n", device_name, num_runs);
+        fmt::print("  - Average kernel execution time: {:.3f} ms\n", avg_kernel_time);
+        fmt::print("  - Average total execution time:  {:.3f} ms\n\n", avg_total_time);
+    }
+    
+    return {avg_kernel_time, avg_total_time};
 }
 
 // Construct a bunch of simple meshes and do transforms on them using SYCL
 int main(int argc, char** argv) {
-    gflags::ParseCommandLineFlags(&argc, &argv, true);
-    size_t num_meshes = FLAGS_num_meshes;
-    size_t points_per_mesh = FLAGS_points_per_mesh;
-    size_t elements_per_mesh = FLAGS_elements_per_mesh;
-    int num_runs = FLAGS_num_runs;
+    const int num_runs = 5;  // Constant number of runs for all benchmarks
+    
+    // Powers of 10 from 1 to 1,000,000
+    std::vector<size_t> parameter_values = {1, 10, 100, 1000, 10000, 100000, 1000000};
     
     try {
-        fmt::print("Running on {} meshes with {} points per mesh and {} elements per mesh\n", 
-                 num_meshes, points_per_mesh, elements_per_mesh);
-        fmt::print("Each benchmark will run {} times plus one warm-up run (total: {})\n", 
-                 num_runs, num_runs + 1);
-        fmt::print("Warm-up run will be excluded from average calculations\n\n");
+        // Create output file for results
+        std::ofstream results_file("mesh_benchmark_results.csv");
+        if (!results_file) {
+            fmt::print("Error opening results file!\n");
+            return 1;
+        }
+        
+        // Write CSV header
+        results_file << "device,num_meshes,points_per_mesh,elements_per_mesh,kernel_time_ms,total_time_ms\n";
         
         // Create GPU queue
         sycl::queue gpu_queue(sycl::gpu_selector_v);
@@ -170,11 +173,67 @@ int main(int argc, char** argv) {
         fmt::print("Running on CPU: {}\n", 
                  cpu_queue.get_device().get_info<sycl::info::device::name>());
         
-        fmt::print("\nRunning performance comparison...\n\n");
+        fmt::print("\nRunning benchmark for all parameter combinations...\n");
+        fmt::print("Each configuration will run {} times plus one warm-up run\n", num_runs);
         
-        // Run benchmarks
-        runBenchmark(gpu_queue, "GPU", num_meshes, points_per_mesh, elements_per_mesh, num_runs);
-        runBenchmark(cpu_queue, "CPU", num_meshes, points_per_mesh, elements_per_mesh, num_runs);
+        // Total number of combinations
+        size_t total_combinations = parameter_values.size() * parameter_values.size() * parameter_values.size();
+        size_t completed = 0;
+        
+        // Test all combinations with both GPU and CPU
+        for (size_t num_meshes : parameter_values) {
+            for (size_t points_per_mesh : parameter_values) {
+                for (size_t elements_per_mesh : parameter_values) {
+                    // Skip combinations that could cause out-of-memory issues
+                    if (num_meshes * points_per_mesh * elements_per_mesh > 1e9) {
+                        fmt::print("Skipping potentially out-of-memory combination: meshes={}, points={}, elements={}\n", 
+                                 num_meshes, points_per_mesh, elements_per_mesh);
+                        completed += 2;  // Count as completed for both GPU and CPU
+                        continue;
+                    }
+                    
+                    fmt::print("Running benchmark ({}/{}) for meshes={}, points={}, elements={}\n", 
+                             completed+1, total_combinations*2, num_meshes, points_per_mesh, elements_per_mesh);
+                    
+                    try {
+                        // GPU benchmark
+                        auto [gpu_kernel_time, gpu_total_time] = runBenchmark(gpu_queue, "GPU", 
+                                                                          num_meshes, points_per_mesh, elements_per_mesh, 
+                                                                          num_runs);
+                        
+                        // Write GPU results to CSV
+                        results_file << "GPU," << num_meshes << "," << points_per_mesh << "," 
+                                    << elements_per_mesh << "," << gpu_kernel_time << "," 
+                                    << gpu_total_time << "\n";
+                        completed++;
+                        
+                        fmt::print("Running benchmark ({}/{}) for meshes={}, points={}, elements={}\n", 
+                                 completed+1, total_combinations*2, num_meshes, points_per_mesh, elements_per_mesh);
+                        
+                        // CPU benchmark
+                        auto [cpu_kernel_time, cpu_total_time] = runBenchmark(cpu_queue, "CPU", 
+                                                                          num_meshes, points_per_mesh, elements_per_mesh, 
+                                                                          num_runs);
+                        
+                        // Write CPU results to CSV
+                        results_file << "CPU," << num_meshes << "," << points_per_mesh << "," 
+                                    << elements_per_mesh << "," << cpu_kernel_time << "," 
+                                    << cpu_total_time << "\n";
+                        completed++;
+                        
+                        // Flush results to file periodically
+                        results_file.flush();
+                        
+                    } catch (std::exception const& e) {
+                        fmt::print("Exception during benchmark for meshes={}, points={}, elements={}: {}\n", 
+                                 num_meshes, points_per_mesh, elements_per_mesh, e.what());
+                        completed += 2;  // Count as completed for both GPU and CPU
+                    }
+                }
+            }
+        }
+        
+        fmt::print("\nBenchmark completed. Results written to mesh_benchmark_results.csv\n");
         
         return 0;
     } catch (sycl::exception const& e) {

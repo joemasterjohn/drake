@@ -38,7 +38,30 @@ drake_cc_binary(
     deps = [
         ":simple_mesh",
         "//common:essential",
-        "//math:geometric_transform"
+        "//math:geometric_transform",
+        "@gflags",
+    ],
+
+)
+
+
+drake_cc_binary(
+    name = "mesh_benchmark",
+    srcs = ["mesh_benchmark.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-DEIGEN_DONT_VECTORIZE"
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+    ],
+
+    deps = [
+        ":simple_mesh",
+        "//common:essential",
+        "//math:geometric_transform",
     ],
 
 )
