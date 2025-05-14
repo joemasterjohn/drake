@@ -2,7 +2,7 @@
 Example adds two vectors (10 million elements long) to produce a third vector. The directory contains two different memory management systems in SYCL
 - Buffers in `vector-add-buffers.cc`
 - Unified Shared Memory (USM) with `malloc_shared` in `vector-add-usm.cc`
-The example shows the warm-up time is substantially greater for `malloc_shared` compared to just using `buffer`
+The example shows the warm-up time is substantially greater for `malloc_shared` compared to just using `buffer`. Also, the example assumes compilation for GPU with cuda arch 89 (`--cuda-gpu-arch=sm_89`). This will only thus run on the GPUs that have cuda arch 89 (see full list [here](https://developer.nvidia.com/cuda-gpus))
 
 # Prerequisites
 - Make sure SYCL is setup by installing the oneAPI compiler package (see instructions [here](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-downloa[…]packages=oneapi-toolkit&oneapi-toolkit-os=linux&oneapi-lin=apt))
