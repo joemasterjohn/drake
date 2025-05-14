@@ -62,6 +62,7 @@ drake_cc_binary(
         ":simple_mesh",
         "//common:essential",
         "//math:geometric_transform",
+        "@gflags"
     ],
 
 )
