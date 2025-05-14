@@ -14,5 +14,10 @@ bazel build //examples/sycl/simple_mesh_example:simple_mesh
 # Run
 From root run using
 ```bash
-SYCL_UR_TRACE=1 ./bazel-bin/examples/sycl/mesh_test
+./bazel-bin/examples/sycl/simple_mesh_example/mesh_test
+```
+For user arguments run
+
+```bash
+./bazel-bin/examples/sycl/simple_mesh_example/mesh_test --help
 ```
