@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <Eigen/Dense>
+#include <sycl/sycl.hpp>
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
@@ -357,6 +358,8 @@ class VolumeMesh {
     return *result;
   }
 
+  void TransformVerticesImpl(const math::RigidTransform<T>& transform);
+
   // Calculates the inward facing normals and element edge vectors.
   void ComputePositionDependentQuantities();
 
@@ -469,6 +472,10 @@ std::optional<Vector3<T>> VolumeMesh<T>::MaybeCalcGradBarycentric(int e,
   }
   return area_vector_M / signed_volume;
 }
+
+template <>
+SYCL_EXTERNAL void VolumeMesh<double>::TransformVertices(
+    const math::RigidTransform<double>& transform);
 
 DRAKE_DECLARE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     class VolumeMesh);
