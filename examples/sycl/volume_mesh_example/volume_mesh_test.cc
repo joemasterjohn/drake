@@ -21,14 +21,14 @@ DEFINE_int32(elements_per_mesh, 100, "Number of elements per mesh.");
 DEFINE_int32(num_runs, 5,
              "Number of runs to include in average (excluding warm-up).");
 
-// Populate allocated USM memory with random positions
+// Populate allocated sycl::usm memory with random positions
 void InitializeRandomPositions(Vector3<double>* p_MV, size_t num_points) {
   for (size_t i = 0; i < num_points; i++) {
     p_MV[i] = Vector3<double>(rand() % 100, rand() % 100, rand() % 100);
   }
 }
 
-// Populate allocated USM memory with random elements
+// Populate allocated sycl::usm memory with random elements
 void InitializeRandomElements(VolumeElement* elements, size_t num_elements,
                               size_t num_points) {
   // Assuming 4 vertices per element (tetrahedron)
@@ -53,13 +53,28 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
                                            bool print_results = true) {
   auto start = std::chrono::high_resolution_clock::now();
 
-  std::vector<VolumeMesh<double>> meshes;
+  sycl::usm_allocator<
+      VolumeMesh<double, sycl::usm_allocator<void, sycl::usm::alloc::shared>>,
+      sycl::usm::alloc::shared>
+      q_VolumeMesh_alloc{q};
+  sycl::usm_allocator<Vector3<double>, sycl::usm::alloc::shared>
+      q_Vector3_alloc{q};
+  sycl::usm_allocator<VolumeElement, sycl::usm::alloc::shared>
+      q_VolumeElement_alloc{q};
+
+  std::vector<
+      VolumeMesh<double, sycl::usm_allocator<void, sycl::usm::alloc::shared>>>
+      meshes(q_VolumeMesh_alloc);
   // Create the meshes with vertices and elements
   for (size_t i = 0; i < num_meshes; i++) {
-    std::vector<Vector3<double>> mesh_vertices;
+    std::vector<Vector3<double>,
+                sycl::usm_allocator<Vector3<double>, sycl::usm::alloc::shared>>
+        mesh_vertices(q_Vector3_alloc);
     mesh_vertices.resize(points_per_mesh, Vector3<double>(0, 0, 0));
     InitializeRandomPositions(mesh_vertices.data(), points_per_mesh);
-    std::vector<VolumeElement> mesh_elements;
+    std::vector<VolumeElement,
+                sycl::usm_allocator<VolumeElement, sycl::usm::alloc::shared>>
+        mesh_elements(q_VolumeElement_alloc);
     mesh_elements.resize(elements_per_mesh, VolumeElement(0, 0, 0, 0));
     InitializeRandomElements(mesh_elements.data(), elements_per_mesh,
                              points_per_mesh);
@@ -73,9 +88,7 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
   InitializeRandomTransforms(X_MBs.data(), num_meshes);
 
   // Move everything into device vectors
-  auto meshes_d = sycl::malloc_device<VolumeMesh<double>>(num_meshes, q);
   auto X_MBs_d = sycl::malloc_device<RigidTransformd>(num_meshes, q);
-  q.memcpy(meshes_d, meshes.data(), num_meshes * sizeof(VolumeMesh<double>));
   q.memcpy(X_MBs_d, X_MBs.data(), num_meshes * sizeof(RigidTransformd));
 
   // Wait for all the memcpy to finish
@@ -85,11 +98,12 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
   // Parallelize across the meshes
   sycl::range<1> num_items{num_meshes};
 
+  VolumeMesh<double, sycl::usm_allocator<void, sycl::usm::alloc::shared>>* ptr =
+      meshes.data();
   auto e = q.parallel_for(num_items, [=](auto idx) {
     // Get the mesh and transform
-    VolumeMesh<double>& mesh = meshes_d[idx];
     RigidTransformd& X_MB = X_MBs_d[idx];
-    mesh.TransformVertices(X_MB);
+    ptr[idx].TransformVertices(X_MB);
   });
 
   q.wait();
@@ -101,7 +115,6 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
                        1e6;
 
   // Deallocate memory in reverse order of allocation
-  sycl::free(meshes_d, q);
   sycl::free(X_MBs_d, q);
 
   auto end = std::chrono::high_resolution_clock::now();
