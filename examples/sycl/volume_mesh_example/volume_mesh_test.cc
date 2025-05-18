@@ -53,17 +53,18 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
                                            bool print_results = true) {
   auto start = std::chrono::high_resolution_clock::now();
 
-  sycl::usm_allocator<
-      VolumeMesh<double, sycl::usm_allocator<void, sycl::usm::alloc::shared>>,
-      sycl::usm::alloc::shared>
+  using void_alloc = sycl::usm_allocator<void, sycl::usm::alloc::shared>;
+
+  sycl::usm_allocator<VolumeMesh<double, void_alloc>, sycl::usm::alloc::shared>
       q_VolumeMesh_alloc{q};
   sycl::usm_allocator<Vector3<double>, sycl::usm::alloc::shared>
       q_Vector3_alloc{q};
   sycl::usm_allocator<VolumeElement, sycl::usm::alloc::shared>
       q_VolumeElement_alloc{q};
 
-  std::vector<
-      VolumeMesh<double, sycl::usm_allocator<void, sycl::usm::alloc::shared>>>
+  std::vector<VolumeMesh<double, void_alloc>,
+              sycl::usm_allocator<VolumeMesh<double, void_alloc>,
+                                  sycl::usm::alloc::shared>>
       meshes(q_VolumeMesh_alloc);
   // Create the meshes with vertices and elements
   for (size_t i = 0; i < num_meshes; i++) {
