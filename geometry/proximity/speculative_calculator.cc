@@ -79,6 +79,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   constexpr double kEps = std::numeric_limits<double>::epsilon();
   // Data for each point of the speculative contact surface.
   std::vector<Vector3<T>> p_WC;
+  std::vector<Vector3<T>> p_AC_W;
+  std::vector<Vector3<T>> p_BC_W;
   std::vector<T> time_of_contact;
   std::vector<Vector3<T>> zhat_BA_W;
   std::vector<T> coefficients;
@@ -101,6 +103,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   // Reserve memory for the surface data.
   p_WC.reserve(element_pairs.size());
+
   time_of_contact.reserve(element_pairs.size());
   zhat_BA_W.reserve(element_pairs.size());
   coefficients.reserve(element_pairs.size());
@@ -195,11 +198,14 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // TEST
     // Do one step of advancement of the witness points to the time of contact.
     // Take their average as the contact point.
-    const Vector3<T> p_WAp_tc = p_WAp + tc*v_WAp;
-    const Vector3<T> p_WBq_tc = p_WBq + tc*v_WBq;
-    p_WC.emplace_back(0.5*(p_WAp_tc + p_WBq_tc));
+    // const Vector3<T> p_WAp_tc = p_WAp + tc*v_WAp;
+    // const Vector3<T> p_WBq_tc = p_WBq + tc*v_WBq;
+    // p_WC.emplace_back(0.5*(p_WAp_tc + p_WBq_tc));
 
-    //p_WC.emplace_back(p_WAp + tc * (n_hat_BqAp_W.dot(v_WAp)) * n_hat_BqAp_W);
+    p_WC.emplace_back(p_WAp + tc * (n_hat_BqAp_W.dot(v_WAp)) * n_hat_BqAp_W);
+    // p_WC.emplace_back(p_WAp);
+    p_AC_W.emplace_back(p_AoAp_W);
+    p_BC_W.emplace_back(p_BoBq_W);
 
     // Consider all of the closest point cases.
     // TODO(joemasterjohn): Document or reference written document for the
@@ -380,6 +386,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
+      p_AC_W.pop_back();
+      p_BC_W.pop_back();
       zhat_BA_W.pop_back();
       coefficients.pop_back();
       continue;
@@ -417,7 +425,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   // fmt::print("num_speculative: {}\n", ssize(p_WC));
 
   speculative_surfaces->emplace_back(
-      id_A, id_B, p_WC, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,
+      id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,
       grad_eA_W, grad_eB_W, closest_points, valid_element_pairs, effective_radius);
 }
 

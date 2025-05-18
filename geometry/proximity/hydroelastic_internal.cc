@@ -445,7 +445,7 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   // If nothing is said, let's go for the *cheap* tessellation strategy.
   const TessellationStrategy strategy =
       props.GetPropertyOrDefault(kHydroGroup, "tessellation_strategy",
-                                 TessellationStrategy::kSingleInteriorVertex);
+                                 TessellationStrategy::kDenseInteriorVertices);
   auto inflated_mesh = make_unique<VolumeMesh<double>>(
       MakeSphereVolumeMesh<double>(inflated_sphere, edge_length, strategy));
 

@@ -44,6 +44,7 @@ class SpeculativeContactSurface {
    */
   SpeculativeContactSurface(
       GeometryId id_A, GeometryId id_B, std::vector<Vector3<T>> p_WC,
+      std::vector<Vector3<T>> p_AC_W, std::vector<Vector3<T>> p_BC_W,
       std::vector<T> time_of_contact, std::vector<Vector3<T>> zhat_BA_W,
       std::vector<T> coefficient, std::vector<Vector3<T>> nhat_BA_W,
       std::vector<Vector3<T>> grad_eA_W, std::vector<Vector3<T>> grad_eB_W,
@@ -64,6 +65,9 @@ class SpeculativeContactSurface {
 
   /* Returns the world frame positions of the contact_points.*/
   const std::vector<Vector3<T>>& p_WC() const { return p_WC_; }
+
+  const std::vector<Vector3<T>>& p_AC_W() const { return p_AC_W_; }
+  const std::vector<Vector3<T>>& p_BC_W() const { return p_BC_W_; }
 
   /* Returns the time of contact for the contact points in p_WC. */
   const std::vector<T>& time_of_contact() const { return time_of_contact_; }
@@ -113,6 +117,8 @@ class SpeculativeContactSurface {
   GeometryId id_B_;
   /* per-contact point data. */
   std::vector<Vector3<T>> p_WC_;
+  std::vector<Vector3<T>> p_AC_W_;
+  std::vector<Vector3<T>> p_BC_W_;
   std::vector<T> time_of_contact_;
   std::vector<Vector3<T>> zhat_BA_W_;
   std::vector<T> coefficient_;
