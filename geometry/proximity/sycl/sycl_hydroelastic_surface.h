@@ -18,17 +18,55 @@ namespace geometry {
 namespace internal {
 namespace sycl_impl {
 
+/*
+  This class is used to store the hydroelastic collision surface for a given
+  pair of geometries in a Structure of Arrays (SoA) format. It holds the id's of
+  the two geometries that it belongs to. Additionally, it holds arrays (as
+  std::vectors) for properties of each polygon that make up the hydroelastic
+  surface.
+
+
+*/
 class SYCLHydroElasticSurface {
  public:
-  SYCLHydroElasticSurface();
+  /*
+    Constructs a SYCLHydroElasticSurface between two geometries of ids
+    `id_M` and `id_N` using a collection of polygons. A surface is not
+    "constructed" in a traditional geometric sense but rather the relevant
+    properties of each polygon are stored in arrays.
+
+    @param centroids Vector of centroids of each polygon expressed in the world
+    frame.
+    @param areas Vector of areas of each polygon.
+    @param pressure_Ws Vector of pressure vectors on each vertex of a polygon.
+    @param grad_pressure_Ms Gradient of pressure in the domain of `tet0` from
+    Mesh `M` expressed in the world frame. TODO(huzaifa): Do we need to store
+    tet IDs associated with this?
+    @param grad_pressure_Ns Gradient of pressure in the domain of `tet1` from
+    Mesh `N` expressed in the world frame. TODO(huzaifa): Do we need to store
+    tet IDs associated with this?
+    @param normal_Ws Vector of normal vectors of each polygon expressed in the
+    world frame.
+    @param id_M The id of the first geometry.
+    @param id_N The id of the second geometry.
+  */
+  SYCLHydroElasticSurface(std::vector<Vector3<double>> centroids,
+                          std::vector<double> areas,
+                          std::vector<std::vector<double>> pressure_Ws,
+                          std::vector<Vector3<double>> grad_pressure_Ms,
+                          std::vector<Vector3<double>> grad_pressure_Ns,
+                          std::vector<Vector3<double>> normal_Ws,
+                          GeometryId id_M, GeometryId id_N);
 
  private:
-  Vector3<double> centroid_;
-  double area_;
-  VolumeMeshFieldLinear<double, double> pressure_W;
-  Vector3<double> grad_pressure_M;
-  Vector3<double> grad_pressure_N;
-  Vector3<double> normal_W;
+  std::vector<Vector3<double>> centroid_;
+  std::vector<double> area_;
+  std::vector<std::vector<double>> pressure_W_;
+  std::vector<Vector3<double>> grad_pressure_M_;
+  std::vector<Vector3<double>> grad_pressure_N_;
+  std::vector<Vector3<double>> normal_W_;
+  GeometryId id_M_{};
+  GeometryId id_N_{};
 };
 
 }  // namespace sycl_impl
