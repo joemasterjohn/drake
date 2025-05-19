@@ -344,6 +344,23 @@ class VolumeMesh {
    @throws std::exception if p_MVs.size() != 3 * num_vertices() */
   void SetAllPositions(const Eigen::Ref<const VectorX<T>>& p_MVs);
 
+  const std::vector<Vector3<T>>& vertices() const { return vertices_M_; }
+  const std::vector<VolumeElement>& elements() const { return elements_; }
+  const std::vector<std::array<int, 4>>& pack_element_vertices() const {
+    std::vector<std::array<int, 4>> vertices;
+    vertices.reserve(elements_.size());
+    for (const auto& element : elements_) {
+      vertices.push_back(element.vertex_);
+    }
+    return vertices;
+  }
+  const std::vector<std::array<Vector3<T>, 4>>& inward_normals() const {
+    return inward_normals_M_;
+  }
+  const std::vector<std::array<Vector3<T>, 6>>& edge_vectors() const {
+    return edge_vectors_M_;
+  }
+
  private:
   // Calculates the gradient vector ∇bᵢ of the barycentric coordinate
   // function bᵢ of the i-th vertex of the tetrahedron `e`. The gradient

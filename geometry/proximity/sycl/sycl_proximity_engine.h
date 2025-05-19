@@ -21,32 +21,14 @@ namespace internal {
 namespace sycl_impl {
 
 /* This class implements a SYCL compatible version for performing geometric
- * _proximity_ queries. It is instantiated with geometric instances
- * (hydroelastic::Geometries) lazily when the contact surfaces are to be
- * computed (after ALL geometries of the scene have been instantiated).
- * Additionally, it requires a std::vector<SortedPair<GeometryId>> arrising from
- * the broad phase collision detection (FindCollisionCandidates()) that we
- * continue to keep on the host. Finally, this ProximityEngine only supports
- * CompliantCompliant collisions where the compliant bodies are not half spaces
- * and will throw if the hydroelastic::Geometry provided is not Compliant
+ * _proximity_ queries. It is instantiated with soft geometry instances lazily
+ * when the contact surfaces are to be computed (after ALL geometries of the
+ * scene have been instantiated).
  *
  * To provide geometric queries on the geometries, it provides a public member
- * function that takes a map of the geometry ID and its pose.
- *
- * TODO(huzaifa): MaybeMakeContactSurface looks at the type of collision of the
- * two bodies and then, from the hydroelastic::Geometries and if both the meshes
- * are "compliant-compliant", then, it extracts the "SoftGeometry" (indexing
- * with GeometryID). Then, within CalcCompliantCompliant, the soft geometries
- * are further checked for whether they are half-spaces --- if not, then the
- * soft mesh is extracted and that is what is used in
- * ComputeContactSurfaceFromCompliantVolumes. Understand if its possible to
- * instantiate this class with SoftMesh directly? What are the gains from this?
- * What are we losing out on?
- *
- * TODO part2(huzaifa): Even if we instantiate this class with
- * hydroelastic::Geometries, can we still only store the softMesh of the
- * candidates? This would mean being more lazily and only filling up memory
- * when we are looping over candidates.
+ * function that takes a map of the geometry ID and its pose. This function
+ * requires the collision candidates to be updated first and is the
+ * responsibility of the client through UpdateCollisionCandidates().
  */
 
 class SyclProximityEngine {
@@ -54,15 +36,19 @@ class SyclProximityEngine {
   /* @returns true iff the SYCL implementation is available. */
   static bool is_available();
 
-  /* @param geometries The geometries to use for the proximity queries.
-   * To be supplied lazily when contact surface is to be computed. */
-  SyclProximityEngine(const hydroelastic::Geometries& geometries,
-                      std::vector<SortedPair<GeometryId>> collision_candidates);
+  /* @param soft_geometries The soft geometries to use for the proximity
+   * queries. To be supplied lazily when contact surface is to be computed. */
+  SyclProximityEngine(
+      const std::unordered_map<GeometryId, SoftGeometry>& soft_geometries);
 
   ~SyclProximityEngine();
   SyclProximityEngine(const SyclProximityEngine& other);
   SyclProximityEngine& operator=(const SyclProximityEngine& other);
 
+  /* @param collision_candidates New vector of collision candidates after
+   * broad phase collision detection. */
+  void UpdateCollisionCandidates(
+      const std::vector<SortedPair<GeometryId>>& collision_candidates);
   /* @param X_WGs The poses of the geometries to compute the contact surface
    * for.
    * @returns A vector of SYCLHydroelasticSurfaces from each candidate collision
@@ -73,88 +59,53 @@ class SyclProximityEngine {
           X_WGs);
 
  private:
-  // The queue to use for the SYCL operations.
-  sycl::queue q_;
-
+  // We have a CPU queue for operations beneficial to perform on the host and a
+  // device queue for operations beneficial to perform on the Accelerator.
+  sycl::queue q_device_;
+  sycl::queue q_host_;
   // The collision candidates.
   std::vector<SortedPair<GeometryId>> collision_candidates_;
+  // GeometryIds of soft geometries (host-side)
+  GeometryId* soft_geometry_ids_ = nullptr;
+  // Number of geometries
+  size_t num_geometries_ = 0;
+
+  // SYCL shared arrays for geometry lookup
+  size_t* sh_element_offsets_ = nullptr;  // Element offset for each geometry
+  size_t* sh_vertex_offsets_ = nullptr;   // Vertex offset for each geometry
+  size_t* sh_element_counts_ = nullptr;  // Number of elements for each geometry
+  size_t* sh_vertex_counts_ = nullptr;   // Number of vertices for each geometry
 
   /*
-  A hydroelastic geometry only contains one mesh. Elements can only be
-  tetrahedra.
-  @param elements_ Elements of the mesh represented by 4 vertex indices that
-  make up the tetrahedron. Query with element index.
-  @param vertices_M_ Vertices of the mesh represented by 3D vectors. Query with
-  vertex index. Expressed in mesh frame `M`.
-  @param vertices_W_ Vertices of the mesh represented by 3D vectors. Query with
-  vertex index. Expressed in world frame `W`.
-  @param inward_normals_M_ Inward normals of each face of the tetrahedron. Query
-  with element index. Expressed in mesh frame `M`.
-  @param inward_normals_W_ Inward normals of each face of the tetrahedron. Query
-  with element index. Expressed in world frame `W`.
-  @param edge_vectors_M_ Edge vectors of each face of the tetrahedron. Query
-  with element index. Expressed in mesh frame `M`.
-  @param edge_vectors_W_ Edge vectors of each face of the tetrahedron. Query
-  with element index. Expressed in world frame `W`.
-  @param num_elements_ Number of elements in the mesh. Query by GeometryId.
-  @param num_vertices_ Number of vertices in the mesh. Query by GeometryId.
-  @param pressures_ Pressure field on the mesh. Query by vertex index.
-  @param min_pressures_ Minimum pressure on the mesh. Query by element index.
-  @param max_pressures_ Maximum pressure on the mesh. Query by element index.
-  @param gradients_M_ Gradient of pressure field in the domain of element `i`
-  (indexed). Gradients are expressued in mesh frame `M`.
-  @param gradients_W_ Gradient of pressure field in the domain of element `i`
-  (indexed). Gradients are expressued in world frame `W`.
-  @param pressures_at_Mo_ Piecewise linear pressure field on element `i`
-  evaluated Mo the origin of frame `M` of the mesh.
-  @param pressures_at_Wo_ Piecewise linear pressure field on element `i`
-  evaluated Wo the origin of World frame `W`.
-
-  * TODO(huzaifa): Abalation
-  * For everything that is stored in mesh frame `M`, we will need to transform
-  to
-  * world frame `W`. This is because all the output is in world frame and while
-  * computing the contact surface, any way we need to transform one tet into
-  another's frame.
-  * If we have one tet that is transformed to more another tet's frame (i.e. one
-  tet intersects with more than one other tet),
-  * then we will be doing more work compared to transforming everything to the
-  world frame.
-  *
-  * However, having everything in the world frame has its costs. There are three
-  ways we can have everything in the world frame-
-  *
-  * 1. Call ComputeSYCLHydroelasticSurface with the world frame transforms from
-  previous time step and current time step. Using this we can compute the
-  transform between time steps and transform quantities (assume stored in world
-  frame) to the current time step's world frame
-  * 2. Store two copies of everything (in both frames). When a RigidTransform is
-  provided in ComputeSYCLHydroelasticSurface, we use it to go from vertices_M to
-  vertices_W ---> Current approach
-  * 3. Store only vertices_M. When vertices_W is required, compute it on the
-  fly. This is similar to the CPU approach.
+  A hydroelastic geometry contains one mesh. Elements are tetrahedra.
+  All data is stored in contiguous arrays, with each geometry's data
+  at a specific offset in these arrays.
   */
-  struct SYCLHydroelasticGeometries {
-    // Volume mesh flattened
-    std::array<int, 4>* elements_;
-    Vector3<double>* vertices_M_;
-    Vector3<double>* vertices_W_;
-    std::array<Vector3<double>, 4>* inward_normals_M_;
-    std::array<Vector3<double>, 4>* inward_normals_W_;
-    std::array<Vector3<double>, 6>* edge_vectors_M_;
-    std::array<Vector3<double>, 6>* edge_vectors_W_;
-    size_t* num_elements_;
-    size_t* num_vertices_;
 
-    // VolumeMeshLinear -> MeshFieldLinear
-    double* pressures_;
-    double* min_pressures_;
-    double* max_pressures_;
-    Vector3<double>* gradients_M_;
-    Vector3<double>* gradients_W_;
-    double* pressures_at_Mo_;
-    double* pressures_at_Wo_;
-  };
+  // Mesh element data - accessed by element_offset + local_element_index
+  std::array<int, 4>* elements_ = nullptr;  // Elements as 4 vertex indices
+  std::array<Vector3<double>, 4>* inward_normals_M_ =
+      nullptr;  // Inward normals in mesh frame
+  std::array<Vector3<double>, 4>* inward_normals_W_ =
+      nullptr;  // Inward normals in world frame
+  std::array<Vector3<double>, 6>* edge_vectors_M_ =
+      nullptr;  // Edge vectors in mesh frame
+  std::array<Vector3<double>, 6>* edge_vectors_W_ =
+      nullptr;  // Edge vectors in world frame
+
+  // Mesh vertex data - accessed by vertex_offset + local_vertex_index
+  Vector3<double>* vertices_M_ = nullptr;  // Vertices in mesh frame
+  Vector3<double>* vertices_W_ = nullptr;  // Vertices in world frame
+
+  // Pressure field data - accessed by element_offset + local_element_index
+  double* pressures_ = nullptr;      // Pressure values
+  double* min_pressures_ = nullptr;  // Minimum pressure values
+  double* max_pressures_ = nullptr;  // Maximum pressure values
+
+  // Combined gradient and pressure values to optimize cache utilization
+  // First 3 components are gradient, 4th component is pressure at origin
+  Vector4<double>* gradient_M_pressure_at_Mo_ = nullptr;  // In mesh frame
+  Vector4<double>* gradient_W_pressure_at_Wo_ = nullptr;  // In world frame
 };
 
 }  // namespace sycl_impl
