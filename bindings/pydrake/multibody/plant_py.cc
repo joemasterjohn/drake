@@ -1353,6 +1353,14 @@ void DoScalarDependentDefinitions(py::module m, T) {
             py::arg("model_instance"),
             py::arg("add_model_instance_prefix") = false,
             cls_doc.GetActuatorNames.doc_2args);
+    cls.def("use_speculative", &Class::use_speculative,
+           cls_doc.use_speculative.doc)
+        .def("set_use_speculative", &Class::set_use_speculative,
+            py::arg("use_speculative"), cls_doc.set_use_speculative.doc)
+        .def("num_speculative", &Class::num_speculative,
+            cls_doc.num_speculative.doc)
+        .def("set_num_speculative", &Class::set_num_speculative,
+            py::arg("num_speculative"), cls_doc.set_num_speculative.doc);
   }
 
   {
