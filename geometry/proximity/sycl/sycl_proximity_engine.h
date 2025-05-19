@@ -84,33 +84,65 @@ class SyclProximityEngine {
   tetrahedra.
   @param elements_ Elements of the mesh represented by 4 vertex indices that
   make up the tetrahedron. Query with element index.
-  @param vertices_ Vertices of the mesh represented by 3D vectors. Query with
-  vertex index. Expressed in mesh frame `M`. TODO(huzaifa): Should this be
-  world frame `W`?
-  @param inward_normals_ Inward normals of each face of the tetrahedron. Query
-  with element index. Expressed in mesh frame `M`. TODO(huzaifa): Should this be
-  world frame `W`?
-  @param edge_vectors_ Edge vectors of each face of the tetrahedron. Query with
-  element index. Expressed in mesh frame `M`. TODO(huzaifa): Should this be
-  world frame `W`?
+  @param vertices_M_ Vertices of the mesh represented by 3D vectors. Query with
+  vertex index. Expressed in mesh frame `M`.
+  @param vertices_W_ Vertices of the mesh represented by 3D vectors. Query with
+  vertex index. Expressed in world frame `W`.
+  @param inward_normals_M_ Inward normals of each face of the tetrahedron. Query
+  with element index. Expressed in mesh frame `M`.
+  @param inward_normals_W_ Inward normals of each face of the tetrahedron. Query
+  with element index. Expressed in world frame `W`.
+  @param edge_vectors_M_ Edge vectors of each face of the tetrahedron. Query
+  with element index. Expressed in mesh frame `M`.
+  @param edge_vectors_W_ Edge vectors of each face of the tetrahedron. Query
+  with element index. Expressed in world frame `W`.
   @param num_elements_ Number of elements in the mesh. Query by GeometryId.
   @param num_vertices_ Number of vertices in the mesh. Query by GeometryId.
-
   @param pressures_ Pressure field on the mesh. Query by vertex index.
   @param min_pressures_ Minimum pressure on the mesh. Query by element index.
   @param max_pressures_ Maximum pressure on the mesh. Query by element index.
-  @param gradients_ Gradient of pressure field in the domain of element `i`
-  (indexed). Gradients are expressued in mesh frame `M`. TODO(huzaifa): Should
-  this be world frame `W`?
+  @param gradients_M_ Gradient of pressure field in the domain of element `i`
+  (indexed). Gradients are expressued in mesh frame `M`.
+  @param gradients_W_ Gradient of pressure field in the domain of element `i`
+  (indexed). Gradients are expressued in world frame `W`.
   @param pressures_at_Mo_ Piecewise linear pressure field on element `i`
   evaluated Mo the origin of frame `M` of the mesh.
+  @param pressures_at_Wo_ Piecewise linear pressure field on element `i`
+  evaluated Wo the origin of World frame `W`.
+
+  * TODO(huzaifa): Abalation
+  * For everything that is stored in mesh frame `M`, we will need to transform
+  to
+  * world frame `W`. This is because all the output is in world frame and while
+  * computing the contact surface, any way we need to transform one tet into
+  another's frame.
+  * If we have one tet that is transformed to more another tet's frame (i.e. one
+  tet intersects with more than one other tet),
+  * then we will be doing more work compared to transforming everything to the
+  world frame.
+  *
+  * However, having everything in the world frame has its costs. There are three
+  ways we can have everything in the world frame-
+  *
+  * 1. Call ComputeSYCLHydroelasticSurface with the world frame transforms from
+  previous time step and current time step. Using this we can compute the
+  transform between time steps and transform quantities (assume stored in world
+  frame) to the current time step's world frame
+  * 2. Store two copies of everything (in both frames). When a RigidTransform is
+  provided in ComputeSYCLHydroelasticSurface, we use it to go from vertices_M to
+  vertices_W ---> Current approach
+  * 3. Store only vertices_M. When vertices_W is required, compute it on the
+  fly. This is similar to the CPU approach.
   */
   struct SYCLHydroelasticGeometries {
     // Volume mesh flattened
     std::array<int, 4>* elements_;
-    Vector3<double>* vertices_;
-    std::array<Vector3<double>, 4>* inward_normals_;
-    std::array<Vector3<double>, 6>* edge_vectors_;
+    Vector3<double>* vertices_M_;
+    Vector3<double>* vertices_W_;
+    std::array<Vector3<double>, 4>* inward_normals_M_;
+    std::array<Vector3<double>, 4>* inward_normals_W_;
+    std::array<Vector3<double>, 6>* edge_vectors_M_;
+    std::array<Vector3<double>, 6>* edge_vectors_W_;
     size_t* num_elements_;
     size_t* num_vertices_;
 
@@ -118,8 +150,10 @@ class SyclProximityEngine {
     double* pressures_;
     double* min_pressures_;
     double* max_pressures_;
-    Vector3<double>* gradients_;
+    Vector3<double>* gradients_M_;
+    Vector3<double>* gradients_W_;
     double* pressures_at_Mo_;
+    double* pressures_at_Wo_;
   };
 };
 

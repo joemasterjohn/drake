@@ -38,13 +38,17 @@ class SYCLHydroElasticSurface {
     @param centroids Vector of centroids of each polygon expressed in the world
     frame.
     @param areas Vector of areas of each polygon.
-    @param pressure_Ws Vector of pressure vectors on each vertex of a polygon.
+    @param pressure_Ws Pressure at the centroid of each polygon.
     @param grad_pressure_Ms Gradient of pressure in the domain of `tet0` from
-    Mesh `M` expressed in the world frame. TODO(huzaifa): Do we need to store
-    tet IDs associated with this?
+    Mesh `M` expressed in the world frame.
     @param grad_pressure_Ns Gradient of pressure in the domain of `tet1` from
-    Mesh `N` expressed in the world frame. TODO(huzaifa): Do we need to store
-    tet IDs associated with this?
+    Mesh `N` expressed in the world frame.
+
+    * TODO(huzaifa): Do we need the grad_pressure's?
+    * These gradients might not be needed because they are only used to compute
+    * the scalar pressure gradients g_M and g_N. So we could just store g_M and
+    * g_N directly.
+
     @param normal_Ws Vector of normal vectors of each polygon expressed in the
     world frame.
     @param id_M The id of the first geometry.
@@ -52,7 +56,7 @@ class SYCLHydroElasticSurface {
   */
   SYCLHydroElasticSurface(std::vector<Vector3<double>> centroids,
                           std::vector<double> areas,
-                          std::vector<std::vector<double>> pressure_Ws,
+                          std::vector<double> pressure_Ws,
                           std::vector<Vector3<double>> grad_pressure_Ms,
                           std::vector<Vector3<double>> grad_pressure_Ns,
                           std::vector<Vector3<double>> normal_Ws,
@@ -61,7 +65,7 @@ class SYCLHydroElasticSurface {
  private:
   std::vector<Vector3<double>> centroid_;
   std::vector<double> area_;
-  std::vector<std::vector<double>> pressure_W_;
+  std::vector<double> pressure_W_;
   std::vector<Vector3<double>> grad_pressure_M_;
   std::vector<Vector3<double>> grad_pressure_N_;
   std::vector<Vector3<double>> normal_W_;
