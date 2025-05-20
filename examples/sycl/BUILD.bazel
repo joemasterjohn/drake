@@ -12,7 +12,7 @@ drake_cc_library(
     hdrs = ["simple.h"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
     ],
 )
 
@@ -22,11 +22,11 @@ drake_cc_binary(
     srcs = ["main.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
     ],
     deps = [
         ":simple",
