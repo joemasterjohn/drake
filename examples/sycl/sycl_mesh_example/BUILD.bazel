@@ -1,0 +1,26 @@
+load(
+    "//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+drake_cc_binary(
+    name = "sycl_mesh_benchmark",
+    srcs = ["sycl_mesh_benchmark.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
+    ],
+)
+
+alias(
+    name = "benchmark",
+    actual = ":sycl_mesh_benchmark",
+)
