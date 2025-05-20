@@ -8,9 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <sycl/sycl.hpp>
-
-#include "drake/geometry/proximity/hydroelastic_internal.h"
+#include "drake/geometry/geometry_ids.h"
 #include "drake/math/rigid_transform.h"
 
 namespace drake {
@@ -27,10 +25,10 @@ namespace sycl_impl {
 
 
 */
-class SYCLHydroElasticSurface {
+class SYCLHydroelasticSurface {
  public:
   /*
-    Constructs a SYCLHydroElasticSurface between two geometries of ids
+    Constructs a SYCLHydroelasticSurface between two geometries of ids
     `id_M` and `id_N` using a collection of polygons. A surface is not
     "constructed" in a traditional geometric sense but rather the relevant
     properties of each polygon are stored in arrays.
@@ -54,7 +52,7 @@ class SYCLHydroElasticSurface {
     @param id_M The id of the first geometry.
     @param id_N The id of the second geometry.
   */
-  SYCLHydroElasticSurface(std::vector<Vector3<double>> centroids,
+  SYCLHydroelasticSurface(std::vector<Vector3<double>> centroids,
                           std::vector<double> areas,
                           std::vector<double> pressure_Ws,
                           std::vector<Vector3<double>> grad_pressure_Ms,

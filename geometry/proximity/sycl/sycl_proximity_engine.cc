@@ -1,184 +1,357 @@
-#include "sycl_proximity_engine.h"
+#include "drake/geometry/proximity/sycl/sycl_proximity_engine.h"
+
+#include <array>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include <sycl/sycl.hpp>
+
+#include "drake/geometry/geometry_ids.h"
+#include "drake/geometry/proximity/hydroelastic_internal.h"
+#include "drake/geometry/proximity/sycl/sycl_hydroelastic_surface.h"
+#include "drake/math/rigid_transform.h"
 
 namespace drake {
 namespace geometry {
 namespace internal {
 namespace sycl_impl {
 
+// Implementation class for SyclProximityEngine that contains all SYCL-specific
+// code
+class SyclProximityEngine::Impl {
+ public:
+  // Default constructor
+  Impl() = default;
+
+  // Constructor that initializes with soft geometries
+  Impl(const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
+           soft_geometries) {
+    // Initialize SYCL queues
+    q_device_ = sycl::queue(sycl::default_selector_v);
+    q_host_ = sycl::queue(sycl::cpu_selector_v);
+
+    // Get number of geometries
+    num_geometries_ = soft_geometries.size();
+
+    // Allocate host memory for geometry IDs
+    soft_geometry_ids_ = new GeometryId[num_geometries_];
+
+    // Allocate device memory for lookup arrays
+    sh_element_offsets_ =
+        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
+    sh_vertex_offsets_ =
+        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
+    sh_element_counts_ =
+        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
+    sh_vertex_counts_ = sycl::malloc_shared<size_t>(num_geometries_, q_device_);
+
+    // First compute totals and build lookup data
+    size_t total_elements = 0;
+    size_t total_vertices = 0;
+
+    size_t id_index = 0;
+    for (const auto& [id, soft_geometry] : soft_geometries) {
+      const hydroelastic::SoftMesh& soft_mesh = soft_geometry.soft_mesh();
+      const VolumeMesh<double>& mesh = soft_mesh.mesh();
+
+      // Store the geometry's ID
+      soft_geometry_ids_[id_index] = id;
+
+      // Store offsets and counts directly (no memcpy needed with shared memory)
+      sh_element_offsets_[id_index] = total_elements;
+      sh_vertex_offsets_[id_index] = total_vertices;
+
+      const size_t num_elements = mesh.num_elements();
+      const size_t num_vertices = mesh.num_vertices();
+      sh_element_counts_[id_index] = num_elements;
+      sh_vertex_counts_[id_index] = num_vertices;
+
+      // Update totals
+      total_elements += num_elements;
+      total_vertices += num_vertices;
+      id_index++;
+    }
+
+    // Allocate device memory for all meshes
+    elements_ =
+        sycl::malloc_device<std::array<int, 4>>(total_elements, q_device_);
+    vertices_M_ =
+        sycl::malloc_device<Vector3<double>>(total_vertices, q_device_);
+    inward_normals_M_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
+        total_elements, q_device_);
+    edge_vectors_M_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
+        total_elements, q_device_);
+    pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
+    min_pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
+    max_pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
+
+    // Allocate combined gradient and pressure arrays
+    gradient_M_pressure_at_Mo_ =
+        sycl::malloc_device<Vector4<double>>(total_elements, q_device_);
+
+    // Allocate even for world frame quantities
+    vertices_W_ =
+        sycl::malloc_device<Vector3<double>>(total_vertices, q_device_);
+    inward_normals_W_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
+        total_elements, q_device_);
+    edge_vectors_W_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
+        total_elements, q_device_);
+    gradient_W_pressure_at_Wo_ =
+        sycl::malloc_device<Vector4<double>>(total_elements, q_device_);
+
+    // Copy data for each mesh
+    id_index = 0;
+    std::vector<sycl::event> transfer_events;  // Store all transfer events
+
+    for (const auto& [id, soft_geometry] : soft_geometries) {
+      const hydroelastic::SoftMesh& soft_mesh = soft_geometry.soft_mesh();
+      const VolumeMesh<double>& mesh = soft_mesh.mesh();
+      const VolumeMeshFieldLinear<double, double>& pressure_field =
+          soft_mesh.pressure();
+
+      // Direct access to shared memory values
+      size_t element_offset = sh_element_offsets_[id_index];
+      size_t vertex_offset = sh_vertex_offsets_[id_index];
+      size_t num_elements = sh_element_counts_[id_index];
+      size_t num_vertices = sh_vertex_counts_[id_index];
+
+      // Copy mesh data using the offsets with async operations
+      transfer_events.push_back(q_device_.memcpy(
+          elements_ + element_offset, mesh.pack_element_vertices().data(),
+          num_elements * sizeof(std::array<int, 4>)));
+
+      // Vertices
+      transfer_events.push_back(
+          q_device_.memcpy(vertices_M_ + vertex_offset, mesh.vertices().data(),
+                           num_vertices * sizeof(Vector3<double>)));
+
+      // Inward Normals
+      transfer_events.push_back(q_device_.memcpy(
+          inward_normals_M_ + element_offset, mesh.inward_normals().data(),
+          num_elements * sizeof(std::array<Vector3<double>, 4>)));
+
+      // Edge Vectors
+      transfer_events.push_back(q_device_.memcpy(
+          edge_vectors_M_ + element_offset, mesh.edge_vectors().data(),
+          num_elements * sizeof(std::array<Vector3<double>, 6>)));
+
+      // Pressures
+      transfer_events.push_back(q_device_.memcpy(
+          pressures_ + element_offset, pressure_field.values().data(),
+          num_elements * sizeof(double)));
+
+      // Min Pressures
+      transfer_events.push_back(q_device_.memcpy(
+          min_pressures_ + element_offset, pressure_field.min_values().data(),
+          num_elements * sizeof(double)));
+
+      // Max Pressures
+      transfer_events.push_back(q_device_.memcpy(
+          max_pressures_ + element_offset, pressure_field.max_values().data(),
+          num_elements * sizeof(double)));
+
+      // Create a temporary host buffer to pack gradient and pressure data
+      std::vector<Vector4<double>> packed_gradient_pressure(num_elements);
+
+      // Pack the gradient data (first 3 components) and pressure at Mo (4th
+      // component)
+      const auto& gradients = pressure_field.gradients();
+      const auto& pressures_at_Mo = pressure_field.values_at_Mo();
+
+      for (size_t i = 0; i < num_elements; ++i) {
+        packed_gradient_pressure[i][0] = gradients[i][0];     // x component
+        packed_gradient_pressure[i][1] = gradients[i][1];     // y component
+        packed_gradient_pressure[i][2] = gradients[i][2];     // z component
+        packed_gradient_pressure[i][3] = pressures_at_Mo[i];  // pressure at Mo
+      }
+
+      // Transfer the packed data in a single operation
+      transfer_events.push_back(
+          q_device_.memcpy(gradient_M_pressure_at_Mo_ + element_offset,
+                           packed_gradient_pressure.data(),
+                           num_elements * sizeof(Vector4<double>)));
+
+      id_index++;
+    }
+
+    // Wait for all transfers to complete before returning
+    sycl::event::wait_and_throw(transfer_events);
+  }
+
+  // Copy constructor
+  Impl(const Impl& other) {
+    // TODO(huzaifa): Implement deep copy of SYCL resources
+    // For now, we'll just create a shallow copy which isn't ideal
+    q_device_ = other.q_device_;
+    q_host_ = other.q_host_;
+    collision_candidates_ = other.collision_candidates_;
+    num_geometries_ = other.num_geometries_;
+  }
+
+  // Copy assignment operator
+  Impl& operator=(const Impl& other) {
+    if (this != &other) {
+      // TODO(huzaifa): Implement deep copy of SYCL resources
+      // For now, we'll just create a shallow copy which isn't ideal
+      q_device_ = other.q_device_;
+      q_host_ = other.q_host_;
+      collision_candidates_ = other.collision_candidates_;
+      num_geometries_ = other.num_geometries_;
+    }
+    return *this;
+  }
+
+  // Destructor
+  ~Impl() {
+    // Free device memory
+    if (num_geometries_ > 0) {
+      delete[] soft_geometry_ids_;
+
+      sycl::free(sh_element_offsets_, q_device_);
+      sycl::free(sh_vertex_offsets_, q_device_);
+      sycl::free(sh_element_counts_, q_device_);
+      sycl::free(sh_vertex_counts_, q_device_);
+
+      sycl::free(elements_, q_device_);
+      sycl::free(vertices_M_, q_device_);
+      sycl::free(vertices_W_, q_device_);
+      sycl::free(inward_normals_M_, q_device_);
+      sycl::free(inward_normals_W_, q_device_);
+      sycl::free(edge_vectors_M_, q_device_);
+      sycl::free(edge_vectors_W_, q_device_);
+      sycl::free(pressures_, q_device_);
+      sycl::free(min_pressures_, q_device_);
+      sycl::free(max_pressures_, q_device_);
+      sycl::free(gradient_M_pressure_at_Mo_, q_device_);
+      sycl::free(gradient_W_pressure_at_Wo_, q_device_);
+    }
+  }
+
+  // Check if SYCL is available
+  static bool is_available() {
+    try {
+      // Attempt to construct a default queue. If a SYCL runtime is available
+      // and a default device can be selected, this construction will succeed.
+      sycl::queue q;
+      // Suppress unused variable warning
+      (void)q;
+      return true;
+    } catch (const sycl::exception& /* e */) {
+      // An exception during queue construction indicates that a default SYCL
+      // device/queue is not available.
+      return false;
+    } catch (...) {
+      // Catch any other unexpected exceptions.
+      return false;
+    }
+  }
+
+  // Update collision candidates
+  void UpdateCollisionCandidates(
+      const std::vector<SortedPair<GeometryId>>& collision_candidates) {
+    collision_candidates_ = collision_candidates;
+  }
+
+  // Compute hydroelastic surfaces
+  std::vector<SYCLHydroelasticSurface> ComputeSYCLHydroelasticSurface(
+      const std::unordered_map<GeometryId, math::RigidTransform<double>>&
+          X_WGs) {
+    // TODO: Implement the actual computation
+    // This is a placeholder that returns an empty vector
+    std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
+    return sycl_hydroelastic_surfaces;
+  }
+
+ private:
+  // We have a CPU queue for operations beneficial to perform on the host and a
+  // device queue for operations beneficial to perform on the Accelerator.
+  sycl::queue q_device_;
+  sycl::queue q_host_;
+  // The collision candidates.
+  std::vector<SortedPair<GeometryId>> collision_candidates_;
+  // GeometryIds of soft geometries (host-side)
+  GeometryId* soft_geometry_ids_ = nullptr;
+  // Number of geometries
+  size_t num_geometries_ = 0;
+
+  // SYCL shared arrays for geometry lookup
+  size_t* sh_element_offsets_ = nullptr;  // Element offset for each geometry
+  size_t* sh_vertex_offsets_ = nullptr;   // Vertex offset for each geometry
+  size_t* sh_element_counts_ = nullptr;  // Number of elements for each geometry
+  size_t* sh_vertex_counts_ = nullptr;   // Number of vertices for each geometry
+
+  /*
+  A hydroelastic geometry contains one mesh. Elements are tetrahedra.
+  All data is stored in contiguous arrays, with each geometry's data
+  at a specific offset in these arrays.
+  */
+
+  // Mesh element data - accessed by element_offset + local_element_index
+  std::array<int, 4>* elements_ = nullptr;  // Elements as 4 vertex indices
+  std::array<Vector3<double>, 4>* inward_normals_M_ =
+      nullptr;  // Inward normals in mesh frame
+  std::array<Vector3<double>, 4>* inward_normals_W_ =
+      nullptr;  // Inward normals in world frame
+  std::array<Vector3<double>, 6>* edge_vectors_M_ =
+      nullptr;  // Edge vectors in mesh frame
+  std::array<Vector3<double>, 6>* edge_vectors_W_ =
+      nullptr;  // Edge vectors in world frame
+
+  // Mesh vertex data - accessed by vertex_offset + local_vertex_index
+  Vector3<double>* vertices_M_ = nullptr;  // Vertices in mesh frame
+  Vector3<double>* vertices_W_ = nullptr;  // Vertices in world frame
+
+  // Pressure field data - accessed by element_offset + local_element_index
+  double* pressures_ = nullptr;      // Pressure values
+  double* min_pressures_ = nullptr;  // Minimum pressure values
+  double* max_pressures_ = nullptr;  // Maximum pressure values
+
+  // Combined gradient and pressure values to optimize cache utilization
+  // First 3 components are gradient, 4th component is pressure at origin
+  Vector4<double>* gradient_M_pressure_at_Mo_ = nullptr;  // In mesh frame
+  Vector4<double>* gradient_W_pressure_at_Wo_ = nullptr;  // In world frame
+};
+
+// SyclProximityEngine implementation that forwards to the Impl class
+
 bool SyclProximityEngine::is_available() {
-  return sycl::queue::get_default_queue() != nullptr;
+  return Impl::is_available();
 }
 
 SyclProximityEngine::SyclProximityEngine(
-    const std::unordered_map<GeometryId, SoftGeometry>& soft_geometries) {
-  // Initialize SYCL queues
-  q_device_ = sycl::queue(sycl::default_selector_v);
-  q_host_ = sycl::queue(sycl::cpu_selector_v);
+    const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
+        soft_geometries)
+    : impl_(std::make_unique<Impl>(soft_geometries)) {}
 
-  // Get number of geometries
-  num_geometries_ = soft_geometries.size();
+SyclProximityEngine::SyclProximityEngine() : impl_(std::make_unique<Impl>()) {}
 
-  // Allocate device memory for lookup arrays
-  sh_element_offsets_ = sycl::malloc_device<size_t>(num_geometries_, q_device_);
-  sh_vertex_offsets_ = sycl::malloc_device<size_t>(num_geometries_, q_device_);
-  sh_element_counts_ = sycl::malloc_device<size_t>(num_geometries_, q_device_);
-  sh_vertex_counts_ = sycl::malloc_device<size_t>(num_geometries_, q_device_);
-  // First compute totals and build lookup data
-  size_t total_elements = 0;
-  size_t total_vertices = 0;
+SyclProximityEngine::~SyclProximityEngine() = default;
 
-  for (const auto& [id, soft_geometry] : soft_geometries) {
-    DRAKE_THROW_UNLESS(soft_geometry.hydroelastic_type(id) ==
-                       HydroelasticType::kSoft);
-
-    const SoftMesh& soft_mesh = soft_geometry.soft_mesh();
-    const VolumeMesh<double>& mesh = soft_mesh.mesh();
-
-    // Store the geometry's ID
-    soft_geometry_ids_[id] = id;
-
-    // Store offsets and counts
-    sh_element_offsets_[id] = total_elements;
-    sh_vertex_offsets_[id] = total_vertices;
-
-    const size_t num_elements = mesh.num_elements();
-    const size_t num_vertices = mesh.num_vertices();
-    sh_element_counts_[id] = num_elements;
-    sh_vertex_counts_[id] = num_vertices;
-
-    // Update totals
-    total_elements += num_elements;
-    total_vertices += num_vertices;
-  }
-
-  // Allocate device memory for all meshes
-  elements_ =
-      sycl::malloc_device<std::array<int, 4>>(total_elements, q_device_);
-  vertices_M_ = sycl::malloc_device<Vector3<double>>(total_vertices, q_device_);
-  inward_normals_M_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
-      total_elements, q_device_);
-  edge_vectors_M_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
-      total_elements, q_device_);
-  pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
-  min_pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
-  max_pressures_ = sycl::malloc_device<double>(total_elements, q_device_);
-
-  // Allocate combined gradient and pressure arrays
-  gradient_M_pressure_at_Mo_ =
-      sycl::malloc_device<Vector4<double>>(total_elements, q_device_);
-
-  // Allocate even for world frame quantities
-  vertices_W_ = sycl::malloc_device<Vector3<double>>(total_vertices, q_device_);
-  inward_normals_W_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
-      total_elements, q_device_);
-  edge_vectors_W_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
-      total_elements, q_device_);
-  gradient_W_pressure_at_Wo_ =
-      sycl::malloc_device<Vector4<double>>(total_elements, q_device_);
-
-  // Copy data for each mesh
-  int geo_idx = 0;
-  std::vector<sycl::event> transfer_events;  // Store all transfer events
-
-  for (const auto& [id, soft_geometry] : soft_geometries) {
-    const SoftMesh& soft_mesh = soft_geometry.soft_mesh();
-    const VolumeMesh<double>& mesh = soft_mesh.mesh();
-    const VolumeMeshFieldLinear<double, double>& pressure_field =
-        soft_mesh.pressure();
-
-    const size_t element_offset = sh_element_offsets_[geo_idx];
-    const size_t vertex_offset = sh_vertex_offsets_[geo_idx];
-    const size_t num_elements = sh_element_counts_[geo_idx];
-    const size_t num_vertices = sh_vertex_counts_[geo_idx];
-
-    // Copy mesh data using the offsets with async operations
-    transfer_events.push_back(q_device_.memcpy_async(
-        elements_ + element_offset, mesh.pack_element_vertices().data(),
-        num_elements * sizeof(std::array<int, 4>)));
-
-    // Vertices
-    transfer_events.push_back(q_device_.memcpy_async(
-        vertices_M_ + vertex_offset, mesh.vertices().data(),
-        num_vertices * sizeof(Vector3<double>)));
-
-    // Inward Normals
-    transfer_events.push_back(q_device_.memcpy_async(
-        inward_normals_M_ + element_offset, mesh.inward_normals().data(),
-        num_elements * sizeof(std::array<Vector3<double>, 4>)));
-
-    // Edge Vectors
-    transfer_events.push_back(q_device_.memcpy_async(
-        edge_vectors_M_ + element_offset, mesh.edge_vectors().data(),
-        num_elements * sizeof(std::array<Vector3<double>, 6>)));
-
-    // Pressures
-    transfer_events.push_back(q_device_.memcpy_async(
-        pressures_ + element_offset, pressure_field.values().data(),
-        num_elements * sizeof(double)));
-
-    // Min Pressures
-    transfer_events.push_back(q_device_.memcpy_async(
-        min_pressures_ + element_offset, pressure_field.min_values().data(),
-        num_elements * sizeof(double)));
-
-    // Max Pressures
-    transfer_events.push_back(q_device_.memcpy_async(
-        max_pressures_ + element_offset, pressure_field.max_values().data(),
-        num_elements * sizeof(double)));
-
-    // Create a temporary host buffer to pack gradient and pressure data
-    std::vector<Vector4<double>> packed_gradient_pressure(num_elements);
-
-    // Pack the gradient data (first 3 components) and pressure at Mo (4th
-    // component)
-    const auto& gradients = pressure_field.gradients();
-    const auto& pressures_at_Mo = pressure_field.values_at_Mo();
-
-    for (size_t i = 0; i < num_elements; ++i) {
-      packed_gradient_pressure[i][0] = gradients[i][0];     // x component
-      packed_gradient_pressure[i][1] = gradients[i][1];     // y component
-      packed_gradient_pressure[i][2] = gradients[i][2];     // z component
-      packed_gradient_pressure[i][3] = pressures_at_Mo[i];  // pressure at Mo
-    }
-
-    // Transfer the packed data in a single operation
-    transfer_events.push_back(
-        q_device_.memcpy_async(gradient_M_pressure_at_Mo_ + element_offset,
-                               packed_gradient_pressure.data(),
-                               num_elements * sizeof(Vector4<double>)));
-
-    geo_idx++;
-  }
-
-  // Wait for all transfers to complete before returning
-  sycl::event::wait_and_throw(transfer_events);
-
-  // Prefetch geometry lookup data to the device - We will only need it on
-  // device from here on out
-  q_device_.prefetch(sh_element_offsets_, num_geometries_ * sizeof(size_t));
-  q_device_.prefetch(sh_vertex_offsets_, num_geometries_ * sizeof(size_t));
-  q_device_.prefetch(sh_element_counts_, num_geometries_ * sizeof(size_t));
-  q_device_.prefetch(sh_vertex_counts_, num_geometries_ * sizeof(size_t));
-}
-
-SyclProximityEngine::~SyclProximityEngine() {
-  // TODO(huzaifa): Implement
-}
-
-SyclProximityEngine::SyclProximityEngine(const SyclProximityEngine& other) {
-  // TODO(huzaifa): Implement
-}
+SyclProximityEngine::SyclProximityEngine(const SyclProximityEngine& other)
+    : impl_(std::make_unique<Impl>(*other.impl_)) {}
 
 SyclProximityEngine& SyclProximityEngine::operator=(
     const SyclProximityEngine& other) {
-  // TODO(huzaifa): Implement
+  if (this != &other) {
+    *impl_ = *other.impl_;
+  }
   return *this;
+}
+
+void SyclProximityEngine::UpdateCollisionCandidates(
+    const std::vector<SortedPair<GeometryId>>& collision_candidates) {
+  impl_->UpdateCollisionCandidates(collision_candidates);
 }
 
 std::vector<SYCLHydroelasticSurface>
 SyclProximityEngine::ComputeSYCLHydroelasticSurface(
     const std::unordered_map<GeometryId, math::RigidTransform<double>>& X_WGs) {
-  // TODO(huzaifa): Implement
+  return impl_->ComputeSYCLHydroelasticSurface(X_WGs);
 }
 
 }  // namespace sycl_impl

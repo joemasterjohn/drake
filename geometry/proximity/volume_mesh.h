@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#include <sycl/sycl.hpp>
 
 #include "drake/common/default_scalars.h"
 #include "drake/common/drake_assert.h"
@@ -16,6 +15,15 @@
 #include "drake/geometry/proximity/mesh_traits.h"
 #include "drake/math/linear_solve.h"
 #include "drake/math/rigid_transform.h"
+
+// Conditionally include SYCL headers and define SYCL macros
+#if defined(SYCL_LANGUAGE_VERSION)
+#include <sycl/sycl.hpp>
+#else
+// Provide a benign fallback for SYCL_EXTERNAL if it's used in the header
+// unconditionally
+#define SYCL_EXTERNAL
+#endif
 
 namespace drake {
 namespace geometry {
@@ -70,6 +78,8 @@ class VolumeElement {
   bool Equal(const VolumeElement& e) const {
     return this->vertex_ == e.vertex_;
   }
+
+  const std::array<int, 4>& getAllVertices() const { return vertex_; }
 
  private:
   // The vertices of this element.
@@ -196,6 +206,21 @@ class VolumeMesh {
   const std::vector<Vector3<T>>& vertices() const { return vertices_M_; }
 
   const std::vector<VolumeElement>& tetrahedra() const { return elements_; }
+
+  std::vector<std::array<int, 4>> pack_element_vertices() const {
+    std::vector<std::array<int, 4>> vertices;
+    vertices.reserve(elements_.size());
+    for (const auto& element : elements_) {
+      vertices.push_back(element.getAllVertices());
+    }
+    return vertices;
+  }
+  const std::vector<std::array<Vector3<T>, 4>>& inward_normals() const {
+    return inward_normals_M_;
+  }
+  const std::vector<std::array<Vector3<T>, 6>>& edge_vectors() const {
+    return edge_vectors_M_;
+  }
 
   /** Returns the number of tetrahedral elements in the mesh.
    */
@@ -343,23 +368,6 @@ class VolumeMesh {
                  the mesh's original frame).
    @throws std::exception if p_MVs.size() != 3 * num_vertices() */
   void SetAllPositions(const Eigen::Ref<const VectorX<T>>& p_MVs);
-
-  const std::vector<Vector3<T>>& vertices() const { return vertices_M_; }
-  const std::vector<VolumeElement>& elements() const { return elements_; }
-  const std::vector<std::array<int, 4>>& pack_element_vertices() const {
-    std::vector<std::array<int, 4>> vertices;
-    vertices.reserve(elements_.size());
-    for (const auto& element : elements_) {
-      vertices.push_back(element.vertex_);
-    }
-    return vertices;
-  }
-  const std::vector<std::array<Vector3<T>, 4>>& inward_normals() const {
-    return inward_normals_M_;
-  }
-  const std::vector<std::array<Vector3<T>, 6>>& edge_vectors() const {
-    return edge_vectors_M_;
-  }
 
  private:
   // Calculates the gradient vector ∇bᵢ of the barycentric coordinate
