@@ -42,13 +42,10 @@ class SyclProximityEngine::Impl {
     soft_geometry_ids_ = new GeometryId[num_geometries_];
 
     // Allocate device memory for lookup arrays
-    sh_element_offsets_ =
-        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
-    sh_vertex_offsets_ =
-        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
-    sh_element_counts_ =
-        sycl::malloc_shared<size_t>(num_geometries_, q_device_);
-    sh_vertex_counts_ = sycl::malloc_shared<size_t>(num_geometries_, q_device_);
+    sh_element_offsets_ = sycl::malloc_host<size_t>(num_geometries_, q_device_);
+    sh_vertex_offsets_ = sycl::malloc_host<size_t>(num_geometries_, q_device_);
+    sh_element_counts_ = sycl::malloc_host<size_t>(num_geometries_, q_device_);
+    sh_vertex_counts_ = sycl::malloc_host<size_t>(num_geometries_, q_device_);
 
     // First compute totals and build lookup data
     size_t total_elements = 0;
@@ -103,6 +100,10 @@ class SyclProximityEngine::Impl {
         total_elements, q_device_);
     gradient_W_pressure_at_Wo_ =
         sycl::malloc_device<Vector4<double>>(total_elements, q_device_);
+
+    // Allocate device memory for transforms
+    transforms_ =
+        sycl::malloc_host<double>(num_geometries_ * transform_size_, q_device_);
 
     // Copy data for each mesh
     id_index = 0;
@@ -229,6 +230,7 @@ class SyclProximityEngine::Impl {
       sycl::free(max_pressures_, q_device_);
       sycl::free(gradient_M_pressure_at_Mo_, q_device_);
       sycl::free(gradient_W_pressure_at_Wo_, q_device_);
+      sycl::free(transforms_, q_device_);
     }
   }
 
@@ -261,8 +263,53 @@ class SyclProximityEngine::Impl {
   std::vector<SYCLHydroelasticSurface> ComputeSYCLHydroelasticSurface(
       const std::unordered_map<GeometryId, math::RigidTransform<double>>&
           X_WGs) {
-    // TODO: Implement the actual computation
-    // This is a placeholder that returns an empty vector
+    // Get transfomers in host
+    size_t geom_index = 0;
+    for (auto geometry_id : soft_geometry_ids_) {
+      // To maintain our orders of geometries we need to loop through the store
+      // geometry id's and query the X_WGs for that geometry id Cannot iterate
+      // over the unordered_map because it is not ordered
+      const auto& X_WG = X_WGs.at(geometry_id);
+      const auto& transform = X_WG.GetAsMatrix34();
+      for (size_t i = 0; i < transform_size_; ++i) {
+        size_t row = i / 4;
+        size_t col = i % 4;
+        // Store transforms in row major order
+        // transforms_ = [R_00, R_01, R_02, p_0, R_10, R_11, R_12, p_1, ...]
+        transforms_[geom_index * transform_size_ + i] = transform(row, col);
+      }
+      geom_index++;
+    }
+
+    // ========================================
+    // Kernel 1: Transform quantities to world frame
+    // ========================================
+    // Transform all verticies
+    // auto transform_event = q_device_.submit([&](sycl::handler& h) {
+    //   h.parallel_for(sycl::range<1>(num_geometries_ * num_vertices_),
+    //                  [=](sycl::id<1> idx) {
+    //                    const size_t vertex_index = idx[0];
+    //                    const size_t mesh_index =
+    //                        vertex_index / sh_vertex_counts_[];
+
+    //                    const Vector3<double> vertex =
+    //                    vertices_M_[vertex_index]; double T[transform_size_];
+    //                    for (size_t i = 0; i < transform_size_; ++i) {
+    //                      T[i] = transforms_[mesh_index * transform_size_ +
+    //                      i];
+    //                    }
+    //                    double new_x = T[0] * x + T[1] * y + T[2] * z + T[3];
+    //                    double new_y = T[4] * x + T[5] * y + T[6] * z + T[7];
+    //                    double new_z = T[8] * x + T[9] * y + T[10] * z +
+    //                    T[11];
+    //                  });
+    // });
+
+    // ========================================
+    // Kernel 2: Generate candidate tet pairs
+    // ========================================
+
+    // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
     return sycl_hydroelastic_surfaces;
   }
@@ -278,6 +325,8 @@ class SyclProximityEngine::Impl {
   GeometryId* soft_geometry_ids_ = nullptr;
   // Number of geometries
   size_t num_geometries_ = 0;
+  // Get the transforms in just a simple double*
+  constexpr size_t transform_size_ = 12;
 
   // SYCL shared arrays for geometry lookup
   size_t* sh_element_offsets_ = nullptr;  // Element offset for each geometry
@@ -315,6 +364,10 @@ class SyclProximityEngine::Impl {
   // First 3 components are gradient, 4th component is pressure at origin
   Vector4<double>* gradient_M_pressure_at_Mo_ = nullptr;  // In mesh frame
   Vector4<double>* gradient_W_pressure_at_Wo_ = nullptr;  // In world frame
+
+  double* transforms_ =
+      nullptr;  // Pointer to memory residing on host but accesible on device
+                // (all transfers through PCIe)
 };
 
 // SyclProximityEngine implementation that forwards to the Impl class
