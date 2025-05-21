@@ -91,25 +91,65 @@ int main(int argc, char* argv[]) {
       if (frame > 0) total_memcpy_time += (memcpy_end - memcpy_start);
 
       auto kernel_event = q.submit([&](sycl::handler& h) {
+        // Allocate local memory for transform matrix shared within work group
+        sycl::local_accessor<double, 1> local_transform(transform_size, h);
+
+        // Define ND-range with num_meshes work groups and enough work items per
+        // group to process all vertices in a mesh
+        size_t work_items_per_mesh =
+            (vertices_per_mesh + vertices_per_work_item - 1) /
+            vertices_per_work_item;
+        sycl::range<1> global_range{num_meshes * work_items_per_mesh};
+        sycl::range<1> local_range{work_items_per_mesh};
+
         h.parallel_for(
-            sycl::range<1>{num_meshes * vertices_per_mesh /
-                           vertices_per_work_item},
-            [=](sycl::id<1> idx) {
-              const size_t vertices_start = idx[0] * vertices_per_work_item;
-              const size_t mesh_id = vertices_start / vertices_per_mesh;
+            sycl::nd_range<1>(global_range, local_range),
+            [=](sycl::nd_item<1> item) {
+              // Each work group represents one mesh
+              size_t mesh_id = item.get_group(0);
+              size_t local_id = item.get_local_id(0);
+              size_t global_id = item.get_global_id(0);
 
-              double T[transform_size];
-              for (size_t j = 0; j < transform_size; ++j)
-                T[j] = transforms[mesh_id * transform_size + j];
+              // Distribute transform loading across work items
+              if (local_id < transform_size) {
+                // Each of the first 12 work items loads one element
+                local_transform[local_id] =
+                    transforms[mesh_id * transform_size + local_id];
+              }
 
-              for (size_t v = 0; v < vertices_per_work_item; ++v) {
-                double& x = mesh_vertices[vertices_start * 3 + v * 3 + 0];
-                double& y = mesh_vertices[vertices_start * 3 + v * 3 + 1];
-                double& z = mesh_vertices[vertices_start * 3 + v * 3 + 2];
+              // Ensure all work items see the loaded transform data
+              item.barrier(sycl::access::fence_space::local_space);
 
-                double new_x = T[0] * x + T[1] * y + T[2] * z + T[3];
-                double new_y = T[4] * x + T[5] * y + T[6] * z + T[7];
-                double new_z = T[8] * x + T[9] * y + T[10] * z + T[11];
+              // Calculate which vertices this work item processes
+              size_t vertices_start = (mesh_id * vertices_per_mesh) +
+                                      (local_id * vertices_per_work_item);
+              size_t vertices_to_process = vertices_per_work_item;
+
+              // Adjust for last work item in case vertices don't divide evenly
+              if (local_id == work_items_per_mesh - 1) {
+                size_t remaining = vertices_per_mesh % vertices_per_work_item;
+                if (remaining > 0) {
+                  vertices_to_process = remaining;
+                }
+              }
+
+              // Process vertices assigned to this work item
+              for (size_t v = 0; v < vertices_to_process; ++v) {
+                // Skip processing if we're beyond the mesh's vertices
+                if ((local_id * vertices_per_work_item) + v >=
+                    vertices_per_mesh)
+                  break;
+
+                double& x = mesh_vertices[(vertices_start + v) * 3 + 0];
+                double& y = mesh_vertices[(vertices_start + v) * 3 + 1];
+                double& z = mesh_vertices[(vertices_start + v) * 3 + 2];
+
+                double new_x = local_transform[0] * x + local_transform[1] * y +
+                               local_transform[2] * z + local_transform[3];
+                double new_y = local_transform[4] * x + local_transform[5] * y +
+                               local_transform[6] * z + local_transform[7];
+                double new_z = local_transform[8] * x + local_transform[9] * y +
+                               local_transform[10] * z + local_transform[11];
 
                 x = new_x;
                 y = new_y;

@@ -69,6 +69,23 @@ drake_cc_binary(
     ],
 )
 
+
+# Transforms are in device - memcopied - transforms in shared memory
+drake_cc_binary(
+    name = "sycl_mesh_benchmark_device_sharedMem",
+    srcs = ["sycl_mesh_benchmark_device_sharedMem.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
+    ],
+)
+
 # Transforms are in device - memcopied - memory is aligned
 drake_cc_binary(
     name = "sycl_mesh_benchmark_device_aligned",
@@ -137,6 +154,12 @@ alias(
     name = "benchmark_device",
     actual = ":sycl_mesh_benchmark_device",
 )
+
+alias(
+    name = "benchmark_device_sharedMem",
+    actual = ":sycl_mesh_benchmark_device_sharedMem",
+)
+
 
 alias(
     name = "benchmark_device_aligned",
