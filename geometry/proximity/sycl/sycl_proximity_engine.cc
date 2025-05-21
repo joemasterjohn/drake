@@ -71,8 +71,8 @@ class SyclProximityEngine::Impl {
       soft_geometry_ids_[id_index] = id;
 
       // Store offsets and counts directly (no memcpy needed with shared memory)
-      sh_element_offsets_[id_index] = total_elements;
-      sh_vertex_offsets_[id_index] = total_vertices;
+      sh_element_offsets_[id_index] = total_elements_;
+      sh_vertex_offsets_[id_index] = total_vertices_;
 
       const size_t num_elements = mesh.num_elements();
       const size_t num_vertices = mesh.num_vertices();
@@ -118,8 +118,7 @@ class SyclProximityEngine::Impl {
         sycl::malloc_device<Vector4<double>>(total_elements_, q_device_);
 
     // Allocate device memory for transforms
-    transforms_ =
-        sycl::malloc_host<double>(num_geometries_ * transform_size_, q_device_);
+    transforms_ = sycl::malloc_host<double>(num_geometries_ * 12, q_device_);
 
     // Allocate device memory for element AABBs
     element_aabb_min_W_ =
@@ -229,8 +228,7 @@ class SyclProximityEngine::Impl {
     geom_collision_filter_check_offsets_ =
         sycl::malloc_host<size_t>(num_geometries_, q_device_);
 
-    size_t num_elements_in_last_geometry =
-        sh_element_counts_[num_geometries_ - 1];
+    num_elements_in_last_geometry_ = sh_element_counts_[num_geometries_ - 1];
     total_checks_ = 0;
     // Done entirely in CPU because its only looping over num_geometries
     for (size_t i = 0; i < num_geometries_; ++i) {
@@ -244,13 +242,13 @@ class SyclProximityEngine::Impl {
       // geometry (because A check B  = B check A)...
       const size_t num_elements_in_rest_of_geometries =
           sh_element_offsets_[num_geometries_ - 1 - i] +
-          num_elements_in_last_geometry - num_elements_in_geometry;
+          num_elements_in_last_geometry_ - num_elements_in_geometry;
       geom_collision_filter_num_cols_[i] = num_elements_in_rest_of_geometries;
       // We need to check each element in this geometry with each element in
       // the rest of the geometries
       total_checks_per_geometry_[i] =
           num_elements_in_rest_of_geometries * num_elements_in_geometry;
-      geom_collision_filter_check_offsets_[i] = total_checks;
+      geom_collision_filter_check_offsets_[i] = total_checks_;
       total_checks_ += total_checks_per_geometry_[i];
     }
 
@@ -373,12 +371,12 @@ class SyclProximityEngine::Impl {
       // over the unordered_map because it is not ordered
       const auto& X_WG = X_WGs.at(geometry_id);
       const auto& transform = X_WG.GetAsMatrix34();
-      for (size_t i = 0; i < transform_size_; ++i) {
+      for (size_t i = 0; i < 12; ++i) {
         size_t row = i / 4;
         size_t col = i % 4;
         // Store transforms in row major order
         // transforms_ = [R_00, R_01, R_02, p_0, R_10, R_11, R_12, p_1, ...]
-        transforms_[geom_index * transform_size_ + i] = transform(row, col);
+        transforms_[geom_index * 12 + i] = transform(row, col);
       }
     }
 
@@ -390,7 +388,9 @@ class SyclProximityEngine::Impl {
     auto transform_vertices_event = q_device_.submit([&](sycl::handler& h) {
       // Transform vertices
       h.parallel_for(sycl::range<1>(total_vertices_), sycl::id<1>(0),
-                     [=](sycl::id<1> idx) {
+                     [=, vertices_M_ = vertices_M_, vertices_W_ = vertices_W_,
+                      sh_vertex_mesh_ids_ = sh_vertex_mesh_ids_,
+                      transforms_ = transforms_](sycl::id<1> idx) {
                        const size_t vertex_index = idx[0];
                        const size_t mesh_index =
                            sh_vertex_mesh_ids_[vertex_index];
@@ -398,9 +398,9 @@ class SyclProximityEngine::Impl {
                        const double x = vertices_M_[vertex_index][0];
                        const double y = vertices_M_[vertex_index][1];
                        const double z = vertices_M_[vertex_index][2];
-                       double T[transform_size_];
-                       for (size_t i = 0; i < transform_size_; ++i) {
-                         T[i] = transforms_[mesh_index * transform_size_ + i];
+                       double T[12];
+                       for (size_t i = 0; i < 12; ++i) {
+                         T[i] = transforms_[mesh_index * 12 + i];
                        }
                        double new_x = T[0] * x + T[1] * y + T[2] * z + T[3];
                        double new_y = T[4] * x + T[5] * y + T[6] * z + T[7];
@@ -417,13 +417,16 @@ class SyclProximityEngine::Impl {
         q_device_.submit([&](sycl::handler& h) {
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
-              [=](sycl::id<1> idx) {
+              [=, inward_normals_M_ = inward_normals_M_,
+               inward_normals_W_ = inward_normals_W_,
+               sh_element_mesh_ids_ = sh_element_mesh_ids_,
+               transforms_ = transforms_](sycl::id<1> idx) {
                 const size_t element_index = idx[0];
                 const size_t mesh_index = sh_element_mesh_ids_[element_index];
 
-                double T[transform_size_];
-                for (size_t i = 0; i < transform_size_; ++i) {
-                  T[i] = transforms_[mesh_index * transform_size_ + i];
+                double T[12];
+                for (size_t i = 0; i < 12; ++i) {
+                  T[i] = transforms_[mesh_index * 12 + i];
                 }
 
                 // Each element has 4 inward normals
@@ -445,13 +448,16 @@ class SyclProximityEngine::Impl {
           // Transform edge vectors
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
-              [=](sycl::id<1> idx) {
+              [=, edge_vectors_M_ = edge_vectors_M_,
+               edge_vectors_W_ = edge_vectors_W_,
+               sh_element_mesh_ids_ = sh_element_mesh_ids_,
+               transforms_ = transforms_](sycl::id<1> idx) {
                 const size_t element_index = idx[0];
                 const size_t mesh_index = sh_element_mesh_ids_[element_index];
 
-                double T[transform_size_];
-                for (size_t i = 0; i < transform_size_; ++i) {
-                  T[i] = transforms_[mesh_index * transform_size_ + i];
+                double T[12];
+                for (size_t i = 0; i < 12; ++i) {
+                  T[i] = transforms_[mesh_index * 12 + i];
                 }
 
                 // Each element has 6 edge vectors
@@ -473,13 +479,16 @@ class SyclProximityEngine::Impl {
           // Transform pressure gradients
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
-              [=](sycl::id<1> idx) {
+              [=, gradient_M_pressure_at_Mo_ = gradient_M_pressure_at_Mo_,
+               gradient_W_pressure_at_Wo_ = gradient_W_pressure_at_Wo_,
+               sh_element_mesh_ids_ = sh_element_mesh_ids_,
+               transforms_ = transforms_](sycl::id<1> idx) {
                 const size_t element_index = idx[0];
                 const size_t mesh_index = sh_element_mesh_ids_[element_index];
 
-                double T[transform_size_];
-                for (size_t i = 0; i < transform_size_; ++i) {
-                  T[i] = transforms_[mesh_index * transform_size_ + i];
+                double T[12];
+                for (size_t i = 0; i < 12; ++i) {
+                  T[i] = transforms_[mesh_index * 12 + i];
                 }
                 // Each element has 1 pressure gradient
                 const double gp_mx =
@@ -521,80 +530,120 @@ class SyclProximityEngine::Impl {
       // Allocate device memory for element AABBs
       // While doing this, assign false to all elements that are not part of
       // geometries that are collision candidates
-      h.parallel_for(sycl::range<1>(total_elements_), [=](sycl::id<1> idx) {
-        const size_t element_index = idx[0];
+      h.parallel_for(
+          sycl::range<1>(total_elements_),
+          [=, elements_ = elements_, vertices_W_ = vertices_W_,
+           element_aabb_min_W_ = element_aabb_min_W_,
+           element_aabb_max_W_ = element_aabb_max_W_](sycl::id<1> idx) {
+            const size_t element_index = idx[0];
 
-        // Get the four vertex indices for this tetrahedron
-        const std::array<int, 4>& tet_vertices = elements_[element_index];
+            // Get the four vertex indices for this tetrahedron
+            const std::array<int, 4>& tet_vertices = elements_[element_index];
 
-        // Initialize min/max to first vertex
-        double min_x = vertices_W_[tet_vertices[0]][0];
-        double min_y = vertices_W_[tet_vertices[0]][1];
-        double min_z = vertices_W_[tet_vertices[0]][2];
+            // Initialize min/max to first vertex
+            double min_x = vertices_W_[tet_vertices[0]][0];
+            double min_y = vertices_W_[tet_vertices[0]][1];
+            double min_z = vertices_W_[tet_vertices[0]][2];
 
-        double max_x = min_x;
-        double max_y = min_y;
-        double max_z = min_z;
+            double max_x = min_x;
+            double max_y = min_y;
+            double max_z = min_z;
 
-        // Find min/max across all four vertices
-        for (int i = 1; i < 4; ++i) {
-          int vertex_idx = tet_vertices[i];
+            // Find min/max across all four vertices
+            for (int i = 1; i < 4; ++i) {
+              int vertex_idx = tet_vertices[i];
 
-          // Update min coordinates
-          min_x = sycl::min(min_x, vertices_W_[vertex_idx][0]);
-          min_y = sycl::min(min_y, vertices_W_[vertex_idx][1]);
-          min_z = sycl::min(min_z, vertices_W_[vertex_idx][2]);
+              // Update min coordinates
+              min_x = sycl::min(min_x, vertices_W_[vertex_idx][0]);
+              min_y = sycl::min(min_y, vertices_W_[vertex_idx][1]);
+              min_z = sycl::min(min_z, vertices_W_[vertex_idx][2]);
 
-          // Update max coordinates
-          max_x = sycl::max(max_x, vertices_W_[vertex_idx][0]);
-          max_y = sycl::max(max_y, vertices_W_[vertex_idx][1]);
-          max_z = sycl::max(max_z, vertices_W_[vertex_idx][2]);
-        }
+              // Update max coordinates
+              max_x = sycl::max(max_x, vertices_W_[vertex_idx][0]);
+              max_y = sycl::max(max_y, vertices_W_[vertex_idx][1]);
+              max_z = sycl::max(max_z, vertices_W_[vertex_idx][2]);
+            }
 
-        // Store the results
-        element_aabb_min_W_[element_index][0] = min_x;
-        element_aabb_min_W_[element_index][1] = min_y;
-        element_aabb_min_W_[element_index][2] = min_z;
+            // Store the results
+            element_aabb_min_W_[element_index][0] = min_x;
+            element_aabb_min_W_[element_index][1] = min_y;
+            element_aabb_min_W_[element_index][2] = min_z;
 
-        element_aabb_max_W_[element_index][0] = max_x;
-        element_aabb_max_W_[element_index][1] = max_y;
-        element_aabb_max_W_[element_index][2] = max_z;
-      });
+            element_aabb_max_W_[element_index][0] = max_x;
+            element_aabb_max_W_[element_index][1] = max_y;
+            element_aabb_max_W_[element_index][2] = max_z;
+          });
     });
     element_aabb_event.wait();
 
     // Now generate collision filter with the AABBs that we computed
     auto generate_collision_filter_event =
         q_device_.submit([&](sycl::handler& h) {
-          h.parallel_for(sycl::range<1>(total_checks_), [=](sycl::id<1> idx) {
-            const size_t check_index = idx[0];
-            const size_t host_body_index =
-                collision_filter_host_body_index_[check_index];
-            // What elements is this check_index checking?
-            // host_body_index is the geometry index that element A belongs to
-            const size_t A_element_index =
-                check_index / geom_collision_filter_num_cols_[host_body_index];
-            const size_t B_element_index =
-                sh_element_offsets_[host_body_index + 1] +
-                check_index % geom_collision_filter_num_cols_[host_body_index];
+          h.parallel_for(
+              sycl::range<1>(total_checks_),
+              [=, collision_filter_ = collision_filter_,
+               collision_filter_host_body_index_ =
+                   collision_filter_host_body_index_,
+               geom_collision_filter_num_cols_ =
+                   geom_collision_filter_num_cols_,
+               sh_element_offsets_ = sh_element_offsets_,
+               element_aabb_min_W_ = element_aabb_min_W_,
+               element_aabb_max_W_ = element_aabb_max_W_](sycl::id<1> idx) {
+                const size_t check_index = idx[0];
+                const size_t host_body_index =
+                    collision_filter_host_body_index_[check_index];
+                // What elements is this check_index checking?
+                // host_body_index is the geometry index that element A belongs
+                // to
+                const size_t A_element_index =
+                    check_index /
+                    geom_collision_filter_num_cols_[host_body_index];
+                const size_t B_element_index =
+                    sh_element_offsets_[host_body_index + 1] +
+                    check_index %
+                        geom_collision_filter_num_cols_[host_body_index];
 
-            // We have two element index, now just check their AABB
-            A_element_aabb_min_W_x = element_aabb_min_W_[A_element_index][0];
-            A_element_aabb_min_W_y = element_aabb_min_W_[A_element_index][1];
-            A_element_aabb_min_W_z = element_aabb_min_W_[A_element_index][2];
+                // We have two element index, now just check their AABB
+                // A element AABB
+                // min
+                const double A_element_aabb_min_W_x =
+                    element_aabb_min_W_[A_element_index][0];
+                const double A_element_aabb_min_W_y =
+                    element_aabb_min_W_[A_element_index][1];
+                const double A_element_aabb_min_W_z =
+                    element_aabb_min_W_[A_element_index][2];
+                // max
+                const double A_element_aabb_max_W_x =
+                    element_aabb_max_W_[A_element_index][0];
+                const double A_element_aabb_max_W_y =
+                    element_aabb_max_W_[A_element_index][1];
+                const double A_element_aabb_max_W_z =
+                    element_aabb_max_W_[A_element_index][2];
 
-            B_element_aabb_max_W_x = element_aabb_max_W_[B_element_index][0];
-            B_element_aabb_max_W_y = element_aabb_max_W_[B_element_index][1];
-            B_element_aabb_max_W_z = element_aabb_max_W_[B_element_index][2];
+                // B element AABB
+                // min
+                const double B_element_aabb_min_W_x =
+                    element_aabb_min_W_[B_element_index][0];
+                const double B_element_aabb_min_W_y =
+                    element_aabb_min_W_[B_element_index][1];
+                const double B_element_aabb_min_W_z =
+                    element_aabb_min_W_[B_element_index][2];
+                // max
+                const double B_element_aabb_max_W_x =
+                    element_aabb_max_W_[B_element_index][0];
+                const double B_element_aabb_max_W_y =
+                    element_aabb_max_W_[B_element_index][1];
+                const double B_element_aabb_max_W_z =
+                    element_aabb_max_W_[B_element_index][2];
 
-            collision_filter_[check_index] =
-                !(A_element_aabb_max_W_x < B_element_aabb_min_W_x ||
-                  A_element_aabb_min_W_x > B_element_aabb_max_W_x ||
-                  A_element_aabb_max_W_y < B_element_aabb_min_W_y ||
-                  A_element_aabb_min_W_y > B_element_aabb_max_W_y ||
-                  A_element_aabb_max_W_z < B_element_aabb_min_W_z ||
-                  A_element_aabb_min_W_z > B_element_aabb_max_W_z);
-          });
+                collision_filter_[check_index] =
+                    !(A_element_aabb_max_W_x < B_element_aabb_min_W_x ||
+                      A_element_aabb_min_W_x > B_element_aabb_max_W_x ||
+                      A_element_aabb_max_W_y < B_element_aabb_min_W_y ||
+                      A_element_aabb_min_W_y > B_element_aabb_max_W_y ||
+                      A_element_aabb_max_W_z < B_element_aabb_min_W_z ||
+                      A_element_aabb_min_W_z > B_element_aabb_max_W_z);
+              });
         });
     generate_collision_filter_event.wait();
 
@@ -616,8 +665,6 @@ class SyclProximityEngine::Impl {
   GeometryId* soft_geometry_ids_ = nullptr;
   // Number of geometries
   size_t num_geometries_ = 0;
-  // Get the transforms in just a simple double*
-  constexpr size_t transform_size_ = 12;
 
   // SYCL shared arrays for geometry lookup
   size_t* sh_element_offsets_ =
