@@ -33,8 +33,10 @@ class SyclProximityEngine::Impl {
   Impl(const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
            soft_geometries) {
     // Initialize SYCL queues
-    q_device_ = sycl::queue(sycl::default_selector_v);
+    q_device_ = sycl::queue(sycl::gpu_selector_v);
     q_host_ = sycl::queue(sycl::cpu_selector_v);
+
+    DRAKE_DEMAND(soft_geometries.size() > 0);
 
     // Extract and sort geometry IDs for deterministic ordering
     std::vector<GeometryId> sorted_ids;
@@ -655,6 +657,7 @@ class SyclProximityEngine::Impl {
   }
 
  private:
+  friend class SyclProximityEngineTester;
   // We have a CPU queue for operations beneficial to perform on the host and a
   // device queue for operations beneficial to perform on the Accelerator.
   sycl::queue q_device_;
@@ -743,9 +746,9 @@ class SyclProximityEngine::Impl {
   size_t* geom_collision_filter_check_offsets_ = nullptr;
   size_t* geom_collision_filter_num_cols_ = nullptr;
   size_t total_checks_ = 0;
-};
 
-// SyclProximityEngine implementation that forwards to the Impl class
+  friend class SyclProximityEngineAttorney;
+};
 
 bool SyclProximityEngine::is_available() {
   return Impl::is_available();
@@ -780,6 +783,48 @@ std::vector<SYCLHydroelasticSurface>
 SyclProximityEngine::ComputeSYCLHydroelasticSurface(
     const std::unordered_map<GeometryId, math::RigidTransform<double>>& X_WGs) {
   return impl_->ComputeSYCLHydroelasticSurface(X_WGs);
+}
+
+// SyclProximityEngineAttorney class definition
+SyclProximityEngine::Impl* SyclProximityEngineAttorney::get_impl(
+    SyclProximityEngine& engine) {
+  return engine.impl_.get();
+}
+const SyclProximityEngine::Impl* SyclProximityEngineAttorney::get_impl(
+    const SyclProximityEngine& engine) {
+  return engine.impl_.get();
+}
+bool* SyclProximityEngineAttorney::get_collision_filter(
+    SyclProximityEngine::Impl* impl) {
+  return impl->collision_filter_;
+}
+Vector3<double>* SyclProximityEngineAttorney::get_vertices_M(
+    SyclProximityEngine::Impl* impl) {
+  return impl->vertices_M_;
+}
+Vector3<double>* SyclProximityEngineAttorney::get_vertices_W(
+    SyclProximityEngine::Impl* impl) {
+  return impl->vertices_W_;
+}
+std::array<int, 4>* SyclProximityEngineAttorney::get_elements(
+    SyclProximityEngine::Impl* impl) {
+  return impl->elements_;
+}
+double* SyclProximityEngineAttorney::get_pressures(
+    SyclProximityEngine::Impl* impl) {
+  return impl->pressures_;
+}
+Vector4<double>* SyclProximityEngineAttorney::get_gradient_M_pressure_at_Mo(
+    SyclProximityEngine::Impl* impl) {
+  return impl->gradient_M_pressure_at_Mo_;
+}
+Vector4<double>* SyclProximityEngineAttorney::get_gradient_W_pressure_at_Wo(
+    SyclProximityEngine::Impl* impl) {
+  return impl->gradient_W_pressure_at_Wo_;
+}
+size_t* SyclProximityEngineAttorney::get_collision_filter_host_body_index(
+    SyclProximityEngine::Impl* impl) {
+  return impl->collision_filter_host_body_index_;
 }
 
 }  // namespace sycl_impl

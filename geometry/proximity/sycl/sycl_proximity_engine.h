@@ -67,6 +67,29 @@ class SyclProximityEngine {
   // The implementation class
   class Impl;
   std::unique_ptr<Impl> impl_;
+  friend class SyclProximityEngineTester;
+  // Add attorney as friend
+  friend class SyclProximityEngineAttorney;
+};
+
+// Attorney class for accessing private members of SyclProximityEngine and Impl
+class SyclProximityEngineAttorney {
+ public:
+  static SyclProximityEngine::Impl* get_impl(SyclProximityEngine& engine);
+  static const SyclProximityEngine::Impl* get_impl(
+      const SyclProximityEngine& engine);
+
+  static bool* get_collision_filter(SyclProximityEngine::Impl* impl);
+  static Vector3<double>* get_vertices_M(SyclProximityEngine::Impl* impl);
+  static Vector3<double>* get_vertices_W(SyclProximityEngine::Impl* impl);
+  static std::array<int, 4>* get_elements(SyclProximityEngine::Impl* impl);
+  static double* get_pressures(SyclProximityEngine::Impl* impl);
+  static Vector4<double>* get_gradient_M_pressure_at_Mo(
+      SyclProximityEngine::Impl* impl);
+  static Vector4<double>* get_gradient_W_pressure_at_Wo(
+      SyclProximityEngine::Impl* impl);
+  static size_t* get_collision_filter_host_body_index(
+      SyclProximityEngine::Impl* impl);
 };
 
 }  // namespace sycl_impl

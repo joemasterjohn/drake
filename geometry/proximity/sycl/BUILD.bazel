@@ -2,6 +2,7 @@ load(
     "//tools/skylark:drake_cc.bzl",
     "drake_cc_binary",
     "drake_cc_library",
+    "drake_cc_googletest",
 )
 
 package(default_visibility = ["//visibility:private"])
@@ -48,4 +49,25 @@ drake_cc_library(
         "//math:geometric_transform",
         ":sycl_hydroelastic_surface",
     ]
+)
+
+drake_cc_googletest(
+    name = "sycl_proximity_engine_test",
+    srcs = ["test/sycl_proximity_engine_test.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-DEIGEN_DONT_VECTORIZE",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+    ],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+        "//math:geometric_transform",
+        ":sycl_hydroelastic_surface",
+        ":sycl_proximity_engine"
+    ],
 )
