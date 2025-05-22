@@ -168,6 +168,17 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
   for (size_t i = 0; i < 4; ++i) {
     EXPECT_EQ(collision_filter[i], expected_collision_filter[i]);
   }
+
+  // Move geometries closer so that all elements are colliding and check
+  // collision filter
+  X_WGs[idB] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.3});
+  surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+  // Element 0 of A collides with element 0 of B
+  // Element 1 of A collides with element 0 and 1 of B
+  expected_collision_filter = {1, 0, 1, 1};
+  for (size_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(collision_filter[i], expected_collision_filter[i]);
+  }
 }
 
 GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
@@ -189,6 +200,35 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
       {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 1.1})},
       {idC, math::RigidTransform<double>(Vector3<double>{0, 0, 2.2})}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // Get the total checks
+  auto impl = SyclProximityEngineAttorney::get_impl(engine);
+  // Geom A checks 2 elements against 4 = 8 checks
+  // Geom B checks 2 elements against 2 = 4 checks
+  // Geom C checks none
+  // Total = 12 checks
+  EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 12);
+
+  // Collision filter check
+  bool* collision_filter =
+      SyclProximityEngineAttorney::get_collision_filter(impl);
+
+  std::vector<int> expected_collision_filter{0, 0, 0, 0, 1, 0,
+                                             0, 0, 0, 0, 1, 0};
+  for (size_t i = 0; i < 12; ++i) {
+    EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
+  }
+
+  // Move meshes closer so all elements collide
+  X_WGs[idB] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.3});
+  X_WGs[idC] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.6});
+  surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // With meshes closer, more elements should be colliding
+  expected_collision_filter = {1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1};
+  for (size_t i = 0; i < 12; ++i) {
+    EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
+  }
 }
 
 }  // namespace

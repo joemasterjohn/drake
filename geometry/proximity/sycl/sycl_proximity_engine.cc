@@ -599,19 +599,30 @@ class SyclProximityEngine::Impl {
                    geom_collision_filter_num_cols_,
                sh_element_offsets_ = sh_element_offsets_,
                element_aabb_min_W_ = element_aabb_min_W_,
-               element_aabb_max_W_ = element_aabb_max_W_](sycl::id<1> idx) {
+               element_aabb_max_W_ = element_aabb_max_W_,
+               total_checks_per_geometry_ =
+                   total_checks_per_geometry_](sycl::id<1> idx) {
                 const size_t check_index = idx[0];
                 const size_t host_body_index =
                     collision_filter_host_body_index_[check_index];
                 // What elements is this check_index checking?
                 // host_body_index is the geometry index that element A belongs
                 // to
+                size_t num_of_checks_offset = 0;
+                if (host_body_index > 0) {
+                  num_of_checks_offset =
+                      total_checks_per_geometry_[host_body_index - 1];
+                }
+                const size_t geom_local_check_number =
+                    check_index - num_of_checks_offset;
+
                 const size_t A_element_index =
-                    check_index /
-                    geom_collision_filter_num_cols_[host_body_index];
+                    sh_element_offsets_[host_body_index] +
+                    geom_local_check_number /
+                        geom_collision_filter_num_cols_[host_body_index];
                 const size_t B_element_index =
                     sh_element_offsets_[host_body_index + 1] +
-                    check_index %
+                    geom_local_check_number %
                         geom_collision_filter_num_cols_[host_body_index];
 
                 // We have two element index, now just check their AABB
