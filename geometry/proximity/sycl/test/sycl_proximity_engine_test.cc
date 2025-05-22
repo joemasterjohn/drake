@@ -59,32 +59,16 @@ hydroelastic::SoftGeometry MakeSimpleSoftGeometry() {
 }
 
 GTEST_TEST(SPETest, ZeroMeshes) {
+  // Should throw when soft_geometries is empty
   std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries;
-  drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
-      soft_geometries);
-  // No collision candidates, no transforms
-  engine.UpdateCollisionCandidates({});
-  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs;
-  auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
-
-  // Use Attorney class to get the internals of interest
-  auto impl = SyclProximityEngineAttorney::get_impl(engine);
-  auto vertices_M = SyclProximityEngineAttorney::get_vertices_M(impl);
-  auto vertices_W = SyclProximityEngineAttorney::get_vertices_W(impl);
-  auto elements = SyclProximityEngineAttorney::get_elements(impl);
-  auto pressures = SyclProximityEngineAttorney::get_pressures(impl);
-  auto gradient_M_pressure_at_Mo =
-      SyclProximityEngineAttorney::get_gradient_M_pressure_at_Mo(impl);
-  auto gradient_W_pressure_at_Wo =
-      SyclProximityEngineAttorney::get_gradient_W_pressure_at_Wo(impl);
-  auto collision_filter =
-      SyclProximityEngineAttorney::get_collision_filter(impl);
-  auto collision_filter_host_body_index =
-      SyclProximityEngineAttorney::get_collision_filter_host_body_index(impl);
+  EXPECT_THROW(drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
+                   soft_geometries),
+               std::runtime_error);
 }
 
 GTEST_TEST(SPETest, SingleMesh) {
   GeometryId id = GeometryId::get_new_id();
+
   std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries{
       {id, MakeSimpleSoftGeometry()}};
   drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
@@ -93,6 +77,34 @@ GTEST_TEST(SPETest, SingleMesh) {
   std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
       {id, math::RigidTransform<double>::Identity()}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // Get the total checks - this should be 0
+  auto impl = SyclProximityEngineAttorney::get_impl(engine);
+  EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 0);
+
+  // Vertices stored should be same as vertices from mesh
+  auto verticies_M_host = SyclProximityEngineAttorney::get_vertices_M(impl);
+  auto verticies_W_host = SyclProximityEngineAttorney::get_vertices_W(impl);
+
+  auto verticies_from_mesh = MakeSimpleSoftGeometry().mesh().vertices();
+  EXPECT_EQ(verticies_M_host.size(), verticies_from_mesh.size());
+  for (size_t i = 0; i < verticies_M_host.size(); ++i) {
+    EXPECT_EQ(verticies_M_host[i], verticies_from_mesh[i]);
+  }
+  // Vertices in world frame should be same as vertices in mesh frame
+  EXPECT_EQ(verticies_W_host.size(), verticies_from_mesh.size());
+  for (size_t i = 0; i < verticies_W_host.size(); ++i) {
+    EXPECT_EQ(verticies_W_host[i], verticies_from_mesh[i]);
+  }
+
+  // Elements stored should be same as elements from mesh
+  auto elements_host = SyclProximityEngineAttorney::get_elements(impl);
+  auto elements_from_mesh =
+      MakeSimpleSoftGeometry().mesh().pack_element_vertices();
+  EXPECT_EQ(elements_host.size(), elements_from_mesh.size());
+  for (size_t i = 0; i < elements_host.size(); ++i) {
+    EXPECT_EQ(elements_host[i], elements_from_mesh[i]);
+  }
 }
 
 GTEST_TEST(SPETest, TwoMeshesColliding) {

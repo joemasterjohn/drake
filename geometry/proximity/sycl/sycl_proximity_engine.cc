@@ -36,7 +36,7 @@ class SyclProximityEngine::Impl {
     q_device_ = sycl::queue(sycl::gpu_selector_v);
     q_host_ = sycl::queue(sycl::cpu_selector_v);
 
-    DRAKE_DEMAND(soft_geometries.size() > 0);
+    DRAKE_THROW_UNLESS(soft_geometries.size() > 0);
 
     // Extract and sort geometry IDs for deterministic ordering
     std::vector<GeometryId> sorted_ids;
@@ -808,17 +808,35 @@ bool* SyclProximityEngineAttorney::get_collision_filter(
     SyclProximityEngine::Impl* impl) {
   return impl->collision_filter_;
 }
-Vector3<double>* SyclProximityEngineAttorney::get_vertices_M(
+std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
     SyclProximityEngine::Impl* impl) {
-  return impl->vertices_M_;
+  auto q = impl->q_device_;
+  auto vertices_M = impl->vertices_M_;
+  auto total_vertices = impl->total_vertices_;
+  std::vector<Vector3<double>> vertices_M_host(total_vertices);
+  q.memcpy(vertices_M_host.data(), vertices_M,
+           total_vertices * sizeof(Vector3<double>));
+  return vertices_M_host;
 }
-Vector3<double>* SyclProximityEngineAttorney::get_vertices_W(
+std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_W(
     SyclProximityEngine::Impl* impl) {
-  return impl->vertices_W_;
+  auto q = impl->q_device_;
+  auto vertices_W = impl->vertices_W_;
+  auto total_vertices = impl->total_vertices_;
+  std::vector<Vector3<double>> vertices_W_host(total_vertices);
+  q.memcpy(vertices_W_host.data(), vertices_W,
+           total_vertices * sizeof(Vector3<double>));
+  return vertices_W_host;
 }
-std::array<int, 4>* SyclProximityEngineAttorney::get_elements(
+std::vector<std::array<int, 4>> SyclProximityEngineAttorney::get_elements(
     SyclProximityEngine::Impl* impl) {
-  return impl->elements_;
+  auto q = impl->q_device_;
+  auto elements = impl->elements_;
+  auto total_elements = impl->total_elements_;
+  std::vector<std::array<int, 4>> elements_host(total_elements);
+  q.memcpy(elements_host.data(), elements,
+           total_elements * sizeof(std::array<int, 4>));
+  return elements_host;
 }
 double* SyclProximityEngineAttorney::get_pressures(
     SyclProximityEngine::Impl* impl) {
@@ -835,6 +853,10 @@ Vector4<double>* SyclProximityEngineAttorney::get_gradient_W_pressure_at_Wo(
 size_t* SyclProximityEngineAttorney::get_collision_filter_host_body_index(
     SyclProximityEngine::Impl* impl) {
   return impl->collision_filter_host_body_index_;
+}
+size_t SyclProximityEngineAttorney::get_total_checks(
+    SyclProximityEngine::Impl* impl) {
+  return impl->total_checks_;
 }
 
 }  // namespace sycl_impl
