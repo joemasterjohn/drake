@@ -711,7 +711,10 @@ class SyclProximityEngine::Impl {
   */
 
   // Mesh element data - accessed by element_offset + local_element_index
-  std::array<int, 4>* elements_ = nullptr;  // Elements as 4 vertex indices
+  std::array<int, 4>* elements_ =
+      nullptr;  // Elements as 4 vertex indices -
+                // Note the 4 vertex indicies are
+                // local indices to the geometry and thus are in [0,3]
   std::array<Vector3<double>, 4>* inward_normals_M_ =
       nullptr;  // Inward normals in mesh frame
   std::array<Vector3<double>, 4>* inward_normals_W_ =

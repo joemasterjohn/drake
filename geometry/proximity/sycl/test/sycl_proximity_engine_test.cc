@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <fmt/core.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
@@ -68,9 +69,9 @@ GTEST_TEST(SPETest, ZeroMeshes) {
 
 GTEST_TEST(SPETest, SingleMesh) {
   GeometryId id = GeometryId::get_new_id();
-
+  auto geometry = MakeSimpleSoftGeometry();
   std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries{
-      {id, MakeSimpleSoftGeometry()}};
+      {id, geometry}};
   drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
       soft_geometries);
   engine.UpdateCollisionCandidates({});
@@ -86,7 +87,7 @@ GTEST_TEST(SPETest, SingleMesh) {
   auto verticies_M_host = SyclProximityEngineAttorney::get_vertices_M(impl);
   auto verticies_W_host = SyclProximityEngineAttorney::get_vertices_W(impl);
 
-  auto verticies_from_mesh = MakeSimpleSoftGeometry().mesh().vertices();
+  auto verticies_from_mesh = geometry.mesh().vertices();
   EXPECT_EQ(verticies_M_host.size(), verticies_from_mesh.size());
   for (size_t i = 0; i < verticies_M_host.size(); ++i) {
     EXPECT_EQ(verticies_M_host[i], verticies_from_mesh[i]);
@@ -99,8 +100,7 @@ GTEST_TEST(SPETest, SingleMesh) {
 
   // Elements stored should be same as elements from mesh
   auto elements_host = SyclProximityEngineAttorney::get_elements(impl);
-  auto elements_from_mesh =
-      MakeSimpleSoftGeometry().mesh().pack_element_vertices();
+  auto elements_from_mesh = geometry.mesh().pack_element_vertices();
   EXPECT_EQ(elements_host.size(), elements_from_mesh.size());
   for (size_t i = 0; i < elements_host.size(); ++i) {
     EXPECT_EQ(elements_host[i], elements_from_mesh[i]);
@@ -110,16 +110,64 @@ GTEST_TEST(SPETest, SingleMesh) {
 GTEST_TEST(SPETest, TwoMeshesColliding) {
   GeometryId idA = GeometryId::get_new_id();
   GeometryId idB = GeometryId::get_new_id();
+  auto geometryA = MakeSimpleSoftGeometry();
+  auto geometryB = MakeSimpleSoftGeometry();
   std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries{
-      {idA, MakeSimpleSoftGeometry()}, {idB, MakeSimpleSoftGeometry()}};
+      {idA, geometryA}, {idB, geometryB}};
   drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
       soft_geometries);
   engine.UpdateCollisionCandidates({SortedPair<GeometryId>(idA, idB)});
   // Move meshes along Z so that they just intersect
   std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
       {idA, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
-      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 0.6})}};
+      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 1.1})}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // Get the total checks - This should be 4 + 0 = 4
+  // Geometry A has 2 other elements to check its 2 elements against
+  // Geometry B has nothing to check due to symmetry
+  auto impl = SyclProximityEngineAttorney::get_impl(engine);
+  EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 4);
+
+  auto verticies_from_meshA = geometryA.mesh().vertices();
+  auto verticies_from_meshB = geometryB.mesh().vertices();
+  std::vector<Vector3<double>> vertices_of_both_meshes;
+  vertices_of_both_meshes.insert(vertices_of_both_meshes.end(),
+                                 verticies_from_meshA.begin(),
+                                 verticies_from_meshA.end());
+  vertices_of_both_meshes.insert(vertices_of_both_meshes.end(),
+                                 verticies_from_meshB.begin(),
+                                 verticies_from_meshB.end());
+
+  auto vertices_M_host = SyclProximityEngineAttorney::get_vertices_M(impl);
+  auto vertices_W_host = SyclProximityEngineAttorney::get_vertices_W(impl);
+  EXPECT_EQ(vertices_M_host.size(), vertices_of_both_meshes.size());
+  EXPECT_EQ(vertices_M_host, vertices_of_both_meshes);
+  // Elements stored should be same as elements from mesh
+  auto elements_host = SyclProximityEngineAttorney::get_elements(impl);
+  auto elements_from_meshA = geometryA.mesh().pack_element_vertices();
+  auto elements_from_meshB = geometryB.mesh().pack_element_vertices();
+  std::vector<std::array<int, 4>> elements_of_both_meshes;
+  elements_of_both_meshes.insert(elements_of_both_meshes.end(),
+                                 elements_from_meshA.begin(),
+                                 elements_from_meshA.end());
+  elements_of_both_meshes.insert(elements_of_both_meshes.end(),
+                                 elements_from_meshB.begin(),
+                                 elements_from_meshB.end());
+  EXPECT_EQ(elements_host.size(), elements_of_both_meshes.size());
+  for (size_t i = 0; i < elements_host.size(); ++i) {
+    EXPECT_EQ(elements_host[i], elements_of_both_meshes[i]);
+  }
+
+  // Collision filter should be [0 0 1 0] since element 1 of A is colliding with
+  // element 0 of B
+  bool* collision_filter =
+      SyclProximityEngineAttorney::get_collision_filter(impl);
+
+  std::vector<int> expected_collision_filter{0, 0, 1, 0};
+  for (size_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(collision_filter[i], expected_collision_filter[i]);
+  }
 }
 
 GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
@@ -138,8 +186,8 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   // Move meshes along Z so that they just intersect
   std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
       {idA, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
-      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 0.6})},
-      {idC, math::RigidTransform<double>(Vector3<double>{0, 0, 1.2})}};
+      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 1.1})},
+      {idC, math::RigidTransform<double>(Vector3<double>{0, 0, 2.2})}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 }
 
