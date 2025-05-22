@@ -277,7 +277,10 @@ void CullFlatten(std::vector<X>* maybes, std::vector<R>* objects) {
 template <typename T>
 class ProximityEngine<T>::Impl : public ShapeReifier {
  public:
-  Impl() = default;
+  Impl() {
+    // Check if SYCL is available
+    is_sycl_available_ = sycl_impl::SyclProximityEngine::is_available();
+  }
 
   Impl(const Impl& other) : ShapeReifier(other) {
     hydroelastic_geometries_ = other.hydroelastic_geometries_;
@@ -767,6 +770,13 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   ComputeContactSurfaces(
       HydroelasticContactRepresentation representation,
       const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
+    // Instantiate SYCL engine if available but not yet created
+    if (is_sycl_available_ && !sycl_engine_) {
+      // For now, just instantiate it but don't use it
+      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
+          hydroelastic_geometries_.SoftGeometries());
+    }
+
     std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
 
     vector<ContactSurface<T>> surfaces;
@@ -942,6 +952,10 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     }
     return nullptr;
   }
+
+  // SYCL acceleration support
+  mutable std::unique_ptr<sycl_impl::SyclProximityEngine> sycl_engine_{nullptr};
+  mutable bool is_sycl_available_{false};
 
  private:
   // Engine on one scalar can see the members of other engines.
@@ -1379,8 +1393,7 @@ template <typename T>
 SignedDistancePair<T>
 ProximityEngine<T>::ComputeSignedDistancePairClosestPoints(
     GeometryId id_A, GeometryId id_B,
-    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
-    const {
+    const std::unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
   return impl_->ComputeSignedDistancePairClosestPoints(id_A, id_B, X_WGs);
 }
 

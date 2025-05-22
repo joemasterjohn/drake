@@ -11,12 +11,12 @@ drake_cc_binary(
     srcs = ["vector-add-buffers.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
 
@@ -27,12 +27,12 @@ drake_cc_binary(
     srcs = ["vector-add-usm.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
 
@@ -44,12 +44,12 @@ drake_cc_binary(
     srcs = ["vector-add-usm_device.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64_x86_64",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89"
     ],
 
