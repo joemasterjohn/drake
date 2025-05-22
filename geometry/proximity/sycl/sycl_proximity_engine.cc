@@ -542,17 +542,19 @@ class SyclProximityEngine::Impl {
       h.parallel_for(
           sycl::range<1>(total_elements_),
           [=, elements_ = elements_, vertices_W_ = vertices_W_,
+           sh_element_mesh_ids_ = sh_element_mesh_ids_,
            element_aabb_min_W_ = element_aabb_min_W_,
-           element_aabb_max_W_ = element_aabb_max_W_](sycl::id<1> idx) {
+           element_aabb_max_W_ = element_aabb_max_W_,
+           sh_vertex_offsets_ = sh_vertex_offsets_](sycl::id<1> idx) {
             const size_t element_index = idx[0];
-
+            const size_t geom_index = sh_element_mesh_ids_[element_index];
             // Get the four vertex indices for this tetrahedron
             const std::array<int, 4>& tet_vertices = elements_[element_index];
-
+            const size_t vertex_mesh_offset = sh_vertex_offsets_[geom_index];
             // Initialize min/max to first vertex
-            double min_x = vertices_W_[tet_vertices[0]][0];
-            double min_y = vertices_W_[tet_vertices[0]][1];
-            double min_z = vertices_W_[tet_vertices[0]][2];
+            double min_x = vertices_W_[vertex_mesh_offset + tet_vertices[0]][0];
+            double min_y = vertices_W_[vertex_mesh_offset + tet_vertices[0]][1];
+            double min_z = vertices_W_[vertex_mesh_offset + tet_vertices[0]][2];
 
             double max_x = min_x;
             double max_y = min_y;
@@ -560,7 +562,7 @@ class SyclProximityEngine::Impl {
 
             // Find min/max across all four vertices
             for (int i = 1; i < 4; ++i) {
-              int vertex_idx = tet_vertices[i];
+              const size_t vertex_idx = vertex_mesh_offset + tet_vertices[i];
 
               // Update min coordinates
               min_x = sycl::min(min_x, vertices_W_[vertex_idx][0]);
@@ -714,7 +716,8 @@ class SyclProximityEngine::Impl {
   std::array<int, 4>* elements_ =
       nullptr;  // Elements as 4 vertex indices -
                 // Note the 4 vertex indicies are
-                // local indices to the geometry and thus are in [0,3]
+                // geometry indices to the geometry and thus are in
+                // [0,num_vertices_per_geometry)
   std::array<Vector3<double>, 4>* inward_normals_M_ =
       nullptr;  // Inward normals in mesh frame
   std::array<Vector3<double>, 4>* inward_normals_W_ =
