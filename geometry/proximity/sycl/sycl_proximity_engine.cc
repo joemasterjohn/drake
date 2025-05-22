@@ -415,7 +415,7 @@ class SyclProximityEngine::Impl {
     });
 
     // Transform inward normals
-    auto transform_elem_quantities_event =
+    auto transform_elem_quantities_event1 =
         q_device_.submit([&](sycl::handler& h) {
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
@@ -446,8 +446,11 @@ class SyclProximityEngine::Impl {
                       T[8] * nx + T[9] * ny + T[10] * nz;
                 }
               });
+        });
 
-          // Transform edge vectors
+    // Transform edge vectors
+    auto transform_elem_quantities_event2 =
+        q_device_.submit([&](sycl::handler& h) {
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
               [=, edge_vectors_M_ = edge_vectors_M_,
@@ -477,8 +480,11 @@ class SyclProximityEngine::Impl {
                       T[8] * vx + T[9] * vy + T[10] * vz;
                 }
               });
+        });
 
-          // Transform pressure gradients
+    // Transform pressure gradients
+    auto transform_elem_quantities_event3 =
+        q_device_.submit([&](sycl::handler& h) {
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
               [=, gradient_M_pressure_at_Mo_ = gradient_M_pressure_at_Mo_,
@@ -649,7 +655,10 @@ class SyclProximityEngine::Impl {
         });
     generate_collision_filter_event.wait();
 
-    transform_elem_quantities_event.wait();
+    std::vector<sycl::event> transform_events{transform_elem_quantities_event1,
+                                              transform_elem_quantities_event2,
+                                              transform_elem_quantities_event3};
+    sycl::event::wait(transform_events);
 
     // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
