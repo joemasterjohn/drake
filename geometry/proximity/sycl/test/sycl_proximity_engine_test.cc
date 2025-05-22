@@ -17,6 +17,8 @@
 
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
+#include "drake/geometry/proximity/make_sphere_field.h"
+#include "drake/geometry/proximity/make_sphere_mesh.h"
 #include "drake/geometry/proximity/sycl/sycl_hydroelastic_surface.h"
 #include "drake/geometry/proximity/sycl/sycl_proximity_engine.h"
 #include "drake/math/rigid_transform.h"
@@ -229,6 +231,73 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   for (size_t i = 0; i < 12; ++i) {
     EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
   }
+}
+
+GTEST_TEST(SPETest, TwoSpheresColliding) {
+  // Sphere A
+  const Sphere sphereA(0.5);
+  const double resolution_hint = 0.5;
+  auto meshA =
+      std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
+          sphereA, resolution_hint,
+          TessellationStrategy::kSingleInteriorVertex));
+  const double hydroelastic_modulus = 1e+7;
+  auto pressureA = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeSpherePressureField(sphereA, meshA.get(), hydroelastic_modulus));
+  Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
+
+  hydroelastic::SoftGeometry soft_geometryA(
+      hydroelastic::SoftMesh(std::move(meshA), std::move(pressureA)));
+  GeometryId sphereA_id = GeometryId::get_new_id();
+
+  // Sphere B
+  const Sphere sphereB(0.5);
+  auto meshB =
+      std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
+          sphereB, resolution_hint,
+          TessellationStrategy::kSingleInteriorVertex));
+  auto pressureB = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeSpherePressureField(sphereB, meshB.get(), hydroelastic_modulus));
+  Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
+  hydroelastic::SoftGeometry soft_geometryB(
+      hydroelastic::SoftMesh(std::move(meshB), std::move(pressureB)));
+  GeometryId sphereB_id = GeometryId::get_new_id();
+
+  // Compute the candidate tets with the two BVHs
+  std::vector<std::pair<int, int>> candidate_tetrahedra;
+  auto callback = [&candidate_tetrahedra](int tet0,
+                                          int tet1) -> BvttCallbackResult {
+    candidate_tetrahedra.emplace_back(tet0, tet1);
+    return BvttCallbackResult::Continue;
+  };
+
+  bvhSphereA.Collide(bvhSphereB,
+                     math::RigidTransform<double>(Vector3<double>{0, 0, 0.9}),
+                     callback);
+
+  // Convert cadidate tets to collision_filter_ that can be compared to one from
+  // sycl_proximity_engine
+
+  // Create soft geometries
+  std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries{
+      {sphereA_id, soft_geometryA}, {sphereB_id, soft_geometryB}};
+
+  // Instantiate SyclProximityEngine to obtain collision filter
+  drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
+      soft_geometries);
+
+  // Update collision candidates
+  engine.UpdateCollisionCandidates(
+      {SortedPair<GeometryId>(sphereA_id, sphereB_id)});
+
+  // Move spheres closer so that they collide
+  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
+      {sphereA_id, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
+      {sphereB_id, math::RigidTransform<double>(Vector3<double>{0, 0, 0.9})}};
+  auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // Get the total checks
+  auto impl = SyclProximityEngineAttorney::get_impl(engine);
 }
 
 }  // namespace
