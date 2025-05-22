@@ -268,9 +268,10 @@ class SyclProximityEngine::Impl {
     std::vector<sycl::event> collision_filter_host_body_index_fill_events;
     for (size_t i = 0; i < num_geometries_; ++i) {
       const size_t num_checks = total_checks_per_geometry_[i];
-      collision_filter_host_body_index_fill_events.push_back(q_device_.fill(
-          collision_filter_host_body_index_ + total_checks_per_geometry_[i], i,
-          num_checks));
+      collision_filter_host_body_index_fill_events.push_back(
+          q_device_.fill(collision_filter_host_body_index_ +
+                             geom_collision_filter_check_offsets_[i],
+                         i, num_checks));
     }
 
     // Wait for all transfers to complete before returning
