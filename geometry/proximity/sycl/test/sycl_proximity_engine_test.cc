@@ -30,19 +30,22 @@ namespace sycl_impl {
 
 namespace {
 
+using Eigen::Vector3d;
+using math::RigidTransformd;
+
 /*
 Creates a simple SoftGeometry with two tets whose faces align and their heights
 are in opposite directions, and a simple linear field.
 */
 hydroelastic::SoftGeometry MakeSimpleSoftGeometry() {
   // Create mesh
-  std::vector<Vector3<double>> p_MV;
+  std::vector<Vector3d> p_MV;
   std::vector<VolumeElement> elements;
-  p_MV.push_back(Vector3<double>(0, 0, -1));
-  p_MV.push_back(Vector3<double>(-1, -1, 0));
-  p_MV.push_back(Vector3<double>(1, -1, 0));
-  p_MV.push_back(Vector3<double>(0, 1, 0));
-  p_MV.push_back(Vector3<double>(0, 0, 1));
+  p_MV.push_back(Vector3d(0, 0, -1));
+  p_MV.push_back(Vector3d(-1, -1, 0));
+  p_MV.push_back(Vector3d(1, -1, 0));
+  p_MV.push_back(Vector3d(0, 1, 0));
+  p_MV.push_back(Vector3d(0, 0, 1));
   elements.emplace_back(1, 3, 2, 0);
   elements.emplace_back(1, 2, 3, 4);
   auto mesh = std::make_unique<VolumeMesh<double>>(std::move(elements),
@@ -77,8 +80,8 @@ GTEST_TEST(SPETest, SingleMesh) {
   drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
       soft_geometries);
   engine.UpdateCollisionCandidates({});
-  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
-      {id, math::RigidTransform<double>::Identity()}};
+  std::unordered_map<GeometryId, RigidTransformd> X_WGs{
+      {id, RigidTransformd::Identity()}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 
   // Get the total checks - this should be 0
@@ -120,9 +123,9 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
       soft_geometries);
   engine.UpdateCollisionCandidates({SortedPair<GeometryId>(idA, idB)});
   // Move meshes along Z so that they just intersect
-  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
-      {idA, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
-      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 1.1})}};
+  std::unordered_map<GeometryId, RigidTransformd> X_WGs{
+      {idA, RigidTransformd(Vector3d{0, 0, 0})},
+      {idB, RigidTransformd(Vector3d{0, 0, 1.1})}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 
   // Get the total checks - This should be 4 + 0 = 4
@@ -133,7 +136,7 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
 
   auto verticies_from_meshA = geometryA.mesh().vertices();
   auto verticies_from_meshB = geometryB.mesh().vertices();
-  std::vector<Vector3<double>> vertices_of_both_meshes;
+  std::vector<Vector3d> vertices_of_both_meshes;
   vertices_of_both_meshes.insert(vertices_of_both_meshes.end(),
                                  verticies_from_meshA.begin(),
                                  verticies_from_meshA.end());
@@ -173,7 +176,7 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
 
   // Move geometries closer so that all elements are colliding and check
   // collision filter
-  X_WGs[idB] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.3});
+  X_WGs[idB] = RigidTransformd(Vector3d{0, 0, 0.3});
   surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
   // Element 0 of A collides with element 0 of B
   // Element 1 of A collides with element 0 and 1 of B
@@ -197,10 +200,10 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
                                     SortedPair<GeometryId>(idA, idC),
                                     SortedPair<GeometryId>(idB, idC)});
   // Move meshes along Z so that they just intersect
-  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
-      {idA, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
-      {idB, math::RigidTransform<double>(Vector3<double>{0, 0, 1.1})},
-      {idC, math::RigidTransform<double>(Vector3<double>{0, 0, 2.2})}};
+  std::unordered_map<GeometryId, RigidTransformd> X_WGs{
+      {idA, RigidTransformd(Vector3d{0, 0, 0})},
+      {idB, RigidTransformd(Vector3d{0, 0, 1.1})},
+      {idC, RigidTransformd(Vector3d{0, 0, 2.2})}};
   auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 
   // Get the total checks
@@ -222,8 +225,8 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   }
 
   // Move meshes closer so all elements collide
-  X_WGs[idB] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.3});
-  X_WGs[idC] = math::RigidTransform<double>(Vector3<double>{0, 0, 0.6});
+  X_WGs[idB] = RigidTransformd(Vector3d{0, 0, 0.3});
+  X_WGs[idC] = RigidTransformd(Vector3d{0, 0, 0.6});
   surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 
   // With meshes closer, more elements should be colliding
@@ -234,53 +237,67 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
 }
 
 GTEST_TEST(SPETest, TwoSpheresColliding) {
+  constexpr double radius = 0.5;
+  constexpr double resolution_hint = 0.5 * radius;
+  constexpr double hydroelastic_modulus = 1e+7;
+
   // Sphere A
-  const Sphere sphereA(0.5);
-  const double resolution_hint = 0.5;
+  const Sphere sphereA(radius);
   auto meshA =
       std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
           sphereA, resolution_hint,
           TessellationStrategy::kSingleInteriorVertex));
-  const double hydroelastic_modulus = 1e+7;
   auto pressureA = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereA, meshA.get(), hydroelastic_modulus));
-  Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
+  const Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
 
-  hydroelastic::SoftGeometry soft_geometryA(
+  const hydroelastic::SoftGeometry soft_geometryA(
       hydroelastic::SoftMesh(std::move(meshA), std::move(pressureA)));
-  GeometryId sphereA_id = GeometryId::get_new_id();
+  const GeometryId sphereA_id = GeometryId::get_new_id();
 
   // Sphere B
-  const Sphere sphereB(0.5);
+  const Sphere sphereB(radius);
   auto meshB =
       std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
           sphereB, resolution_hint,
           TessellationStrategy::kSingleInteriorVertex));
   auto pressureB = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereB, meshB.get(), hydroelastic_modulus));
-  Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
-  hydroelastic::SoftGeometry soft_geometryB(
+  const Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
+  const hydroelastic::SoftGeometry soft_geometryB(
       hydroelastic::SoftMesh(std::move(meshB), std::move(pressureB)));
-  GeometryId sphereB_id = GeometryId::get_new_id();
+  const GeometryId sphereB_id = GeometryId::get_new_id();
 
   // Compute the candidate tets with the two BVHs
   std::vector<std::pair<int, int>> candidate_tetrahedra;
-  auto callback = [&candidate_tetrahedra](int tet0,
-                                          int tet1) -> BvttCallbackResult {
+  const auto callback = [&candidate_tetrahedra](
+                            int tet0, int tet1) -> BvttCallbackResult {
     candidate_tetrahedra.emplace_back(tet0, tet1);
     return BvttCallbackResult::Continue;
   };
 
-  bvhSphereA.Collide(bvhSphereB,
-                     math::RigidTransform<double>(Vector3<double>{0, 0, 0.9}),
-                     callback);
+  const RigidTransformd X_WA =
+      RigidTransformd(Vector3d{0.2 * radius, 0.1 * radius, 0.3 * radius});
+  const RigidTransformd X_WB =
+      RigidTransformd(Vector3d{0.1 * radius, 0.2 * radius, 0.3 * radius});
+  const RigidTransformd X_AB = X_WA.InvertAndCompose(X_WB);
+
+  bvhSphereA.Collide(bvhSphereB, X_AB, callback);
 
   // Convert cadidate tets to collision_filter_ that can be compared to one from
   // sycl_proximity_engine
+  std::vector<bool> expected_filter(soft_geometryA.mesh().num_elements() *
+                                        soft_geometryB.mesh().num_elements(),
+                                    false);
+  for (auto [eA, eB] : candidate_tetrahedra) {
+    const int i = eA * soft_geometryB.mesh().num_elements() + eB;
+    expected_filter[i] = true;
+  }
 
   // Create soft geometries
-  std::unordered_map<GeometryId, hydroelastic::SoftGeometry> soft_geometries{
-      {sphereA_id, soft_geometryA}, {sphereB_id, soft_geometryB}};
+  const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>
+      soft_geometries{{sphereA_id, soft_geometryA},
+                      {sphereB_id, soft_geometryB}};
 
   // Instantiate SyclProximityEngine to obtain collision filter
   drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
@@ -291,13 +308,24 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       {SortedPair<GeometryId>(sphereA_id, sphereB_id)});
 
   // Move spheres closer so that they collide
-  std::unordered_map<GeometryId, math::RigidTransform<double>> X_WGs{
-      {sphereA_id, math::RigidTransform<double>(Vector3<double>{0, 0, 0})},
-      {sphereB_id, math::RigidTransform<double>(Vector3<double>{0, 0, 0.9})}};
-  auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+  const std::unordered_map<GeometryId, RigidTransformd> X_WGs{
+      {sphereA_id, X_WA}, {sphereB_id, X_WB}};
+  const auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
 
   // Get the total checks
-  auto impl = SyclProximityEngineAttorney::get_impl(engine);
+  const auto impl = SyclProximityEngineAttorney::get_impl(engine);
+
+  // Collision filter check
+  const bool* collision_filter =
+      SyclProximityEngineAttorney::get_collision_filter(impl);
+
+  const int total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
+
+  ASSERT_EQ(total_checks, ssize(expected_filter));
+
+  for (int i = 0; i < ssize(expected_filter); ++i) {
+    EXPECT_EQ(collision_filter[i], expected_filter[i]);
+  }
 }
 
 }  // namespace
