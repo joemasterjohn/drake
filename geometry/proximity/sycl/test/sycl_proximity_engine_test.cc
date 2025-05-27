@@ -166,10 +166,10 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
 
   // Collision filter should be [0 0 1 0] since element 1 of A is colliding with
   // element 0 of B
-  bool* collision_filter =
+  uint8_t* collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
-  std::vector<int> expected_collision_filter{0, 0, 1, 0};
+  std::vector<uint8_t> expected_collision_filter{0, 0, 1, 0};
   for (size_t i = 0; i < 4; ++i) {
     EXPECT_EQ(collision_filter[i], expected_collision_filter[i]);
   }
@@ -215,11 +215,11 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 12);
 
   // Collision filter check
-  bool* collision_filter =
+  uint8_t* collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
-  std::vector<int> expected_collision_filter{0, 0, 0, 0, 1, 0,
-                                             0, 0, 0, 0, 1, 0};
+  std::vector<uint8_t> expected_collision_filter{0, 0, 0, 0, 1, 0,
+                                                 0, 0, 0, 0, 1, 0};
   for (size_t i = 0; i < 12; ++i) {
     EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
   }
@@ -286,12 +286,12 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
 
   // Convert cadidate tets to collision_filter_ that can be compared to one from
   // sycl_proximity_engine
-  std::vector<bool> expected_filter(soft_geometryA.mesh().num_elements() *
-                                        soft_geometryB.mesh().num_elements(),
-                                    false);
+  std::vector<uint8_t> expected_filter(soft_geometryA.mesh().num_elements() *
+                                           soft_geometryB.mesh().num_elements(),
+                                       0);
   for (auto [eA, eB] : candidate_tetrahedra) {
     const int i = eA * soft_geometryB.mesh().num_elements() + eB;
-    expected_filter[i] = true;
+    expected_filter[i] = 1;
   }
 
   // Create soft geometries
@@ -316,7 +316,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   const auto impl = SyclProximityEngineAttorney::get_impl(engine);
 
   // Collision filter check
-  const bool* collision_filter =
+  const uint8_t* collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
   const int total_checks = SyclProximityEngineAttorney::get_total_checks(impl);

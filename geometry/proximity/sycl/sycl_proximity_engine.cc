@@ -255,11 +255,11 @@ class SyclProximityEngine::Impl {
     }
 
     // Generate collision filter for all checks
-    collision_filter_ = sycl::malloc_host<bool>(total_checks_, q_device_);
+    collision_filter_ = sycl::malloc_host<uint8_t>(total_checks_, q_device_);
     // memset all to 0 for now (will be filled in when we have AABBs for each
     // element)
     auto collision_filter_memset_event =
-        q_device_.memset(collision_filter_, 0, total_checks_ * sizeof(bool));
+        q_device_.memset(collision_filter_, 0, total_checks_ * sizeof(uint8_t));
 
     collision_filter_host_body_index_ =
         sycl::malloc_host<size_t>(total_checks_, q_device_);
@@ -528,13 +528,11 @@ class SyclProximityEngine::Impl {
               });
         });
 
-    // Wait for the transformation to complete
-    transform_vertices_event.wait();
-
     // =========================================
     // Command group 2: Generate candidate tet pairs
     // =========================================
     auto element_aabb_event = q_device_.submit([&](sycl::handler& h) {
+      h.depends_on(transform_vertices_event);
       // Lets first compute all AABBs irrespective if they are needed or not
       // Allocate device memory for element AABBs
       // While doing this, assign false to all elements that are not part of
@@ -585,11 +583,11 @@ class SyclProximityEngine::Impl {
             element_aabb_max_W_[element_index][2] = max_z;
           });
     });
-    element_aabb_event.wait();
 
     // Now generate collision filter with the AABBs that we computed
     auto generate_collision_filter_event =
         q_device_.submit([&](sycl::handler& h) {
+          h.depends_on(element_aabb_event);
           h.parallel_for(
               sycl::range<1>(total_checks_),
               [=, collision_filter_ = collision_filter_,
@@ -637,7 +635,7 @@ class SyclProximityEngine::Impl {
                     max_pressures_[B_element_index];
                 if (A_element_min_pressure > B_element_max_pressure ||
                     A_element_max_pressure < B_element_min_pressure) {
-                  collision_filter_[check_index] = false;
+                  collision_filter_[check_index] = 0;
                   return;
                 }
 
@@ -688,7 +686,7 @@ class SyclProximityEngine::Impl {
     std::vector<sycl::event> transform_events{transform_elem_quantities_event1,
                                               transform_elem_quantities_event2,
                                               transform_elem_quantities_event3};
-    sycl::event::wait(transform_events);
+    sycl::event::wait_and_throw(transform_events);
 
     // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
@@ -783,9 +781,9 @@ class SyclProximityEngine::Impl {
                 // and geom_collision_filter_num_cols_ to get the number of
                 // checks for element A (the num columns in that block of the
                 // collision filter)
-  bool* collision_filter_ = nullptr;  // collision_filter_[i]= 1 if the i-th
-                                      // geometry is a collision candidate,
-                                      // 0 otherwise
+  uint8_t* collision_filter_ = nullptr;  // collision_filter_[i]= 1 if the i-th
+                                         // geometry is a collision candidate,
+                                         // 0 otherwise
   size_t* geom_collision_filter_check_offsets_ = nullptr;
   size_t* geom_collision_filter_num_cols_ = nullptr;
   size_t total_checks_ = 0;
@@ -837,8 +835,15 @@ const SyclProximityEngine::Impl* SyclProximityEngineAttorney::get_impl(
     const SyclProximityEngine& engine) {
   return engine.impl_.get();
 }
-bool* SyclProximityEngineAttorney::get_collision_filter(
+uint8_t* SyclProximityEngineAttorney::get_collision_filter(
     SyclProximityEngine::Impl* impl) {
+  // size_t total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
+  // std::vector<uint8_t> collision_filter_host(total_checks);
+  // auto q = impl->q_device_;
+  // auto collision_filter = impl->collision_filter_;
+  // q.memcpy(collision_filter_host.data(), collision_filter,
+  //          total_checks * sizeof(uint8_t))
+  //     .wait();
   return impl->collision_filter_;
 }
 std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
