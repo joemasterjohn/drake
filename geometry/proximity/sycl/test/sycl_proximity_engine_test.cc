@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
 
+#include "drake/common/text_logging.h"
 #include "drake/geometry/geometry_ids.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
 #include "drake/geometry/proximity/make_sphere_field.h"
@@ -246,7 +247,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   auto meshA =
       std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
           sphereA, resolution_hint,
-          TessellationStrategy::kSingleInteriorVertex));
+          TessellationStrategy::kDenseInteriorVertices));
   auto pressureA = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereA, meshA.get(), hydroelastic_modulus));
   const Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
@@ -260,7 +261,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   auto meshB =
       std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
           sphereB, resolution_hint,
-          TessellationStrategy::kSingleInteriorVertex));
+          TessellationStrategy::kDenseInteriorVertices));
   auto pressureB = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereB, meshB.get(), hydroelastic_modulus));
   const Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
@@ -270,12 +271,20 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
 
   // Compute the candidate tets with the two BVHs
   std::vector<std::pair<int, int>> candidate_tetrahedra;
-  const auto callback = [&candidate_tetrahedra](
-                            int tet0, int tet1) -> BvttCallbackResult {
-    candidate_tetrahedra.emplace_back(tet0, tet1);
+  const auto callback = [&candidate_tetrahedra, &soft_geometryA,
+                         &soft_geometryB](int tet0,
+                                          int tet1) -> BvttCallbackResult {
+    const double min_A = soft_geometryA.pressure_field().EvaluateMin(tet0);
+    const double max_A = soft_geometryA.pressure_field().EvaluateMax(tet0);
+    const double min_B = soft_geometryB.pressure_field().EvaluateMin(tet1);
+    const double max_B = soft_geometryB.pressure_field().EvaluateMax(tet1);
+    if (!(max_A < min_B || max_B < min_A))
+      candidate_tetrahedra.emplace_back(tet0, tet1);
+
     return BvttCallbackResult::Continue;
   };
 
+  // Arbitrarily pose the spheres into a colliding configuration.
   const RigidTransformd X_WA =
       RigidTransformd(Vector3d{0.2 * radius, 0.1 * radius, 0.3 * radius});
   const RigidTransformd X_WB =
@@ -323,9 +332,201 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
 
   ASSERT_EQ(total_checks, ssize(expected_filter));
 
+  // Due to numerical tolerances in the CPU BVH leaf overlap test, there will
+  // be false positives in the cpu filter. Therefore, we check that the sycl
+  // filter is a subset of the cpu filter. Later on, we will verify that the cpu
+  // narrow phase filters these out using true geometric quantites.
+  int num_false_positives_cpu = 0;
+
   for (int i = 0; i < ssize(expected_filter); ++i) {
-    EXPECT_EQ(collision_filter[i], expected_filter[i]);
+    EXPECT_LE(collision_filter[i], expected_filter[i]);
+    if (collision_filter[i] < expected_filter[i]) {
+      ++num_false_positives_cpu;
+    }
   }
+
+  drake::log()->info(
+      fmt::format("Num CPU false positives: {}\n", num_false_positives_cpu));
+}
+
+
+GTEST_TEST(SPETest, ThreeSpheresColliding) {
+  constexpr double radius = 0.5;
+  constexpr double resolution_hint_A = 0.25 * radius;
+  constexpr double resolution_hint_B = 0.5 * radius;
+  constexpr double resolution_hint_C = radius;
+  constexpr double hydroelastic_modulus = 1e+7;
+
+  // Sphere A
+  const Sphere sphereA(radius);
+  auto meshA =
+      std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
+          sphereA, resolution_hint_A,
+          TessellationStrategy::kDenseInteriorVertices));
+  auto pressureA = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeSpherePressureField(sphereA, meshA.get(), hydroelastic_modulus));
+  const Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
+
+   hydroelastic::SoftGeometry soft_geometryA(
+      hydroelastic::SoftMesh(std::move(meshA), std::move(pressureA)));
+  const GeometryId sphereA_id = GeometryId::get_new_id();
+
+  // Sphere B
+  const Sphere sphereB(radius);
+  auto meshB =
+      std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
+          sphereB, resolution_hint_B,
+          TessellationStrategy::kDenseInteriorVertices));
+  auto pressureB = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeSpherePressureField(sphereB, meshB.get(), hydroelastic_modulus));
+  const Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
+   hydroelastic::SoftGeometry soft_geometryB(
+      hydroelastic::SoftMesh(std::move(meshB), std::move(pressureB)));
+  const GeometryId sphereB_id = GeometryId::get_new_id();
+
+  // Sphere C
+  const Sphere sphereC(radius);
+  auto meshC =
+      std::make_unique<VolumeMesh<double>>(MakeSphereVolumeMesh<double>(
+          sphereC, resolution_hint_C,
+          TessellationStrategy::kDenseInteriorVertices));
+  auto pressureC = std::make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeSpherePressureField(sphereC, meshC.get(), hydroelastic_modulus));
+  const Bvh<Aabb, VolumeMesh<double>> bvhSphereC(*meshC);
+   hydroelastic::SoftGeometry soft_geometryC(
+      hydroelastic::SoftMesh(std::move(meshC), std::move(pressureC)));
+  const GeometryId sphereC_id = GeometryId::get_new_id();
+
+  // ARbitrarily pose the spheres into a colliding configuration.
+  const RigidTransformd X_WA =
+      RigidTransformd(Vector3d{0.2 * radius, 0.1 * radius, 0.3 * radius});
+  const RigidTransformd X_WB =
+      RigidTransformd(Vector3d{0.1 * radius, 0.2 * radius, 0.3 * radius});
+  const RigidTransformd X_WC =
+      RigidTransformd(Vector3d{0.2 * radius, 0.2 * radius, 0.3 * radius});
+  const RigidTransformd X_AB = X_WA.InvertAndCompose(X_WB);
+  const RigidTransformd X_AC = X_WA.InvertAndCompose(X_WC);
+  const RigidTransformd X_BC = X_WB.InvertAndCompose(X_WC);
+
+  // Compute the candidate tets.
+  std::vector<std::pair<int, int>> candidate_tetrahedra_AB;
+  const auto callback_AB = [&candidate_tetrahedra_AB, &soft_geometryA,
+                            &soft_geometryB](int tet0,
+                                             int tet1) -> BvttCallbackResult {
+    const double min_A = soft_geometryA.pressure_field().EvaluateMin(tet0);
+    const double max_A = soft_geometryA.pressure_field().EvaluateMax(tet0);
+    const double min_B = soft_geometryB.pressure_field().EvaluateMin(tet1);
+    const double max_B = soft_geometryB.pressure_field().EvaluateMax(tet1);
+    if (!(max_A < min_B || max_B < min_A))
+      candidate_tetrahedra_AB.emplace_back(tet0, tet1);
+
+
+    return BvttCallbackResult::Continue;
+  };
+  bvhSphereA.Collide(bvhSphereB, X_AB, callback_AB);
+
+  std::vector<std::pair<int, int>> candidate_tetrahedra_AC;
+  const auto callback_AC = [&candidate_tetrahedra_AC, &soft_geometryA,
+                            &soft_geometryC](int tet0,
+                                             int tet1) -> BvttCallbackResult {
+    const double min_A = soft_geometryA.pressure_field().EvaluateMin(tet0);
+    const double max_A = soft_geometryA.pressure_field().EvaluateMax(tet0);
+    const double min_C = soft_geometryC.pressure_field().EvaluateMin(tet1);
+    const double max_C = soft_geometryC.pressure_field().EvaluateMax(tet1);
+    if (!(max_A < min_C || max_C < min_A))
+      candidate_tetrahedra_AC.emplace_back(tet0, tet1);
+
+    return BvttCallbackResult::Continue;
+  };
+  bvhSphereA.Collide(bvhSphereC, X_AC, callback_AC);
+
+  std::vector<std::pair<int, int>> candidate_tetrahedra_BC;
+  const auto callback_BC = [&candidate_tetrahedra_BC, &soft_geometryB,
+                            &soft_geometryC](int tet0,
+                                             int tet1) -> BvttCallbackResult {
+    const double min_B = soft_geometryB.pressure_field().EvaluateMin(tet0);
+    const double max_B = soft_geometryB.pressure_field().EvaluateMax(tet0);
+    const double min_C = soft_geometryC.pressure_field().EvaluateMin(tet1);
+    const double max_C = soft_geometryC.pressure_field().EvaluateMax(tet1);
+    if (!(max_B < min_C || max_C < min_B))
+      candidate_tetrahedra_BC.emplace_back(tet0, tet1);
+
+    return BvttCallbackResult::Continue;
+  };
+  bvhSphereB.Collide(bvhSphereC, X_BC, callback_BC);
+
+  // Convert cadidate tets to collision_filter_ that can be compared to one from
+  // sycl_proximity_engine
+  const int num_A = soft_geometryA.mesh().num_elements();
+  const int num_B = soft_geometryB.mesh().num_elements();
+  const int num_C = soft_geometryC.mesh().num_elements();
+
+  const int AB_size = num_A * num_B;
+  const int AC_size = num_A * num_C;
+  const int BC_size = num_B * num_C;
+
+  std::vector<uint8_t> expected_filter(AB_size + AC_size + BC_size, 0);
+
+  for (auto [eA, eB] : candidate_tetrahedra_AB) {
+    const int i = eA * (num_B + num_C) + eB;
+    expected_filter[i] = 1;
+  }
+  for (auto [eA, eC] : candidate_tetrahedra_AC) {
+    const int i = eA * (num_B + num_C) + eC + num_B;
+    expected_filter[i] = 1;
+  }
+  for (auto [eB, eC] : candidate_tetrahedra_BC) {
+    const int i = eB * num_C + eC + (AB_size + AC_size);
+    expected_filter[i] = 1;
+  }
+
+  // Create soft geometries
+  const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>
+      soft_geometries{{sphereA_id, soft_geometryA},
+                      {sphereB_id, soft_geometryB},
+                      {sphereC_id, soft_geometryC}};
+
+  // Instantiate SyclProximityEngine to obtain collision filter
+  drake::geometry::internal::sycl_impl::SyclProximityEngine engine(
+      soft_geometries);
+
+  // Update collision candidates
+  engine.UpdateCollisionCandidates(
+      {SortedPair<GeometryId>(sphereA_id, sphereB_id),
+       SortedPair<GeometryId>(sphereA_id, sphereC_id),
+       SortedPair<GeometryId>(sphereB_id, sphereC_id)});
+
+  // Move spheres closer so that they collide
+  const std::unordered_map<GeometryId, RigidTransformd> X_WGs{
+      {sphereA_id, X_WA}, {sphereB_id, X_WB}, {sphereC_id, X_WC}};
+  const auto surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+
+  // Get the total checks
+  const auto impl = SyclProximityEngineAttorney::get_impl(engine);
+
+  // Collision filter check
+  const uint8_t* collision_filter =
+      SyclProximityEngineAttorney::get_collision_filter(impl);
+
+  const int total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
+
+  ASSERT_EQ(total_checks, ssize(expected_filter));
+
+  // Due to numerical tolerances in the CPU BVH leaf overlap test, there will
+  // be false positives in the cpu filter. Therefore, we check that the sycl
+  // filter is a subset of the cpu filter. Later on, we will verify that the cpu
+  // narrow phase filters these out using true geometric quantites.
+  int num_false_positives_cpu = 0;
+
+  for (int i = 0; i < ssize(expected_filter); ++i) {
+    EXPECT_LE(collision_filter[i], expected_filter[i]);
+    if (collision_filter[i] < expected_filter[i]) {
+      ++num_false_positives_cpu;
+    }
+  }
+
+  drake::log()->info(
+      fmt::format("Num CPU false positives: {}\n", num_false_positives_cpu));
 }
 
 }  // namespace

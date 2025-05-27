@@ -233,7 +233,7 @@ class SyclProximityEngine::Impl {
     num_elements_in_last_geometry_ = sh_element_counts_[num_geometries_ - 1];
     total_checks_ = 0;
     // Done entirely in CPU because its only looping over num_geometries
-    for (size_t i = 0; i < num_geometries_; ++i) {
+    for (size_t i = 0; i < num_geometries_ - 1; ++i) {
       const size_t num_elements_in_geometry = sh_element_counts_[i];
       // sh_element_offsets_ stores  [0, E_0, E_0 + E_1, E_0 + E_1 +
       // E_2, ...] where E_i is the number of elements in the i-th
@@ -243,8 +243,9 @@ class SyclProximityEngine::Impl {
       // checks with all other geometries except itself and the first
       // geometry (because A check B  = B check A)...
       const size_t num_elements_in_rest_of_geometries =
-          sh_element_offsets_[num_geometries_ - 1 - i] +
-          num_elements_in_last_geometry_ - num_elements_in_geometry;
+          (sh_element_offsets_[num_geometries_ - 1] +
+           num_elements_in_last_geometry_) -
+          sh_element_offsets_[i + 1];
       geom_collision_filter_num_cols_[i] = num_elements_in_rest_of_geometries;
       // We need to check each element in this geometry with each element in
       // the rest of the geometries
@@ -624,61 +625,30 @@ class SyclProximityEngine::Impl {
                     geom_local_check_number %
                         geom_collision_filter_num_cols_[host_body_index];
 
+                // Default to not colliding.
+                // collision_filter_[check_index] = 0;
+
                 // First check if the pressure fields of the elements intersect
-                const double A_element_min_pressure =
-                    min_pressures_[A_element_index];
-                const double A_element_max_pressure =
-                    max_pressures_[A_element_index];
-                const double B_element_min_pressure =
-                    min_pressures_[B_element_index];
-                const double B_element_max_pressure =
-                    max_pressures_[B_element_index];
-                if (A_element_min_pressure > B_element_max_pressure ||
-                    A_element_max_pressure < B_element_min_pressure) {
-                  collision_filter_[check_index] = 0;
+                if (max_pressures_[B_element_index] <
+                        min_pressures_[A_element_index] ||
+                    max_pressures_[A_element_index] <
+                        min_pressures_[B_element_index]) {
                   return;
                 }
 
                 // We have two element index, now just check their AABB
                 // A element AABB
                 // min
-                const double A_element_aabb_min_W_x =
-                    element_aabb_min_W_[A_element_index][0];
-                const double A_element_aabb_min_W_y =
-                    element_aabb_min_W_[A_element_index][1];
-                const double A_element_aabb_min_W_z =
-                    element_aabb_min_W_[A_element_index][2];
-                // max
-                const double A_element_aabb_max_W_x =
-                    element_aabb_max_W_[A_element_index][0];
-                const double A_element_aabb_max_W_y =
-                    element_aabb_max_W_[A_element_index][1];
-                const double A_element_aabb_max_W_z =
-                    element_aabb_max_W_[A_element_index][2];
+                for (int i = 0; i < 3; ++i) {
+                  if (element_aabb_max_W_[B_element_index][i] <
+                      element_aabb_min_W_[A_element_index][i])
+                    return;
+                  if (element_aabb_max_W_[A_element_index][i] <
+                      element_aabb_min_W_[B_element_index][i])
+                    return;
+                }
 
-                // B element AABB
-                // min
-                const double B_element_aabb_min_W_x =
-                    element_aabb_min_W_[B_element_index][0];
-                const double B_element_aabb_min_W_y =
-                    element_aabb_min_W_[B_element_index][1];
-                const double B_element_aabb_min_W_z =
-                    element_aabb_min_W_[B_element_index][2];
-                // max
-                const double B_element_aabb_max_W_x =
-                    element_aabb_max_W_[B_element_index][0];
-                const double B_element_aabb_max_W_y =
-                    element_aabb_max_W_[B_element_index][1];
-                const double B_element_aabb_max_W_z =
-                    element_aabb_max_W_[B_element_index][2];
-
-                collision_filter_[check_index] =
-                    !(A_element_aabb_max_W_x < B_element_aabb_min_W_x ||
-                      A_element_aabb_min_W_x > B_element_aabb_max_W_x ||
-                      A_element_aabb_max_W_y < B_element_aabb_min_W_y ||
-                      A_element_aabb_min_W_y > B_element_aabb_max_W_y ||
-                      A_element_aabb_max_W_z < B_element_aabb_min_W_z ||
-                      A_element_aabb_min_W_z > B_element_aabb_max_W_z);
+                collision_filter_[check_index] = 1;
               });
         });
     generate_collision_filter_event.wait();
