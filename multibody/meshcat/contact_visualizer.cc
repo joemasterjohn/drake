@@ -208,7 +208,8 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
   DRAKE_THROW_UNLESS(plant != nullptr);
   const GeometryNames& geometry_names = this->GetGeometryNames(context, plant);
 
-  result->reserve(contact_results.num_hydroelastic_contacts());
+  result->reserve(contact_results.num_hydroelastic_contacts() +
+                  contact_results.num_speculative_contacts());
 
   // Update our output vector of items.
   for (int ci = 0; ci < contact_results.num_hydroelastic_contacts(); ++ci) {
@@ -280,6 +281,30 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
                            force_C_W, moment_C_W, std::move(vertices),
                            std::move(faces), std::move(pressure));
     }
+  }
+
+  // Hack to visualize speculative contact results.
+  for (int ci = 0; ci < contact_results.num_speculative_contacts(); ++ci) {
+    const SpeculativeContactInfo<T>& info =
+        contact_results.speculative_contact_info(ci);
+
+    std::string body_A = fmt::format("body_{}", info.bodyA_index());
+    std::string body_B = fmt::format("body_{}", info.bodyB_index());
+
+    // No polygons.
+    Eigen::Matrix3Xd vertices(3, 0);
+    Eigen::Matrix3Xi faces(3, 0);
+    Eigen::VectorXd pressure(0);
+
+    Vector3d p_WAp = ExtractDoubleOrThrow(info.p_WAp());
+    Vector3d p_WBq = ExtractDoubleOrThrow(info.p_WBq());
+    Vector3d f_Ap_W = ExtractDoubleOrThrow(info.f_Ap_W());
+    Vector3d f_Bq_W = ExtractDoubleOrThrow(info.f_Bq_W());
+
+    result->emplace_back(std::move(body_A), std::move(body_B), p_WAp, f_Ap_W,
+                         Vector3d::Zero(), vertices, faces, pressure);
+    result->emplace_back(std::move(body_A), std::move(body_B), p_WBq, f_Bq_W,
+                         Vector3d::Zero(), vertices, faces, pressure);
   }
 }
 

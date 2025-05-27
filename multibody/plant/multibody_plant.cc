@@ -2255,6 +2255,7 @@ void MultibodyPlant<T>::CalcContactResultsContinuous(
 
   *contact_results = ContactResults<T>(std::move(contact_results_point_pair),
                                        std::move(contact_results_hydroelastic),
+                                       {},  // Empty contact_results_speculative.
                                        {},  // Empty contact_results_deformable.
                                        std::move(backing_store));
   contact_results->set_plant(this);

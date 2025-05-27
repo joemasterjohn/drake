@@ -103,7 +103,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   // Reserve memory for the surface data.
   p_WC.reserve(element_pairs.size());
-
+  p_AC_W.reserve(element_pairs.size());
+  p_BC_W.reserve(element_pairs.size());
   time_of_contact.reserve(element_pairs.size());
   zhat_BA_W.reserve(element_pairs.size());
   coefficients.reserve(element_pairs.size());

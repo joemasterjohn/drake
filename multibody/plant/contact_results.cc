@@ -9,11 +9,13 @@ template <typename T>
 ContactResults<T>::ContactResults(
     std::vector<PointPairContactInfo<T>>&& point_pair,
     std::vector<HydroelasticContactInfo<T>>&& hydroelastic,
+    std::vector<SpeculativeContactInfo<T>>&& speculative,
     std::vector<DeformableContactInfo<T>>&& deformable,
     std::shared_ptr<const void>&& backing_store)
     : data_(std::make_shared<Data>(
           Data{std::move(point_pair), std::move(hydroelastic),
-               std::move(deformable), std::move(backing_store)})) {}
+               std::move(speculative), std::move(deformable),
+               std::move(backing_store)})) {}
 
 template <typename T>
 ContactResults<T>::~ContactResults() = default;
@@ -43,6 +45,14 @@ const HydroelasticContactInfo<T>& ContactResults<T>::hydroelastic_contact_info(
 }
 
 template <typename T>
+const SpeculativeContactInfo<T>& ContactResults<T>::speculative_contact_info(
+    int i) const {
+  DRAKE_THROW_UNLESS(i >= 0 && i < num_speculative_contacts());
+  DRAKE_ASSERT(data_ != nullptr);
+  return data_->speculative[i];
+}
+
+template <typename T>
 const DeformableContactInfo<T>& ContactResults<T>::deformable_contact_info(
     int i) const {
   DRAKE_THROW_UNLESS(i >= 0 && i < num_deformable_contacts());
@@ -65,6 +75,7 @@ ContactResults<T> ContactResults<T>::SelectHydroelastic(
   ContactResults<T> result(
       std::vector<PointPairContactInfo<T>>(data_->point_pair),
       std::move(selected),
+      std::vector<SpeculativeContactInfo<T>>(data_->speculative),
       std::vector<DeformableContactInfo<T>>(data_->deformable),
       std::shared_ptr<const void>(data_->backing_store));
   result.plant_ = this->plant_;

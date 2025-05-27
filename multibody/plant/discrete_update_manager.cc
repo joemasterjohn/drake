@@ -420,6 +420,11 @@ void DiscreteUpdateManager<T>::CalcContactResultsImpl(
                                            solver_results,
                                            &contact_results_hydroelastic);
 
+  std::vector<SpeculativeContactInfo<T>> contact_results_speculative;
+  CalcContactResultsForSpeculativeContact(geometry_contact_data, contact_pairs,
+                                          solver_results,
+                                          &contact_results_speculative);
+
   std::vector<DeformableContactInfo<T>> contact_results_deformable;
   CalcContactResultsForDeformableContact(geometry_contact_data, contact_pairs,
                                          solver_results,
@@ -429,6 +434,7 @@ void DiscreteUpdateManager<T>::CalcContactResultsImpl(
 
   *contact_results = ContactResults<T>(std::move(contact_results_point_pair),
                                        std::move(contact_results_hydroelastic),
+                                       std::move(contact_results_speculative),
                                        std::move(contact_results_deformable),
                                        std::move(backing_store));
   contact_results->set_plant(&plant());
@@ -571,6 +577,82 @@ void DiscreteUpdateManager<T>::CalcContactResultsForHydroelasticContact(
       // keep-alive.
       contact_results_hydroelastic->emplace_back(
           &all_surfaces[surface_index], F_Ao_W_per_surface[surface_index]);
+    }
+  }
+}
+
+template <typename T>
+void DiscreteUpdateManager<T>::CalcContactResultsForSpeculativeContact(
+    const GeometryContactData<T>& geometry_contact_data,
+    const DiscreteContactData<DiscreteContactPair<T>>& contact_pairs,
+    const ContactSolverResults<T>& solver_results,
+    std::vector<SpeculativeContactInfo<T>>* contact_results_speculative)
+    const {
+  DRAKE_DEMAND(contact_results_speculative != nullptr);
+  contact_results_speculative->clear();
+
+  if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+    const std::vector<geometry::internal::SpeculativeContactSurface<T>>&
+        all_surfaces = geometry_contact_data.get().speculative_surfaces;
+    if (all_surfaces.empty()) {
+      return;
+    }
+
+    const VectorX<T>& fn = solver_results.fn;
+    const VectorX<T>& ft = solver_results.ft;
+    const VectorX<T>& vt = solver_results.vt;
+    const VectorX<T>& vn = solver_results.vn;
+
+    // Discrete pairs contain point, hydro, and deformable contact force
+    // results.
+    const int num_contacts = contact_pairs.size();
+    DRAKE_DEMAND(fn.size() == num_contacts);
+    DRAKE_DEMAND(ft.size() == 2 * num_contacts);
+    DRAKE_DEMAND(vn.size() == num_contacts);
+    DRAKE_DEMAND(vt.size() == 2 * num_contacts);
+
+    const int num_point_contacts = contact_pairs.num_point_contacts();
+    const int num_hydro_contacts = contact_pairs.num_hydro_contacts();
+    const int num_speculative_contacts =
+        contact_pairs.num_speculative_hydro_contacts();
+
+    contact_results_speculative->reserve(num_speculative_contacts);
+
+    // We only scan discrete pairs corresponding to speculative surface points.
+    for (int icontact = num_point_contacts + num_hydro_contacts;
+         icontact <
+         num_point_contacts + num_hydro_contacts + num_speculative_contacts;
+         ++icontact) {
+      const DiscreteContactPair<T>& pair = contact_pairs[icontact];
+
+      const GeometryId geometryA_id = pair.id_A;
+      const GeometryId geometryB_id = pair.id_B;
+
+      const BodyIndex bodyA_index = FindBodyByGeometryId(geometryA_id);
+      const BodyIndex bodyB_index = FindBodyByGeometryId(geometryB_id);
+
+      // TODO(joemasterjohn): report the forces at P and Q when they are not
+      // coincident. const RigidTransform<T>& X_WA =
+      //     plant().EvalBodyPoseInWorld(context, body_A);
+      // const Vector3<T>& p_WA = X_WA.translation();
+      // const RigidTransform<T>& X_WB =
+      //     plant().EvalBodyPoseInWorld(context, body_B);
+      // const Vector3<T>& p_WB = X_WB.translation();
+
+      // const Vector3<T>& p_WAp = p_WA + pair.p_ApC_W;
+      // const Vector3<T>& p_WBq = p_WB + pair.p_BqC_W;
+      const RotationMatrix<T>& R_WC = pair.R_WC;
+
+      // Contact forces applied on B at quadrature point Q expressed in the
+      // contact frame.
+      const Vector3<T> f_Bq_C(ft(2 * icontact), ft(2 * icontact + 1),
+                              fn(icontact));
+      const Vector3<T> f_Bq_W = R_WC * f_Bq_C;
+      const Vector3<T> f_Ap_W = -f_Bq_W;
+
+      // Hack, contact points are coincident, for now.
+      contact_results_speculative->emplace_back(
+          bodyA_index, bodyB_index, pair.p_WC, pair.p_WC, f_Ap_W, f_Bq_W);
     }
   }
 }

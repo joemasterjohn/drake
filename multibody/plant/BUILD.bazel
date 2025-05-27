@@ -189,12 +189,14 @@ drake_cc_library(
         "deformable_contact_info.cc",
         "hydroelastic_contact_info.cc",
         "point_pair_contact_info.cc",
+        "speculative_contact_info.cc",
     ],
     hdrs = [
         "contact_results.h",
         "deformable_contact_info.h",
         "hydroelastic_contact_info.h",
         "point_pair_contact_info.h",
+        "speculative_contact_info.h",
     ],
     deps = [
         "//common:default_scalars",

@@ -122,7 +122,7 @@ void HydroelasticContactVisualizer::Update(
     }
 
     // Contact surface
-    {
+    if (item.p_WV.size() > 0) {
       // Map normalized pressure values to color using a flame map.
 
       // TODO(#17683): This creates a unique mapping from pressure to color for
