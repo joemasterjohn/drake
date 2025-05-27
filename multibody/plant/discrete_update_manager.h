@@ -486,6 +486,17 @@ class DiscreteUpdateManager : public ScalarConvertibleComponent<T> {
       std::vector<HydroelasticContactInfo<T>>* contact_results_hydroelastic)
       const;
 
+  /* Helper method to fill in `contact_results` with speculative contact
+   information for the given state stored in `context`.
+
+   @param[out] contact_results_speculative is cleared then appended to. */
+  void CalcContactResultsForSpeculativeContact(
+      const GeometryContactData<T>& geometry_contact_data,
+      const DiscreteContactData<DiscreteContactPair<T>>& contact_pairs,
+      const contact_solvers::internal::ContactSolverResults<T>& solver_results,
+      std::vector<SpeculativeContactInfo<T>>* contact_results_speculative)
+      const;
+
   /* Helper method to fill in `contact_results` with deformable contact
    information.
    @param[out] contact_results_deformable is cleared then appended to. */

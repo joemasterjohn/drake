@@ -103,6 +103,30 @@ void DoScalarDependentDefinitions(py::module m, T) {
     AddValueInstantiation<Class>(m);
   }
 
+  // SpeculativeContactInfo
+  {
+    using Class = SpeculativeContactInfo<T>;
+    constexpr auto& cls_doc = doc.SpeculativeContactInfo;
+    auto cls = DefineTemplateClassWithDefault<Class>(
+        m, "SpeculativeContactInfo", param, cls_doc.doc);
+    if constexpr (!std::is_same_v<T, symbolic::Expression>) {
+      cls  // BR
+          .def(py::init<BodyIndex, BodyIndex, const Vector3<T>&,
+                   const Vector3<T>&, const Vector3<T>&, const Vector3<T>&>(),
+              py::arg("bodyA_index"), py::arg("bodyB_index"),
+              py::arg("p_WAp"), py::arg("p_WBq"), py::arg("f_Ap_W"),
+              py::arg("f_Bq_W"), cls_doc.ctor.doc)
+          .def("bodyA_index", &Class::bodyA_index, cls_doc.bodyA_index.doc)
+          .def("bodyB_index", &Class::bodyB_index, cls_doc.bodyB_index.doc)
+          .def("p_WAp", &Class::p_WAp, cls_doc.p_WAp.doc)
+          .def("p_WBq", &Class::p_WBq, cls_doc.p_WBq.doc)
+          .def("f_Ap_W", &Class::f_Ap_W, cls_doc.f_Ap_W.doc)
+          .def("f_Bq_W", &Class::f_Bq_W, cls_doc.f_Bq_W.doc);
+    }
+    DefCopyAndDeepCopy(&cls);
+    AddValueInstantiation<Class>(m);
+  }
+
   // DeformableContactInfo
   {
     using Class = DeformableContactInfo<T>;
@@ -146,6 +170,11 @@ void DoScalarDependentDefinitions(py::module m, T) {
         .def("deformable_contact_info", &Class::deformable_contact_info,
             py::arg("i"), py_rvp::reference_internal,
             cls_doc.deformable_contact_info.doc)
+        .def("num_speculative_contacts", &Class::num_speculative_contacts,
+            cls_doc.num_speculative_contacts.doc)
+        .def("speculative_contact_info", &Class::speculative_contact_info,
+            py::arg("i"), py_rvp::reference_internal,
+            cls_doc.speculative_contact_info.doc)
         .def("plant", &Class::plant, py_rvp::reference, cls_doc.plant.doc)
         .def("SelectHydroelastic", &Class::SelectHydroelastic,
             py::arg("selector"), cls_doc.SelectHydroelastic.doc);

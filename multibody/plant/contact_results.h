@@ -10,6 +10,7 @@
 #include "drake/multibody/plant/deformable_contact_info.h"
 #include "drake/multibody/plant/hydroelastic_contact_info.h"
 #include "drake/multibody/plant/point_pair_contact_info.h"
+#include "drake/multibody/plant/speculative_contact_info.h"
 
 namespace drake {
 namespace multibody {
@@ -45,6 +46,7 @@ class ContactResults {
   explicit ContactResults(
       std::vector<PointPairContactInfo<T>>&& point_pair,
       std::vector<HydroelasticContactInfo<T>>&& hydroelastic = {},
+      std::vector<SpeculativeContactInfo<T>>&& speculative = {},
       std::vector<DeformableContactInfo<T>>&& deformable = {},
       std::shared_ptr<const void>&& backing_store = {});
 
@@ -58,6 +60,11 @@ class ContactResults {
   /** Returns the number of hydroelastic contacts. */
   int num_hydroelastic_contacts() const {
     return (data_ != nullptr) ? ssize(data_->hydroelastic) : 0;
+  }
+
+  /** Returns the number of speculative contacts. */
+  int num_speculative_contacts() const {
+    return (data_ != nullptr) ? ssize(data_->speculative) : 0;
   }
 
   /** Returns the number of deformable contacts. */
@@ -74,6 +81,11 @@ class ContactResults {
    must be in the range [0, `num_hydroelastic_contacts()`) or this
    method throws. */
   const HydroelasticContactInfo<T>& hydroelastic_contact_info(int i) const;
+
+  /** Retrieves the ith SpeculativeContactInfo instance. The input index i
+   must be in the range [0, `num_speculative_contacts()`) or this
+   method throws. */
+  const SpeculativeContactInfo<T>& speculative_contact_info(int i) const;
 
   /** Retrieves the ith DeformableContactInfo instance. The input index i
    must be in the range [0, `num_deformable_contacts()`) or this method
@@ -107,6 +119,7 @@ class ContactResults {
   struct Data {
     std::vector<PointPairContactInfo<T>> point_pair;
     std::vector<HydroelasticContactInfo<T>> hydroelastic;
+    std::vector<SpeculativeContactInfo<T>> speculative;
     std::vector<DeformableContactInfo<T>> deformable;
     std::shared_ptr<const void> backing_store;
   };
