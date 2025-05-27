@@ -94,6 +94,7 @@ class SyclProximityEngine::Impl {
 
     vertices_M_ =
         sycl::malloc_device<Vector3<double>>(total_vertices_, q_device_);
+    pressures_ = sycl::malloc_device<double>(total_vertices_, q_device_);
     sh_vertex_mesh_ids_ =
         sycl::malloc_device<size_t>(total_vertices_, q_device_);
 
@@ -101,7 +102,6 @@ class SyclProximityEngine::Impl {
         total_elements_, q_device_);
     edge_vectors_M_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
         total_elements_, q_device_);
-    pressures_ = sycl::malloc_device<double>(total_elements_, q_device_);
     min_pressures_ = sycl::malloc_device<double>(total_elements_, q_device_);
     max_pressures_ = sycl::malloc_device<double>(total_elements_, q_device_);
 
@@ -160,6 +160,11 @@ class SyclProximityEngine::Impl {
           q_device_.memcpy(vertices_M_ + vertex_offset, mesh.vertices().data(),
                            num_vertices * sizeof(Vector3<double>)));
 
+      // Pressures
+      transfer_events.push_back(q_device_.memcpy(
+          pressures_ + vertex_offset, pressure_field.values().data(),
+          num_vertices * sizeof(double)));
+
       // Fill in the mesh id for all vertices in this mesh
       transfer_events.push_back(q_device_.fill(
           sh_vertex_mesh_ids_ + vertex_offset, id_index, num_vertices));
@@ -173,11 +178,6 @@ class SyclProximityEngine::Impl {
       transfer_events.push_back(q_device_.memcpy(
           edge_vectors_M_ + element_offset, mesh.edge_vectors().data(),
           num_elements * sizeof(std::array<Vector3<double>, 6>)));
-
-      // Pressures
-      transfer_events.push_back(q_device_.memcpy(
-          pressures_ + element_offset, pressure_field.values().data(),
-          num_elements * sizeof(double)));
 
       // Min Pressures
       transfer_events.push_back(q_device_.memcpy(
@@ -600,8 +600,9 @@ class SyclProximityEngine::Impl {
                sh_element_offsets_ = sh_element_offsets_,
                element_aabb_min_W_ = element_aabb_min_W_,
                element_aabb_max_W_ = element_aabb_max_W_,
-               total_checks_per_geometry_ =
-                   total_checks_per_geometry_](sycl::id<1> idx) {
+               total_checks_per_geometry_ = total_checks_per_geometry_,
+               min_pressures_ = min_pressures_,
+               max_pressures_ = max_pressures_](sycl::id<1> idx) {
                 const size_t check_index = idx[0];
                 const size_t host_body_index =
                     collision_filter_host_body_index_[check_index];
@@ -624,6 +625,21 @@ class SyclProximityEngine::Impl {
                     sh_element_offsets_[host_body_index + 1] +
                     geom_local_check_number %
                         geom_collision_filter_num_cols_[host_body_index];
+
+                // First check if the pressure fields of the elements intersect
+                const double A_element_min_pressure =
+                    min_pressures_[A_element_index];
+                const double A_element_max_pressure =
+                    max_pressures_[A_element_index];
+                const double B_element_min_pressure =
+                    min_pressures_[B_element_index];
+                const double B_element_max_pressure =
+                    max_pressures_[B_element_index];
+                if (A_element_min_pressure > B_element_max_pressure ||
+                    A_element_max_pressure < B_element_min_pressure) {
+                  collision_filter_[check_index] = false;
+                  return;
+                }
 
                 // We have two element index, now just check their AABB
                 // A element AABB
