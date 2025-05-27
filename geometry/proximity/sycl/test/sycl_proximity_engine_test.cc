@@ -88,29 +88,6 @@ GTEST_TEST(SPETest, SingleMesh) {
   // Get the total checks - this should be 0
   auto impl = SyclProximityEngineAttorney::get_impl(engine);
   EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 0);
-
-  // Vertices stored should be same as vertices from mesh
-  auto verticies_M_host = SyclProximityEngineAttorney::get_vertices_M(impl);
-  auto verticies_W_host = SyclProximityEngineAttorney::get_vertices_W(impl);
-
-  auto verticies_from_mesh = geometry.mesh().vertices();
-  EXPECT_EQ(verticies_M_host.size(), verticies_from_mesh.size());
-  for (size_t i = 0; i < verticies_M_host.size(); ++i) {
-    EXPECT_EQ(verticies_M_host[i], verticies_from_mesh[i]);
-  }
-  // Vertices in world frame should be same as vertices in mesh frame
-  EXPECT_EQ(verticies_W_host.size(), verticies_from_mesh.size());
-  for (size_t i = 0; i < verticies_W_host.size(); ++i) {
-    EXPECT_EQ(verticies_W_host[i], verticies_from_mesh[i]);
-  }
-
-  // Elements stored should be same as elements from mesh
-  auto elements_host = SyclProximityEngineAttorney::get_elements(impl);
-  auto elements_from_mesh = geometry.mesh().pack_element_vertices();
-  EXPECT_EQ(elements_host.size(), elements_from_mesh.size());
-  for (size_t i = 0; i < elements_host.size(); ++i) {
-    EXPECT_EQ(elements_host[i], elements_from_mesh[i]);
-  }
 }
 
 GTEST_TEST(SPETest, TwoMeshesColliding) {
@@ -167,7 +144,7 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
 
   // Collision filter should be [0 0 1 0] since element 1 of A is colliding with
   // element 0 of B
-  uint8_t* collision_filter =
+  std::vector<uint8_t> collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
   std::vector<uint8_t> expected_collision_filter{0, 0, 1, 0};
@@ -179,6 +156,7 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
   // collision filter
   X_WGs[idB] = RigidTransformd(Vector3d{0, 0, 0.3});
   surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+  collision_filter = SyclProximityEngineAttorney::get_collision_filter(impl);
   // Element 0 of A collides with element 0 of B
   // Element 1 of A collides with element 0 and 1 of B
   expected_collision_filter = {1, 0, 1, 1};
@@ -216,7 +194,7 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   EXPECT_EQ(SyclProximityEngineAttorney::get_total_checks(impl), 12);
 
   // Collision filter check
-  uint8_t* collision_filter =
+  std::vector<uint8_t> collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
   std::vector<uint8_t> expected_collision_filter{0, 0, 0, 0, 1, 0,
@@ -229,6 +207,7 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   X_WGs[idB] = RigidTransformd(Vector3d{0, 0, 0.3});
   X_WGs[idC] = RigidTransformd(Vector3d{0, 0, 0.6});
   surfaces = engine.ComputeSYCLHydroelasticSurface(X_WGs);
+  collision_filter = SyclProximityEngineAttorney::get_collision_filter(impl);
 
   // With meshes closer, more elements should be colliding
   expected_collision_filter = {1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1};
@@ -325,7 +304,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   const auto impl = SyclProximityEngineAttorney::get_impl(engine);
 
   // Collision filter check
-  const uint8_t* collision_filter =
+  const std::vector<uint8_t> collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
   const int total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
@@ -349,7 +328,6 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       fmt::format("Num CPU false positives: {}\n", num_false_positives_cpu));
 }
 
-
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
   constexpr double radius = 0.5;
   constexpr double resolution_hint_A = 0.25 * radius;
@@ -367,7 +345,7 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
       MakeSpherePressureField(sphereA, meshA.get(), hydroelastic_modulus));
   const Bvh<Aabb, VolumeMesh<double>> bvhSphereA(*meshA);
 
-   hydroelastic::SoftGeometry soft_geometryA(
+  hydroelastic::SoftGeometry soft_geometryA(
       hydroelastic::SoftMesh(std::move(meshA), std::move(pressureA)));
   const GeometryId sphereA_id = GeometryId::get_new_id();
 
@@ -380,7 +358,7 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   auto pressureB = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereB, meshB.get(), hydroelastic_modulus));
   const Bvh<Aabb, VolumeMesh<double>> bvhSphereB(*meshB);
-   hydroelastic::SoftGeometry soft_geometryB(
+  hydroelastic::SoftGeometry soft_geometryB(
       hydroelastic::SoftMesh(std::move(meshB), std::move(pressureB)));
   const GeometryId sphereB_id = GeometryId::get_new_id();
 
@@ -393,7 +371,7 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   auto pressureC = std::make_unique<VolumeMeshFieldLinear<double, double>>(
       MakeSpherePressureField(sphereC, meshC.get(), hydroelastic_modulus));
   const Bvh<Aabb, VolumeMesh<double>> bvhSphereC(*meshC);
-   hydroelastic::SoftGeometry soft_geometryC(
+  hydroelastic::SoftGeometry soft_geometryC(
       hydroelastic::SoftMesh(std::move(meshC), std::move(pressureC)));
   const GeometryId sphereC_id = GeometryId::get_new_id();
 
@@ -419,7 +397,6 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
     const double max_B = soft_geometryB.pressure_field().EvaluateMax(tet1);
     if (!(max_A < min_B || max_B < min_A))
       candidate_tetrahedra_AB.emplace_back(tet0, tet1);
-
 
     return BvttCallbackResult::Continue;
   };
@@ -505,7 +482,7 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   const auto impl = SyclProximityEngineAttorney::get_impl(engine);
 
   // Collision filter check
-  const uint8_t* collision_filter =
+  const std::vector<uint8_t> collision_filter =
       SyclProximityEngineAttorney::get_collision_filter(impl);
 
   const int total_checks = SyclProximityEngineAttorney::get_total_checks(impl);

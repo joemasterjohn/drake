@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <oneapi/dpl/execution>  // For execution policies
+#include <oneapi/dpl/numeric>    // For exclusive_scan
 #include <sycl/sycl.hpp>
 
 #include "drake/geometry/geometry_ids.h"
@@ -256,11 +258,14 @@ class SyclProximityEngine::Impl {
     }
 
     // Generate collision filter for all checks
-    collision_filter_ = sycl::malloc_host<uint8_t>(total_checks_, q_device_);
+    collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
+    // Required in ComputeSYCLHydroelasticSurface
+    prefix_sum_ = sycl::malloc_device<size_t>(total_checks_, q_device_);
     // memset all to 0 for now (will be filled in when we have AABBs for each
     // element)
     auto collision_filter_memset_event =
         q_device_.memset(collision_filter_, 0, total_checks_ * sizeof(uint8_t));
+    collision_filter_memset_event.wait();
 
     collision_filter_host_body_index_ =
         sycl::malloc_host<size_t>(total_checks_, q_device_);
@@ -277,7 +282,6 @@ class SyclProximityEngine::Impl {
 
     // Wait for all transfers to complete before returning
     sycl::event::wait_and_throw(transfer_events);
-    collision_filter_memset_event.wait();
     sycl::event::wait_and_throw(collision_filter_host_body_index_fill_events);
   }
 
@@ -335,6 +339,7 @@ class SyclProximityEngine::Impl {
       sycl::free(geom_collision_filter_check_offsets_, q_device_);
       sycl::free(collision_filter_, q_device_);
       sycl::free(total_checks_per_geometry_, q_device_);
+      sycl::free(prefix_sum_, q_device_);
     }
   }
 
@@ -367,6 +372,10 @@ class SyclProximityEngine::Impl {
   std::vector<SYCLHydroelasticSurface> ComputeSYCLHydroelasticSurface(
       const std::unordered_map<GeometryId, math::RigidTransform<double>>&
           X_WGs) {
+    if (total_checks_ == 0) {
+      return std::vector<SYCLHydroelasticSurface>();
+    }
+
     // Get transfomers in host
     for (size_t geom_index = 0; geom_index < num_geometries_; ++geom_index) {
       GeometryId geometry_id = soft_geometry_ids_[geom_index];
@@ -653,11 +662,68 @@ class SyclProximityEngine::Impl {
         });
     generate_collision_filter_event.wait();
 
+    // =========================================
+    // Generate list of check_indices that are active
+    // =========================================
+
+    auto policy = oneapi::dpl::execution::make_device_policy(q_device_);
+
+    // Perform the exclusive scan using USM pointers as iterators
+    // We need to convert uint8_t collision_filter_ values to size_t for the
+    // scan
+    oneapi::dpl::transform_exclusive_scan(
+        policy, collision_filter_, collision_filter_ + total_checks_,
+        prefix_sum_,             // output
+        static_cast<size_t>(0),  // initial value
+        sycl::plus<size_t>(),    // binary operation
+        [](uint8_t x) {
+          return static_cast<size_t>(x);
+        });  // transform uint8_t to size_t
+    q_device_.wait_and_throw();
+
+    // Total checks needed for narrow phase
+    size_t total_narrow_phase_checks = 0;
+    q_device_
+        .memcpy(&total_narrow_phase_checks, prefix_sum_ + total_checks_ - 1,
+                sizeof(size_t))
+        .wait();
+    // Last element check or not?
+    uint8_t last_check_flag = 0;
+    q_device_
+        .memcpy(&last_check_flag, collision_filter_ + total_checks_ - 1,
+                sizeof(uint8_t))
+        .wait();
+    // If last check is 1, then we need to add one more check
+    total_narrow_phase_checks += static_cast<size_t>(last_check_flag);
+
+    // Now we need to get the index of all the narrow phase checks
+    size_t* narrow_phase_check_indices =
+        sycl::malloc_device<size_t>(total_narrow_phase_checks, q_device_);
+
+    auto fill_narrow_phase_check_indices_event =
+        q_device_.submit([&](sycl::handler& h) {
+          h.depends_on(generate_collision_filter_event);
+          h.parallel_for(
+              sycl::range<1>(total_checks_),
+              [=, narrow_phase_check_indices = narrow_phase_check_indices,
+               prefix_sum_ = prefix_sum_,
+               collision_filter_ = collision_filter_](sycl::id<1> idx) {
+                const size_t check_index = idx[0];
+                if (collision_filter_[check_index] == 1) {
+                  size_t narrow_check_num = prefix_sum_[check_index];
+                  narrow_phase_check_indices[narrow_check_num] = check_index;
+                }
+              });
+        });
+
+    fill_narrow_phase_check_indices_event.wait_and_throw();
+
     std::vector<sycl::event> transform_events{transform_elem_quantities_event1,
                                               transform_elem_quantities_event2,
                                               transform_elem_quantities_event3};
     sycl::event::wait_and_throw(transform_events);
 
+    sycl::free(narrow_phase_check_indices, q_device_);
     // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
     return sycl_hydroelastic_surfaces;
@@ -758,6 +824,10 @@ class SyclProximityEngine::Impl {
   size_t* geom_collision_filter_num_cols_ = nullptr;
   size_t total_checks_ = 0;
 
+  // Internal use
+  size_t* prefix_sum_ = nullptr;  // prefix_sum_[i] = prefix sum of the first i
+                                  // elements of the collision filter
+
   friend class SyclProximityEngineAttorney;
 };
 
@@ -805,16 +875,16 @@ const SyclProximityEngine::Impl* SyclProximityEngineAttorney::get_impl(
     const SyclProximityEngine& engine) {
   return engine.impl_.get();
 }
-uint8_t* SyclProximityEngineAttorney::get_collision_filter(
+std::vector<uint8_t> SyclProximityEngineAttorney::get_collision_filter(
     SyclProximityEngine::Impl* impl) {
-  // size_t total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
-  // std::vector<uint8_t> collision_filter_host(total_checks);
-  // auto q = impl->q_device_;
-  // auto collision_filter = impl->collision_filter_;
-  // q.memcpy(collision_filter_host.data(), collision_filter,
-  //          total_checks * sizeof(uint8_t))
-  //     .wait();
-  return impl->collision_filter_;
+  size_t total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
+  std::vector<uint8_t> collision_filter_host(total_checks);
+  auto q = impl->q_device_;
+  auto collision_filter = impl->collision_filter_;
+  q.memcpy(collision_filter_host.data(), collision_filter,
+           total_checks * sizeof(uint8_t))
+      .wait();
+  return collision_filter_host;
 }
 std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
     SyclProximityEngine::Impl* impl) {

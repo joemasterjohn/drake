@@ -37,7 +37,14 @@ drake_cc_library(
     copts = [
         "-fsycl",
         "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
-        "-DEIGEN_DONT_VECTORIZE"
+        "-DEIGEN_DONT_VECTORIZE",
+        "-I/opt/intel/oneapi/dpl/2022.8/include",
+        "-Wno-old-style-cast",
+        "-Wno-logical-op-parentheses",
+        "-Wno-unknown-pragmas",
+        "-Wno-deprecated-copy-with-dtor",
+        "-Wno-deprecated-copy-with-user-provided-copy",
+        "-Wno-sign-compare",
     ],
     linkopts = [
         "-fsycl",
