@@ -13,6 +13,8 @@ drake_cc_library(
 
     copts = [
         "-fsycl",
+        "-g",
+        "-lineinfo",
         "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-DEIGEN_DONT_VECTORIZE"
     ],
@@ -27,6 +29,8 @@ drake_cc_binary(
     srcs = ["mesh_test.cc"],
     copts = [
         "-fsycl",
+        "-g",
+        "-lineinfo",
         "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-DEIGEN_DONT_VECTORIZE"
     ],
@@ -50,6 +54,8 @@ drake_cc_binary(
     srcs = ["mesh_benchmark.cc"],
     copts = [
         "-fsycl",
+        "-g",
+        "-lineinfo",
         "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
         "-DEIGEN_DONT_VECTORIZE"
     ],
