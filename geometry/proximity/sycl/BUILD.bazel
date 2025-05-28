@@ -1,0 +1,80 @@
+load(
+    "//tools/skylark:drake_cc.bzl",
+    "drake_cc_binary",
+    "drake_cc_library",
+    "drake_cc_googletest",
+)
+
+package(default_visibility = ["//visibility:private"])
+
+
+drake_cc_library(
+    name = "sycl_hydroelastic_surface",
+    srcs = ["sycl_hydroelastic_surface.cc"],
+    hdrs = ["sycl_hydroelastic_surface.h"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-DEIGEN_DONT_VECTORIZE",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+    ],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+        "//geometry/proximity:hydroelastic_internal",
+        "//math:geometric_transform",
+    ],
+)
+
+drake_cc_library(
+    name = "sycl_proximity_engine",
+    srcs = ["sycl_proximity_engine.cc"],
+    hdrs = ["sycl_proximity_engine.h"],
+    visibility = ["//geometry:__pkg__"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-DEIGEN_DONT_VECTORIZE",
+        "-I/opt/intel/oneapi/dpl/2022.8/include",
+        "-Wno-old-style-cast",
+        "-Wno-logical-op-parentheses",
+        "-Wno-unknown-pragmas",
+        "-Wno-deprecated-copy-with-dtor",
+        "-Wno-deprecated-copy-with-user-provided-copy",
+        "-Wno-sign-compare",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+    ],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+        "//math:geometric_transform",
+        ":sycl_hydroelastic_surface",
+    ]
+)
+
+drake_cc_googletest(
+    name = "sycl_proximity_engine_test",
+    srcs = ["test/sycl_proximity_engine_test.cc"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-DEIGEN_DONT_VECTORIZE",
+    ],
+    linkopts = [
+        "-fsycl",
+        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+    ],
+    deps = [
+        "//common:essential",
+        "//geometry:geometry_ids",
+        "//math:geometric_transform",
+        ":sycl_hydroelastic_surface",
+        ":sycl_proximity_engine"
+    ],
+)

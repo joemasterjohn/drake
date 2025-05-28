@@ -21,11 +21,21 @@ DEFINE_int32(points_per_mesh, 0, "Fixed points per mesh (0 to sweep)");
 DEFINE_int32(elements_per_mesh, 0, "Fixed elements per mesh (0 to sweep)");
 DEFINE_int32(num_runs, 5,
              "Number of runs to include in average (excluding warm-up)");
+DEFINE_bool(use_sycl_vec, false,
+            "Use sycl::vec<double, 3> instead of Vector3<double>.");
+DEFINE_bool(
+    use_host_memory, false,
+    "Use malloc_host instead of malloc_shared for USM memory allocation.");
 
-// Populate allocated USM memory with random positions
-void InitializeRandomPositions(Vector3<double>* p_MV, size_t num_points) {
+// Populate allocated USM memory with random positions - templated version
+template <typename VectorType>
+void InitializeRandomPositions(VectorType* p_MV, size_t num_points) {
   for (size_t i = 0; i < num_points; i++) {
-    p_MV[i] = Vector3<double>(rand() % 100, rand() % 100, rand() % 100);
+    if constexpr (std::is_same_v<VectorType, Vector3<double>>) {
+      p_MV[i] = Vector3<double>(rand() % 100, rand() % 100, rand() % 100);
+    } else {
+      p_MV[i] = sycl::vec<double, 3>(rand() % 100, rand() % 100, rand() % 100);
+    }
   }
 }
 
@@ -37,7 +47,9 @@ void InitializeRandomElements(int* elements, size_t num_elements) {
   }
 }
 
-// Run the mesh transformation benchmark with the given queue
+// Run the mesh transformation benchmark with the given queue - templated
+// version
+template <typename VectorType>
 std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
                                            const std::string& device_name,
                                            size_t num_meshes,
@@ -47,29 +59,44 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
   auto start = std::chrono::high_resolution_clock::now();
 
   // Allocate memory for meshes using USM
-  SimpleMesh* meshes = sycl::malloc_shared<SimpleMesh>(num_meshes, q);
+  SimpleMesh<VectorType>* meshes =
+      FLAGS_use_host_memory
+          ? sycl::malloc_host<SimpleMesh<VectorType>>(num_meshes, q)
+          : sycl::malloc_shared<SimpleMesh<VectorType>>(num_meshes, q);
 
   // Allocate memory for transforms
-  RigidTransformd* X_MBs = sycl::malloc_shared<RigidTransformd>(num_meshes, q);
+  RigidTransformd* X_MBs =
+      FLAGS_use_host_memory
+          ? sycl::malloc_host<RigidTransformd>(num_meshes, q)
+          : sycl::malloc_shared<RigidTransformd>(num_meshes, q);
 
   // Allocate memory for vertices and elements directly using USM
-  Vector3<double>** vertex_arrays =
-      sycl::malloc_shared<Vector3<double>*>(num_meshes, q);
-  int** element_arrays = sycl::malloc_shared<int*>(num_meshes, q);
+  VectorType** vertex_arrays =
+      FLAGS_use_host_memory ? sycl::malloc_host<VectorType*>(num_meshes, q)
+                            : sycl::malloc_shared<VectorType*>(num_meshes, q);
+  int** element_arrays = FLAGS_use_host_memory
+                             ? sycl::malloc_host<int*>(num_meshes, q)
+                             : sycl::malloc_shared<int*>(num_meshes, q);
 
   // Initialize data and create meshes with pre-allocated memory
   for (size_t i = 0; i < num_meshes; i++) {
     // Allocate memory for vertices
-    vertex_arrays[i] = sycl::malloc_shared<Vector3<double>>(points_per_mesh, q);
+    vertex_arrays[i] =
+        FLAGS_use_host_memory
+            ? sycl::malloc_host<VectorType>(points_per_mesh, q)
+            : sycl::malloc_shared<VectorType>(points_per_mesh, q);
     InitializeRandomPositions(vertex_arrays[i], points_per_mesh);
 
     // Allocate memory for elements (4 vertices per element)
-    element_arrays[i] = sycl::malloc_shared<int>(elements_per_mesh * 4, q);
+    element_arrays[i] =
+        FLAGS_use_host_memory
+            ? sycl::malloc_host<int>(elements_per_mesh * 4, q)
+            : sycl::malloc_shared<int>(elements_per_mesh * 4, q);
     InitializeRandomElements(element_arrays[i], elements_per_mesh);
 
     // Create mesh with pre-allocated memory
-    meshes[i] = SimpleMesh(vertex_arrays[i], element_arrays[i], points_per_mesh,
-                           elements_per_mesh);
+    meshes[i] = SimpleMesh<VectorType>(vertex_arrays[i], element_arrays[i],
+                                       points_per_mesh, elements_per_mesh);
 
     // Initialize transform
     X_MBs[i] = RigidTransformd::Identity();
@@ -81,11 +108,36 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
 
   auto e = q.parallel_for(num_items, [=](auto idx) {
     // Get the mesh and transform
-    SimpleMesh& mesh = meshes[idx];
-    RigidTransformd& X_MB = X_MBs[idx];
+    SimpleMesh<VectorType>& mesh = meshes[idx];
+    const auto& transform = X_MBs[idx].GetAsMatrix34();
+
+    // Extract transformation matrix elements
+    const double r00 = transform(0, 0), r01 = transform(0, 1),
+                 r02 = transform(0, 2), tx = transform(0, 3);
+    const double r10 = transform(1, 0), r11 = transform(1, 1),
+                 r12 = transform(1, 2), ty = transform(1, 3);
+    const double r20 = transform(2, 0), r21 = transform(2, 1),
+                 r22 = transform(2, 2), tz = transform(2, 3);
+
     // Apply the transform to the mesh
     for (size_t i = 0; i < mesh.num_points(); ++i) {
-      mesh.p_MV()[i] = X_MB * mesh.p_MV()[i];
+      if constexpr (std::is_same_v<VectorType, Vector3<double>>) {
+        const double x = mesh.p_MV()[i][0];
+        const double y = mesh.p_MV()[i][1];
+        const double z = mesh.p_MV()[i][2];
+
+        mesh.p_MV()[i][0] = r00 * x + r01 * y + r02 * z + tx;
+        mesh.p_MV()[i][1] = r10 * x + r11 * y + r12 * z + ty;
+        mesh.p_MV()[i][2] = r20 * x + r21 * y + r22 * z + tz;
+      } else {
+        const double x = mesh.p_MV()[i].x();
+        const double y = mesh.p_MV()[i].y();
+        const double z = mesh.p_MV()[i].z();
+
+        mesh.p_MV()[i] = sycl::vec<double, 3>(r00 * x + r01 * y + r02 * z + tx,
+                                              r10 * x + r11 * y + r12 * z + ty,
+                                              r20 * x + r21 * y + r22 * z + tz);
+      }
     }
   });
 
@@ -120,13 +172,18 @@ std::pair<double, double> runBenchmarkOnce(sycl::queue& q,
   return {kernel_time, total_duration.count()};
 }
 
+template <typename VectorType>
 std::pair<double, double> runBenchmark(
     sycl::queue& q, const std::string& device_name, size_t num_meshes,
     size_t points_per_mesh, size_t elements_per_mesh, int num_runs = 5,
     bool print_details = false) {
   if (print_details) {
-    fmt::print("{} benchmark for meshes={}, points={}, elements={}:\n",
-               device_name, num_meshes, points_per_mesh, elements_per_mesh);
+    const char* vector_type_name =
+        std::is_same_v<VectorType, Vector3<double>> ? "Vector3" : "sycl::vec";
+    fmt::print(
+        "{} benchmark for meshes={}, points={}, elements={} (using {}):\n",
+        device_name, num_meshes, points_per_mesh, elements_per_mesh,
+        vector_type_name);
   }
 
   std::vector<double> kernel_times;
@@ -140,9 +197,9 @@ std::pair<double, double> runBenchmark(
       fmt::print("  Run {} of {} {}:\n", i + 1, total_runs,
                  (i == 0 ? "(warm-up, excluded from average)" : ""));
     }
-    auto [kernel_time, total_time] =
-        runBenchmarkOnce(q, device_name, num_meshes, points_per_mesh,
-                         elements_per_mesh, print_details);
+    auto [kernel_time, total_time] = runBenchmarkOnce<VectorType>(
+        q, device_name, num_meshes, points_per_mesh, elements_per_mesh,
+        print_details);
 
     // Only include the last num_runs (exclude the first/warm-up run)
     if (i > 0) {
@@ -158,8 +215,11 @@ std::pair<double, double> runBenchmark(
       std::accumulate(total_times.begin(), total_times.end(), 0.0) / num_runs;
 
   if (print_details) {
-    fmt::print("\n{} AVERAGE RESULTS (over {} runs, excluding warm-up):\n",
-               device_name, num_runs);
+    const char* vector_type_name =
+        std::is_same_v<VectorType, Vector3<double>> ? "Vector3" : "sycl::vec";
+    fmt::print(
+        "\n{} AVERAGE RESULTS (over {} runs, excluding warm-up, using {}):\n",
+        device_name, num_runs, vector_type_name);
     fmt::print("  - Average kernel execution time: {:.3f} ms\n",
                avg_kernel_time);
     fmt::print("  - Average total execution time:  {:.3f} ms\n\n",
@@ -167,6 +227,83 @@ std::pair<double, double> runBenchmark(
   }
 
   return {avg_kernel_time, avg_total_time};
+}
+
+// Helper function to run benchmarks with the selected vector type
+template <typename VectorType>
+void runBenchmarksForType(sycl::queue& gpu_queue, sycl::queue& cpu_queue,
+                          const std::vector<size_t>& num_meshes_values,
+                          const std::vector<size_t>& points_per_mesh_values,
+                          const std::vector<size_t>& elements_per_mesh_values,
+                          std::ofstream& results_file, size_t& completed,
+                          size_t total_combinations) {
+  const char* vector_type_suffix =
+      std::is_same_v<VectorType, Vector3<double>> ? "_eigen" : "_sycl";
+
+  // Test all combinations with both GPU and CPU
+  for (size_t num_meshes : num_meshes_values) {
+    for (size_t points_per_mesh : points_per_mesh_values) {
+      for (size_t elements_per_mesh : elements_per_mesh_values) {
+        // Skip combinations that could cause out-of-memory issues
+        if (num_meshes * points_per_mesh * elements_per_mesh > 1e9) {
+          fmt::print(
+              "Skipping potentially out-of-memory combination: meshes={}, "
+              "points={}, elements={}\n",
+              num_meshes, points_per_mesh, elements_per_mesh);
+          completed += 2;  // Count as completed for both GPU and CPU
+          continue;
+        }
+
+        fmt::print(
+            "Running benchmark ({}/{}) for meshes={}, points={}, "
+            "elements={} ({})\n",
+            completed + 1, total_combinations, num_meshes, points_per_mesh,
+            elements_per_mesh, vector_type_suffix);
+
+        try {
+          // GPU benchmark
+          auto [gpu_kernel_time, gpu_total_time] = runBenchmark<VectorType>(
+              gpu_queue, "GPU", num_meshes, points_per_mesh, elements_per_mesh,
+              FLAGS_num_runs);
+
+          // Write GPU results to CSV
+          results_file << "GPU" << vector_type_suffix << "," << num_meshes
+                       << "," << points_per_mesh << "," << elements_per_mesh
+                       << "," << gpu_kernel_time << "," << gpu_total_time
+                       << "\n";
+          completed++;
+
+          fmt::print(
+              "Running benchmark ({}/{}) for meshes={}, points={}, "
+              "elements={} ({})\n",
+              completed + 1, total_combinations, num_meshes, points_per_mesh,
+              elements_per_mesh, vector_type_suffix);
+
+          // CPU benchmark
+          auto [cpu_kernel_time, cpu_total_time] = runBenchmark<VectorType>(
+              cpu_queue, "CPU", num_meshes, points_per_mesh, elements_per_mesh,
+              FLAGS_num_runs);
+
+          // Write CPU results to CSV
+          results_file << "CPU" << vector_type_suffix << "," << num_meshes
+                       << "," << points_per_mesh << "," << elements_per_mesh
+                       << "," << cpu_kernel_time << "," << cpu_total_time
+                       << "\n";
+          completed++;
+
+          // Flush results to file periodically
+          results_file.flush();
+
+        } catch (std::exception const& e) {
+          fmt::print(
+              "Exception during benchmark for meshes={}, points={}, "
+              "elements={}: {}\n",
+              num_meshes, points_per_mesh, elements_per_mesh, e.what());
+          completed += 2;  // Count as completed for both GPU and CPU
+        }
+      }
+    }
+  }
 }
 
 // Construct a bunch of simple meshes and do transforms on them using SYCL
@@ -214,6 +351,10 @@ int main(int argc, char** argv) {
   }
 
   // Report benchmark configuration
+  const char* vector_type =
+      FLAGS_use_sycl_vec ? "sycl::vec<double, 3>" : "Vector3<double>";
+  const char* memory_type =
+      FLAGS_use_host_memory ? "malloc_host" : "malloc_shared";
   if (FLAGS_sweep) {
     fmt::print("Running parameter sweep benchmark with:\n");
     if (num_meshes_values.size() == 1) {
@@ -243,6 +384,8 @@ int main(int argc, char** argv) {
     fmt::print("  - Points per mesh: {}\n", points_per_mesh_values[0]);
     fmt::print("  - Elements per mesh: {}\n", elements_per_mesh_values[0]);
   }
+  fmt::print("  - Vector type: {}\n", vector_type);
+  fmt::print("  - Memory allocation: {}\n", memory_type);
 
   try {
     // Create a descriptive filename based on what parameters were fixed
@@ -258,11 +401,17 @@ int main(int argc, char** argv) {
           fmt::format("_elements{}", elements_per_mesh_values[0]);
     }
 
+    // Add vector type and memory type to filename
+    const char* vector_suffix = FLAGS_use_sycl_vec ? "_syclvec" : "_eigen";
+    const char* memory_suffix = FLAGS_use_host_memory ? "_host" : "_shared";
+
     // If all parameters vary, use the default name
     std::string output_filename =
         result_description.empty()
-            ? "mesh_benchmark_results.csv"
-            : fmt::format("mesh_benchmark{}_results.csv", result_description);
+            ? fmt::format("mesh_benchmark{}{}_results.csv", vector_suffix,
+                          memory_suffix)
+            : fmt::format("mesh_benchmark{}{}{}_results.csv",
+                          result_description, vector_suffix, memory_suffix);
 
     // Create output file for results
     std::ofstream results_file(output_filename);
@@ -291,73 +440,23 @@ int main(int argc, char** argv) {
     fmt::print("Each configuration will run {} times plus one warm-up run\n",
                FLAGS_num_runs);
 
-    // Total number of combinations
+    // Total number of combinations (multiply by 2 for GPU and CPU)
     size_t total_combinations = num_meshes_values.size() *
                                 points_per_mesh_values.size() *
-                                elements_per_mesh_values.size();
+                                elements_per_mesh_values.size() * 2;
     size_t completed = 0;
 
-    // Test all combinations with both GPU and CPU
-    for (size_t num_meshes : num_meshes_values) {
-      for (size_t points_per_mesh : points_per_mesh_values) {
-        for (size_t elements_per_mesh : elements_per_mesh_values) {
-          // Skip combinations that could cause out-of-memory issues
-          if (num_meshes * points_per_mesh * elements_per_mesh > 1e9) {
-            fmt::print(
-                "Skipping potentially out-of-memory combination: meshes={}, "
-                "points={}, elements={}\n",
-                num_meshes, points_per_mesh, elements_per_mesh);
-            completed += 2;  // Count as completed for both GPU and CPU
-            continue;
-          }
-
-          fmt::print(
-              "Running benchmark ({}/{}) for meshes={}, points={}, "
-              "elements={}\n",
-              completed + 1, total_combinations * 2, num_meshes,
-              points_per_mesh, elements_per_mesh);
-
-          try {
-            // GPU benchmark
-            auto [gpu_kernel_time, gpu_total_time] =
-                runBenchmark(gpu_queue, "GPU", num_meshes, points_per_mesh,
-                             elements_per_mesh, FLAGS_num_runs);
-
-            // Write GPU results to CSV
-            results_file << "GPU," << num_meshes << "," << points_per_mesh
-                         << "," << elements_per_mesh << "," << gpu_kernel_time
-                         << "," << gpu_total_time << "\n";
-            completed++;
-
-            fmt::print(
-                "Running benchmark ({}/{}) for meshes={}, points={}, "
-                "elements={}\n",
-                completed + 1, total_combinations * 2, num_meshes,
-                points_per_mesh, elements_per_mesh);
-
-            // CPU benchmark
-            auto [cpu_kernel_time, cpu_total_time] =
-                runBenchmark(cpu_queue, "CPU", num_meshes, points_per_mesh,
-                             elements_per_mesh, FLAGS_num_runs);
-
-            // Write CPU results to CSV
-            results_file << "CPU," << num_meshes << "," << points_per_mesh
-                         << "," << elements_per_mesh << "," << cpu_kernel_time
-                         << "," << cpu_total_time << "\n";
-            completed++;
-
-            // Flush results to file periodically
-            results_file.flush();
-
-          } catch (std::exception const& e) {
-            fmt::print(
-                "Exception during benchmark for meshes={}, points={}, "
-                "elements={}: {}\n",
-                num_meshes, points_per_mesh, elements_per_mesh, e.what());
-            completed += 2;  // Count as completed for both GPU and CPU
-          }
-        }
-      }
+    // Run benchmarks with the selected vector type
+    if (FLAGS_use_sycl_vec) {
+      runBenchmarksForType<sycl::vec<double, 3>>(
+          gpu_queue, cpu_queue, num_meshes_values, points_per_mesh_values,
+          elements_per_mesh_values, results_file, completed,
+          total_combinations);
+    } else {
+      runBenchmarksForType<Vector3<double>>(
+          gpu_queue, cpu_queue, num_meshes_values, points_per_mesh_values,
+          elements_per_mesh_values, results_file, completed,
+          total_combinations);
     }
 
     fmt::print("\nBenchmark completed. Results written to {}\n",
