@@ -237,13 +237,6 @@ class SyclProximityEngine::Impl {
     // Done entirely in CPU because its only looping over num_geometries
     for (size_t i = 0; i < num_geometries_ - 1; ++i) {
       const size_t num_elements_in_geometry = sh_element_counts_[i];
-      // sh_element_offsets_ stores  [0, E_0, E_0 + E_1, E_0 + E_1 +
-      // E_2, ...] where E_i is the number of elements in the i-th
-      // geometry sh_element_offsets_[i] = E_i -> number of elements
-      // in the i-th geometry Ex: 1st geometry has to do checks with
-      // all other geometries except itself 2nd geometry has to do
-      // checks with all other geometries except itself and the first
-      // geometry (because A check B  = B check A)...
       const size_t num_elements_in_rest_of_geometries =
           (sh_element_offsets_[num_geometries_ - 1] +
            num_elements_in_last_geometry_) -
@@ -716,13 +709,190 @@ class SyclProximityEngine::Impl {
               });
         });
 
-    fill_narrow_phase_check_indices_event.wait_and_throw();
+    // =========================================
+    // Command group 4: Narrow phase collision detection
+    // =========================================
+    // Assign memory for all the normals (these are all normalized)
+    double* normals_W_ =
+        sycl::malloc_device<double>(3 * total_narrow_phase_checks, q_device_);
+    // Assign memory for all the points
+    double* points_W_ =
+        sycl::malloc_device<double>(3 * total_narrow_phase_checks, q_device_);
+    // Assign memory for the plane displacement (measured from world origin)
+    double* displacements_W_ =
+        sycl::malloc_device<double>(total_narrow_phase_checks, q_device_);
+    // Maintain a list of invalidated narrow phase checks
+    // 1 is invalid, 0 is valid
+    uint8_t* invalidated_narrow_phase_checks_ =
+        sycl::malloc_device<uint8_t>(total_narrow_phase_checks, q_device_);
+    // Initialize all to 0 -> All are valid
+    q_device_
+        .memset(invalidated_narrow_phase_checks_, 0,
+                total_narrow_phase_checks * sizeof(uint8_t))
+        .wait();
+
+    // First lets compute the equilibirum plane
+    // For this we will keep one work item for one check_index
+    auto compute_equilibrium_plane_event = q_device_.submit([&](sycl::handler&
+                                                                    h) {
+      // Need the field and the values and the final check indicies
+      h.depends_on({fill_narrow_phase_check_indices_event,
+                    transform_elem_quantities_event3});
+
+      h.parallel_for(
+          sycl::range<1>(total_narrow_phase_checks),
+          [=, narrow_phase_check_indices = narrow_phase_check_indices,
+           gradient_W_pressure_at_Wo_ = gradient_W_pressure_at_Wo_,
+           sh_element_offsets_ = sh_element_offsets_,
+           geom_collision_filter_num_cols_ = geom_collision_filter_num_cols_,
+           total_checks_per_geometry_ = total_checks_per_geometry_,
+           collision_filter_host_body_index_ =
+               collision_filter_host_body_index_,
+           normals_W_ = normals_W_, points_W_ = points_W_,
+           displacements_W_ = displacements_W_,
+           invalidated_narrow_phase_checks_ =
+               invalidated_narrow_phase_checks_](sycl::id<1> idx) {
+            const size_t local_check_index = idx[0];
+            const size_t global_check_index =
+                narrow_phase_check_indices[local_check_index];
+            const size_t host_body_index =
+                collision_filter_host_body_index_[global_check_index];
+
+            // Same logic as broad phase
+            size_t num_of_checks_offset = 0;
+            if (host_body_index > 0) {
+              num_of_checks_offset =
+                  total_checks_per_geometry_[host_body_index - 1];
+            }
+            const size_t geom_local_check_number =
+                global_check_index - num_of_checks_offset;
+
+            const size_t A_element_index =
+                sh_element_offsets_[host_body_index] +
+                geom_local_check_number /
+                    geom_collision_filter_num_cols_[host_body_index];
+            const size_t B_element_index =
+                sh_element_offsets_[host_body_index + 1] +
+                geom_local_check_number %
+                    geom_collision_filter_num_cols_[host_body_index];
+
+            // Get individual quanities for quick access from registers
+            double gradP_A_Wo_x =
+                gradient_W_pressure_at_Wo_[A_element_index][0];
+            double gradP_A_Wo_y =
+                gradient_W_pressure_at_Wo_[A_element_index][1];
+            double gradP_A_Wo_z =
+                gradient_W_pressure_at_Wo_[A_element_index][2];
+            double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
+            double gradP_B_Wo_x =
+                gradient_W_pressure_at_Wo_[B_element_index][0];
+            double gradP_B_Wo_y =
+                gradient_W_pressure_at_Wo_[B_element_index][1];
+            double gradP_B_Wo_z =
+                gradient_W_pressure_at_Wo_[B_element_index][2];
+            double p_B_Wo = gradient_W_pressure_at_Wo_[B_element_index][3];
+
+            // In frame W, the two linear functions are:
+            //      f₀(p_Wo) = grad_f0_W.dot(p_Wo) + f0_Wo.
+            //      f₁(p_Wo) = grad_f1_W.dot(p_Wo) + f1_Wo.
+            // Their equilibrium plane is:
+            //   (grad_f0_W - grad_f1_W).dot(p_Wo) + (f0_Wo - f1_Wo) = 0.
+            // Its perpendicular (but not necessarily unit-length) vector
+            // is:
+            //           n_W = grad_f0_W - grad_f1_W,
+            // which is in the direction of increasing f₀ and decreasing f₁.
+            double n_W_x = gradP_A_Wo_x - gradP_B_Wo_x;
+            double n_W_y = gradP_A_Wo_y - gradP_B_Wo_y;
+            double n_W_z = gradP_A_Wo_z - gradP_B_Wo_z;
+
+            double n_W_norm =
+                sycl::sqrt(n_W_x * n_W_x + n_W_y * n_W_y + n_W_z * n_W_z);
+            double n_W_x_normalized = n_W_x / n_W_norm;
+            double n_W_y_normalized = n_W_y / n_W_norm;
+            double n_W_z_normalized = n_W_z / n_W_norm;
+
+            if (n_W_norm <= 0.0) {
+              // Invalidate this check -> It will not generate a contact
+              // surface
+              invalidated_narrow_phase_checks_[local_check_index] = 1;
+              return;
+            }
+
+            // Normal has to point in the direction of increasing field_0
+            // and decreasing field_1
+            // Normalized pressure gradient is:
+            const double gradP_A_W_norm = sycl::sqrt(
+                gradP_A_Wo_x * gradP_A_Wo_x + gradP_A_Wo_y * gradP_A_Wo_y +
+                gradP_A_Wo_z * gradP_A_Wo_z);
+            const double gradP_A_W_normalized_x = gradP_A_Wo_x / gradP_A_W_norm;
+            const double gradP_A_W_normalized_y = gradP_A_Wo_y / gradP_A_W_norm;
+            const double gradP_A_W_normalized_z = gradP_A_Wo_z / gradP_A_W_norm;
+
+            const double cos_theta_A =
+                n_W_x_normalized * gradP_A_W_normalized_x +
+                n_W_y_normalized * gradP_A_W_normalized_y +
+                n_W_z_normalized * gradP_A_W_normalized_z;
+
+            const double kCosAlpha = sycl::cos(5. * M_PI / 8.);
+            if (cos_theta_A < kCosAlpha) {
+              // Invalidate this check -> It will not generate a contact
+              // surface
+              invalidated_narrow_phase_checks_[local_check_index] = 1;
+              return;
+            }
+
+            const double gradP_B_W_norm = sycl::sqrt(
+                gradP_B_Wo_x * gradP_B_Wo_x + gradP_B_Wo_y * gradP_B_Wo_y +
+                gradP_B_Wo_z * gradP_B_Wo_z);
+            const double gradP_B_W_normalized_x = gradP_B_Wo_x / gradP_B_W_norm;
+            const double gradP_B_W_normalized_y = gradP_B_Wo_y / gradP_B_W_norm;
+            const double gradP_B_W_normalized_z = gradP_B_Wo_z / gradP_B_W_norm;
+
+            // Normal given negative direction because we need to check that its
+            // pointing along the decreasing field
+            const double cos_theta_B =
+                -n_W_x_normalized * gradP_B_W_normalized_x +
+                -n_W_y_normalized * gradP_B_W_normalized_y +
+                -n_W_z_normalized * gradP_B_W_normalized_z;
+            if (cos_theta_B < kCosAlpha) {
+              // Invalidate this check -> It will not generate a contact
+              // surface
+              invalidated_narrow_phase_checks_[local_check_index] = 1;
+              return;
+            }
+
+            // Using the unit normal vector nhat_W, the plane equation (1)
+            // becomes:
+            //
+            //          nhat_W.dot(p_Wo) + Δ = 0,
+            //
+            // where Δ = (f0_Wo - f1_Wo)/‖n_W‖. One such p_Wo is:
+            //
+            //                          p_Wo = -Δ * nhat_W
+            //
+            double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
+            double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
+            double p_WQ_z = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_z_normalized;
+
+            double displacement = n_W_x_normalized * p_WQ_x +
+                                  n_W_y_normalized * p_WQ_y +
+                                  n_W_z_normalized * p_WQ_z;
+
+            // Store the normal and point
+            normals_W_[3 * local_check_index] = n_W_x_normalized;
+            normals_W_[3 * local_check_index + 1] = n_W_y_normalized;
+            normals_W_[3 * local_check_index + 2] = n_W_z_normalized;
+            points_W_[3 * local_check_index] = p_WQ_x;
+            points_W_[3 * local_check_index + 1] = p_WQ_y;
+            points_W_[3 * local_check_index + 2] = p_WQ_z;
+            displacements_W_[local_check_index] = displacement;
+          });
+    });
+    compute_equilibrium_plane_event.wait();
 
     std::vector<sycl::event> transform_events{transform_elem_quantities_event1,
-                                              transform_elem_quantities_event2,
-                                              transform_elem_quantities_event3};
+                                              transform_elem_quantities_event2};
     sycl::event::wait_and_throw(transform_events);
-
     sycl::free(narrow_phase_check_indices, q_device_);
     // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
