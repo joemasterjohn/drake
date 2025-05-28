@@ -17,6 +17,7 @@
 #include "drake/geometry/proximity/collision_filter.h"
 #include "drake/geometry/proximity/deformable_contact_internal.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
+#include "drake/geometry/proximity/sycl/sycl_proximity_engine.h"
 #include "drake/geometry/query_results/contact_surface.h"
 #include "drake/geometry/query_results/deformable_contact.h"
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
