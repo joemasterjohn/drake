@@ -4,6 +4,7 @@
 #include <array>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <type_traits>
 #include <unordered_map>
@@ -163,6 +164,11 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
   for (size_t i = 0; i < 4; ++i) {
     EXPECT_EQ(collision_filter[i], expected_collision_filter[i]);
   }
+
+  std::vector<size_t> prefix_sum =
+      SyclProximityEngineAttorney::get_prefix_sum(impl);
+  std::vector<size_t> expected_prefix_sum = {0, 1, 1, 2};
+  EXPECT_EQ(prefix_sum, expected_prefix_sum);
 }
 
 GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
@@ -214,6 +220,14 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
   for (size_t i = 0; i < 12; ++i) {
     EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
   }
+
+  std::vector<size_t> prefix_sum =
+      SyclProximityEngineAttorney::get_prefix_sum(impl);
+  std::vector<size_t> expected_prefix_sum(expected_collision_filter.size());
+  std::exclusive_scan(expected_collision_filter.begin(),
+                      expected_collision_filter.end(),
+                      expected_prefix_sum.begin(), 0);
+  EXPECT_EQ(prefix_sum, expected_prefix_sum);
 }
 
 GTEST_TEST(SPETest, TwoSpheresColliding) {
@@ -315,23 +329,77 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   // be false positives in the cpu filter. Therefore, we check that the sycl
   // filter is a subset of the cpu filter. Later on, we will verify that the cpu
   // narrow phase filters these out using true geometric quantites.
-  int num_false_positives_cpu = 0;
-
+  std::vector<int> mismatch_indices;
   for (int i = 0; i < ssize(expected_filter); ++i) {
     EXPECT_LE(collision_filter[i], expected_filter[i]);
     if (collision_filter[i] < expected_filter[i]) {
-      ++num_false_positives_cpu;
+      mismatch_indices.push_back(i);
     }
   }
 
-  drake::log()->info(
-      fmt::format("Num CPU false positives: {}\n", num_false_positives_cpu));
+  // Verify that each of the mismatches is TRULY a false positive from the CPU
+  // broadphase. To do this, we compute the Aabb's of the element pairs in the
+  // world frame, and then compute the intersection of those Aabb's and verify
+  // that each intersection is empty.
+  const auto CalcAabb = [](const Vector3d& a, const Vector3d& b,
+                           const Vector3d& c, const Vector3d& d) {
+    Vector3d min = a;
+    Vector3d max = a;
+    min = min.cwiseMin(b);
+    max = max.cwiseMax(b);
+    min = min.cwiseMin(c);
+    max = max.cwiseMax(c);
+    min = min.cwiseMin(d);
+    max = max.cwiseMax(d);
+    return std::make_pair(min, max);
+  };
+
+  for(int i : mismatch_indices) {
+    int eA = i / soft_geometryB.mesh().num_elements();
+    int eB = i - eA * soft_geometryB.mesh().num_elements();
+    const auto [minA, maxA] =
+        CalcAabb(X_WA * soft_geometryA.mesh().vertex(
+                            soft_geometryA.mesh().element(eA).vertex(0)),
+                 X_WA * soft_geometryA.mesh().vertex(
+                            soft_geometryA.mesh().element(eA).vertex(1)),
+                 X_WA * soft_geometryA.mesh().vertex(
+                            soft_geometryA.mesh().element(eA).vertex(2)),
+                 X_WA * soft_geometryA.mesh().vertex(
+                            soft_geometryA.mesh().element(eA).vertex(3)));
+    const auto [minB, maxB] =
+        CalcAabb(X_WB * soft_geometryB.mesh().vertex(
+                            soft_geometryB.mesh().element(eB).vertex(0)),
+                 X_WB * soft_geometryB.mesh().vertex(
+                            soft_geometryB.mesh().element(eB).vertex(1)),
+                 X_WB * soft_geometryB.mesh().vertex(
+                            soft_geometryB.mesh().element(eB).vertex(2)),
+                 X_WB * soft_geometryB.mesh().vertex(
+                            soft_geometryB.mesh().element(eB).vertex(3)));
+    // Compute the bounds of the intersection of the Aabbs. The intersection is
+    // empty if at least one of the dimensions has negative width.
+    const Vector3d intersection_min = minA.cwiseMax(minB);
+    const Vector3d intersection_max = maxA.cwiseMin(maxB);
+    const Vector3d intersection_widths = intersection_max - intersection_min;
+    EXPECT_LT(intersection_widths.minCoeff(), 0);
+  }
+
+  // Set the expected filter equal to test the prefix sum.
+  for (int i : mismatch_indices) {
+    expected_filter[i] = 0;
+  }
+
+  std::vector<size_t> prefix_sum =
+      SyclProximityEngineAttorney::get_prefix_sum(impl);
+  std::vector<size_t> expected_prefix_sum(expected_filter.size());
+  std::exclusive_scan(expected_filter.begin(), expected_filter.end(),
+                      expected_prefix_sum.begin(), 0);
+  EXPECT_EQ(prefix_sum, expected_prefix_sum);
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
   constexpr double radius = 0.5;
-  constexpr double resolution_hint_A = 0.25 * radius;
-  constexpr double resolution_hint_B = 0.5 * radius;
+  constexpr double resolution_hint_A = 0.5 * radius;
+  constexpr double resolution_hint_B = 0.75 * radius;
   constexpr double resolution_hint_C = radius;
   constexpr double hydroelastic_modulus = 1e+7;
 
@@ -493,17 +561,109 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   // be false positives in the cpu filter. Therefore, we check that the sycl
   // filter is a subset of the cpu filter. Later on, we will verify that the cpu
   // narrow phase filters these out using true geometric quantites.
-  int num_false_positives_cpu = 0;
-
+  std::vector<int> mismatch_indices;
   for (int i = 0; i < ssize(expected_filter); ++i) {
     EXPECT_LE(collision_filter[i], expected_filter[i]);
     if (collision_filter[i] < expected_filter[i]) {
-      ++num_false_positives_cpu;
+      mismatch_indices.push_back(i);
     }
   }
 
-  drake::log()->info(
-      fmt::format("Num CPU false positives: {}\n", num_false_positives_cpu));
+  // Verify that each of the mismatches is TRULY a false positive from the CPU
+  // broadphase. To do this, we compute the Aabb's of the element pairs in the
+  // world frame, and then compute the intersection of those Aabb's and verify
+  // that each intersection is empty.
+  const auto CalcAabb = [](const Vector3d& a, const Vector3d& b,
+                           const Vector3d& c, const Vector3d& d) {
+    Vector3d min = a;
+    Vector3d max = a;
+    min = min.cwiseMin(b);
+    max = max.cwiseMax(b);
+    min = min.cwiseMin(c);
+    max = max.cwiseMax(c);
+    min = min.cwiseMin(d);
+    max = max.cwiseMax(d);
+    return std::make_pair(min, max);
+  };
+
+  for (int i : mismatch_indices) {
+    Vector3d min0, max0, min1, max1;
+
+    if (i > (AB_size + AC_size)) {
+      int eB = (i - (AB_size + AC_size)) / num_C;
+      int eC = (i - (AB_size + AC_size)) - eB * num_C;
+      std::tie(min0, max0) =
+          CalcAabb(X_WB * soft_geometryB.mesh().vertex(
+                              soft_geometryB.mesh().element(eB).vertex(0)),
+                   X_WB * soft_geometryB.mesh().vertex(
+                              soft_geometryB.mesh().element(eB).vertex(1)),
+                   X_WB * soft_geometryB.mesh().vertex(
+                              soft_geometryB.mesh().element(eB).vertex(2)),
+                   X_WB * soft_geometryB.mesh().vertex(
+                              soft_geometryB.mesh().element(eB).vertex(3)));
+      std::tie(min1, max1) =
+          CalcAabb(X_WC * soft_geometryC.mesh().vertex(
+                              soft_geometryC.mesh().element(eC).vertex(0)),
+                   X_WC * soft_geometryC.mesh().vertex(
+                              soft_geometryC.mesh().element(eC).vertex(1)),
+                   X_WC * soft_geometryC.mesh().vertex(
+                              soft_geometryC.mesh().element(eC).vertex(2)),
+                   X_WC * soft_geometryC.mesh().vertex(
+                              soft_geometryC.mesh().element(eC).vertex(3)));
+    } else {
+      int eA = i / (num_B + num_C);
+      int eB = i - eA * (num_B + num_C);
+      std::tie(min0, max0) =
+          CalcAabb(X_WA * soft_geometryA.mesh().vertex(
+                              soft_geometryA.mesh().element(eA).vertex(0)),
+                   X_WA * soft_geometryA.mesh().vertex(
+                              soft_geometryA.mesh().element(eA).vertex(1)),
+                   X_WA * soft_geometryA.mesh().vertex(
+                              soft_geometryA.mesh().element(eA).vertex(2)),
+                   X_WA * soft_geometryA.mesh().vertex(
+                              soft_geometryA.mesh().element(eA).vertex(3)));
+      if (eB > num_B) {
+        int eC = eB - num_B;
+        std::tie(min1, max1) =
+            CalcAabb(X_WC * soft_geometryC.mesh().vertex(
+                                soft_geometryC.mesh().element(eC).vertex(0)),
+                     X_WC * soft_geometryC.mesh().vertex(
+                                soft_geometryC.mesh().element(eC).vertex(1)),
+                     X_WC * soft_geometryC.mesh().vertex(
+                                soft_geometryC.mesh().element(eC).vertex(2)),
+                     X_WC * soft_geometryC.mesh().vertex(
+                                soft_geometryC.mesh().element(eC).vertex(3)));
+      } else {
+        std::tie(min1, max1) =
+            CalcAabb(X_WB * soft_geometryB.mesh().vertex(
+                                soft_geometryB.mesh().element(eB).vertex(0)),
+                     X_WB * soft_geometryB.mesh().vertex(
+                                soft_geometryB.mesh().element(eB).vertex(1)),
+                     X_WB * soft_geometryB.mesh().vertex(
+                                soft_geometryB.mesh().element(eB).vertex(2)),
+                     X_WB * soft_geometryB.mesh().vertex(
+                                soft_geometryB.mesh().element(eB).vertex(3)));
+      }
+    }
+    // Compute the bounds of the intersection of the Aabbs. The intersection is
+    // empty if at least one of the dimensions has negative width.
+    const Vector3d intersection_min = min0.cwiseMax(min1);
+    const Vector3d intersection_max = max0.cwiseMin(max1);
+    const Vector3d intersection_widths = intersection_max - intersection_min;
+    EXPECT_LT(intersection_widths.minCoeff(), 0);
+  }
+
+  // Set the expected filter equal to test the prefix sum.
+  for (int i : mismatch_indices) {
+    expected_filter[i] = 0;
+  }
+
+  std::vector<size_t> prefix_sum =
+      SyclProximityEngineAttorney::get_prefix_sum(impl);
+  std::vector<size_t> expected_prefix_sum(expected_filter.size());
+  std::exclusive_scan(expected_filter.begin(), expected_filter.end(),
+                      expected_prefix_sum.begin(), 0);
+  EXPECT_EQ(prefix_sum, expected_prefix_sum);
 }
 
 }  // namespace

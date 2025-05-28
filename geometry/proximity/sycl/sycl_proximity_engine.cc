@@ -1056,6 +1056,18 @@ std::vector<uint8_t> SyclProximityEngineAttorney::get_collision_filter(
       .wait();
   return collision_filter_host;
 }
+
+std::vector<size_t> SyclProximityEngineAttorney::get_prefix_sum(
+    SyclProximityEngine::Impl* impl) {
+  size_t total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
+  std::vector<size_t> prefix_sum_host(total_checks);
+  auto q = impl->q_device_;
+  auto prefix_sum = impl->prefix_sum_;
+  q.memcpy(prefix_sum_host.data(), prefix_sum, total_checks * sizeof(size_t))
+      .wait();
+  return prefix_sum_host;
+}
+
 std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
     SyclProximityEngine::Impl* impl) {
   auto q = impl->q_device_;
