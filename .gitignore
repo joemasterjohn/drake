@@ -29,3 +29,10 @@
 
 # User-specified configuration
 /user.bazelrc
+
+# profiling reports
+*.ncu-rep
+*.nsys-rep
+*.sqlite
+*.png
+*.csv

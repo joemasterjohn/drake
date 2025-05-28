@@ -1,7 +1,13 @@
+#include <cstdlib>
+#include <filesystem>
+
 #include <gflags/gflags.h>
 
+#include "drake/common/cpu_timing_logger.h"
 #include "drake/common/drake_copyable.h"
 #include "drake/common/eigen_types.h"
+#include "drake/common/problem_size_logger.h"
+#include "drake/geometry/proximity_properties.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant_config_functions.h"
 #include "drake/multibody/tree/prismatic_joint.h"
@@ -31,7 +37,7 @@ DEFINE_double(mbp_discrete_update_period, 4.0e-2,
               "If positive, the period (in seconds) of the discrete updates "
               "for the plant modeled as a discrete system."
               "This parameter must be non-negative.");
-DEFINE_string(contact_model, "hydroelastic",
+DEFINE_string(contact_model, "hydroelastic_with_fallback",
               "Contact model. Options are: 'point', 'hydroelastic', "
               "'hydroelastic_with_fallback'.");
 DEFINE_string(contact_surface_representation, "polygon",
@@ -40,6 +46,10 @@ DEFINE_string(contact_surface_representation, "polygon",
 DEFINE_string(contact_approximation, "tamsi",
               "Discrete contact approximation. Options are: 'tamsi', "
               "'sap', 'similar', 'lagged'");
+DEFINE_bool(
+    use_sycl, false,
+    "Use SYCL for hydroelastic contact. This flag is only used when "
+    "the contact model is 'hydroelastic' or 'hydroelastic_with_fallback'.");
 
 // Simulator settings.
 DEFINE_double(realtime_rate, 1,
@@ -54,6 +64,10 @@ DEFINE_string(integration_scheme, "implicit_euler",
               "Integration scheme to be used. Available options are: "
               "'semi_explicit_euler','runge_kutta2','runge_kutta3',"
               "'implicit_euler'");
+
+DEFINE_int32(mesh_res, 5, "Mesh resolution hint for the spatula. In (mm)");
+
+DEFINE_bool(print_perf, true, "Print performance statistics");
 
 namespace drake {
 
@@ -127,6 +141,107 @@ class Square final : public systems::LeafSystem<double> {
   const Eigen::VectorXd phase_;
 };
 
+void PrintPerformanceStats(
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::geometry::SceneGraph<double>& scene_graph,
+    const drake::systems::Context<double>& scene_graph_context, bool sycl_used,
+    int mesh_res) {
+  std::string demo_name = "spatula_slip_control_" + std::to_string(mesh_res);
+  std::string runtime_device;
+  const char* env_var = std::getenv("ONEAPI_DEVICE_SELECTOR");
+  if (env_var != nullptr) {
+    runtime_device = env_var;
+  }
+  std::string out_dir = "/home/huzaifaunjhawala/drake/performance_jsons/";
+  std::string run_type;
+  if (runtime_device.empty()) {
+    run_type = sycl_used ? "sycl-gpu" : "drake-cpu";
+  } else if (runtime_device == "cuda:*" || runtime_device == "cuda:gpu") {
+    run_type = sycl_used ? "sycl-gpu" : "drake-cpu";
+  } else {
+    run_type = "sycl-cpu";
+  }
+
+  std::string json_path =
+      out_dir + "/" + demo_name + "_" + run_type + "_problem_size.json";
+
+  // Ensure output directory exists
+  if (!std::filesystem::exists(out_dir)) {
+    std::cerr << "Performance output directory does not exist: " << out_dir
+              << std::endl;
+    return;
+  }
+
+  fmt::print("Problem Size Stats:\n");
+  const auto& inspector = scene_graph.model_inspector();
+  int hydro_bodies = 0;
+  std::ostringstream hydro_json;
+  hydro_json << "\"hydroelastic_bodies\": [";
+  bool first = true;
+  for (int i = 0; i < plant.num_bodies(); ++i) {
+    const auto& body = plant.get_body(drake::multibody::BodyIndex(i));
+    bool has_hydro = false;
+    int tet_count = 0;
+    for (const auto& gid : plant.GetCollisionGeometriesForBody(body)) {
+      const auto* props = inspector.GetProximityProperties(gid);
+      if (props &&
+          props->HasProperty(drake::geometry::internal::kHydroGroup,
+                             drake::geometry::internal::kComplianceType)) {
+        has_hydro = true;
+      }
+      auto mesh_variant = inspector.maybe_get_hydroelastic_mesh(gid);
+      if (std::holds_alternative<const drake::geometry::VolumeMesh<double>*>(
+              mesh_variant)) {
+        const auto* mesh =
+            std::get<const drake::geometry::VolumeMesh<double>*>(mesh_variant);
+        if (mesh) tet_count += mesh->num_elements();
+      }
+    }
+    if (has_hydro) ++hydro_bodies;
+    if (tet_count > 0) {
+      if (!first) hydro_json << ",";
+      first = false;
+      hydro_json << "{ \"body\": \"" << body.name()
+                 << "\", \"tetrahedra\": " << tet_count << "}";
+    }
+  }
+  hydro_json << "]";
+  fmt::print("Number of bodies with hydroelastic contact: {}\n", hydro_bodies);
+  for (int i = 0; i < plant.num_bodies(); ++i) {
+    const auto& body = plant.get_body(drake::multibody::BodyIndex(i));
+    int tet_count = 0;
+    for (const auto& gid : plant.GetCollisionGeometriesForBody(body)) {
+      auto mesh_variant = inspector.maybe_get_hydroelastic_mesh(gid);
+      if (std::holds_alternative<const drake::geometry::VolumeMesh<double>*>(
+              mesh_variant)) {
+        const auto* mesh =
+            std::get<const drake::geometry::VolumeMesh<double>*>(mesh_variant);
+        if (mesh) tet_count += mesh->num_elements();
+      }
+    }
+    if (tet_count > 0) {
+      fmt::print("Body '{}' has {} tetrahedra in its hydroelastic mesh.\n",
+                 body.name(), tet_count);
+    }
+  }
+  drake::common::ProblemSizeLogger::GetInstance().PrintStats();
+  drake::common::ProblemSizeLogger::GetInstance().PrintStatsJson(
+      json_path, hydro_json.str());
+
+  fmt::print("Timing Stats:\n");
+  json_path =
+      out_dir + "/" + demo_name + "_" + run_type + "_timing_overall.json";
+
+  drake::common::CpuTimingLogger::GetInstance().PrintStats();
+  drake::common::CpuTimingLogger::GetInstance().PrintStatsJson(json_path);
+  json_path = out_dir + "/" + demo_name + "_" + run_type + "_timing.json";
+  const auto& query_object =
+      scene_graph.get_query_output_port().Eval<geometry::QueryObject<double>>(
+          scene_graph_context);
+  query_object.PrintSyclTimingStats();
+  query_object.PrintSyclTimingStatsJson(json_path);
+}
+
 int DoMain() {
   // Construct a MultibodyPlant and a SceneGraph.
   systems::DiagramBuilder<double> builder;
@@ -150,7 +265,8 @@ int DoMain() {
       "schunk_wsg_50_hydro_bubble.sdf");
   parser.AddModelsFromUrl(
       "package://drake/examples/hydroelastic/spatula_slip_control/"
-      "spatula.sdf");
+      "spatula" +
+      std::to_string(FLAGS_mesh_res) + ".sdf");
   // Pose the gripper and weld it to the world.
   const math::RigidTransform<double> X_WF0 = math::RigidTransform<double>(
       math::RollPitchYaw(0.0, -1.57, 0.0), Eigen::Vector3d(0, 0, 0.25));
@@ -205,11 +321,24 @@ int DoMain() {
   Context<double>& plant_context =
       diagram->GetMutableSubsystemContext(plant, &mutable_root_context);
 
+  Context<double>& scene_graph_context =
+      diagram->GetMutableSubsystemContext(scene_graph, &mutable_root_context);
   // Set spatula's free body pose.
   const math::RigidTransform<double> X_WF1 = math::RigidTransform<double>(
       math::RollPitchYaw(-0.4, 0.0, 1.57), Eigen::Vector3d(0.35, 0, 0.25));
   const auto& base_link = plant.GetBodyByName("spatula");
   plant.SetFreeBodyPose(&plant_context, base_link, X_WF1);
+  if (FLAGS_use_sycl) {
+    if (FLAGS_contact_model == "hydroelastic" ||
+        FLAGS_contact_model == "hydroelastic_with_fallback") {
+      plant.set_sycl_for_hydroelastic_contact(true);
+    } else {
+      fmt::print(stderr,
+                 "SYCL is not used for hydroelastic contact because "
+                 "the contact model is not 'hydroelastic' or "
+                 "'hydroelastic_with_fallback'.\n");
+    }
+  }
 
   // Set finger joint positions.
   const PrismaticJoint<double>& left_joint =
@@ -229,15 +358,24 @@ int DoMain() {
   //  torques; however, contact surfaces are not recorded properly.
   //  For now, we delete contact surfaces to prevent confusion in the playback.
   //  Remove deletion when 19142 is resovled.
-  meshcat->Delete("/drake/contact_forces/hydroelastic/"
-                 "left_finger_bubble+spatula/"
-                 "contact_surface");
-  meshcat->Delete("/drake/contact_forces/hydroelastic/"
-                  "right_finger_bubble+spatula/"
-                  "contact_surface");
+  meshcat->Delete(
+      "/drake/contact_forces/hydroelastic/"
+      "left_finger_bubble+spatula/"
+      "contact_surface");
+  meshcat->Delete(
+      "/drake/contact_forces/hydroelastic/"
+      "right_finger_bubble+spatula/"
+      "contact_surface");
   meshcat->PublishRecording();
-
-  systems::PrintSimulatorStatistics(simulator);
+  if (FLAGS_print_perf) {
+    if (FLAGS_use_sycl) {
+      PrintPerformanceStats(plant, scene_graph, scene_graph_context,
+                            /*sycl_used=*/true, FLAGS_mesh_res);
+    } else {
+      PrintPerformanceStats(plant, scene_graph, scene_graph_context,
+                            /*sycl_used=*/false, FLAGS_mesh_res);
+    }
+  }
   return 0;
 }
 

@@ -63,6 +63,15 @@ class SyclProximityEngine {
       const std::unordered_map<GeometryId, math::RigidTransform<double>>&
           X_WGs);
 
+  /* Prints timing statistics for all SYCL kernels if timing is enabled.
+   * This method has no effect if DRAKE_SYCL_TIMING_ENABLED is not defined. */
+  void PrintTimingStats() const;
+
+  /* Prints timing statistics for all SYCL kernels in JSON format if timing is
+   * enabled. This method has no effect if DRAKE_SYCL_TIMING_ENABLED is not
+   * defined. */
+  void PrintTimingStatsJson(const std::string& path) const;
+
  private:
   // The implementation class
   class Impl;
@@ -81,6 +90,7 @@ class SyclProximityEngineAttorney {
 
   static std::vector<uint8_t> get_collision_filter(
       SyclProximityEngine::Impl* impl);
+  static std::vector<size_t> get_prefix_sum(SyclProximityEngine::Impl* impl);
   static std::vector<Vector3<double>> get_vertices_M(
       SyclProximityEngine::Impl* impl);
   static std::vector<Vector3<double>> get_vertices_W(
@@ -95,6 +105,22 @@ class SyclProximityEngineAttorney {
   static size_t* get_collision_filter_host_body_index(
       SyclProximityEngine::Impl* impl);
   static size_t get_total_checks(SyclProximityEngine::Impl* impl);
+  static size_t get_total_narrow_phase_checks(SyclProximityEngine::Impl* impl);
+  static size_t get_total_polygons(SyclProximityEngine::Impl* impl);
+  static std::vector<size_t> get_narrow_phase_check_indices(
+      SyclProximityEngine::Impl* impl);
+  static std::vector<size_t> get_valid_polygon_indices(
+      SyclProximityEngine::Impl* impl);
+  static std::vector<double> get_polygon_areas(SyclProximityEngine::Impl* impl);
+  static std::vector<Vector3<double>> get_polygon_centroids(
+      SyclProximityEngine::Impl* impl);
+  static std::vector<double> get_debug_polygon_vertices(
+      SyclProximityEngine::Impl* impl);
+
+  // Timing logger access
+  static void PrintTimingStats(SyclProximityEngine::Impl* impl);
+  static void PrintTimingStatsJson(SyclProximityEngine::Impl* impl,
+                                   const std::string& path);
 };
 
 }  // namespace sycl_impl

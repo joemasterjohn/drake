@@ -12,15 +12,6 @@ drake_cc_library(
     name = "sycl_hydroelastic_surface",
     srcs = ["sycl_hydroelastic_surface.cc"],
     hdrs = ["sycl_hydroelastic_surface.h"],
-    copts = [
-        "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
-        "-DEIGEN_DONT_VECTORIZE",
-    ],
-    linkopts = [
-        "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
-    ],
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
@@ -32,11 +23,17 @@ drake_cc_library(
 drake_cc_library(
     name = "sycl_proximity_engine",
     srcs = ["sycl_proximity_engine.cc"],
-    hdrs = ["sycl_proximity_engine.h"],
+    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h", "utils/sycl_hydroelastic_surface_creator.h", "utils/sycl_memory_manager.h", "utils/sycl_contact_polygon.h", "utils/sycl_device_types.h", "utils/sycl_timing_logger.h", "utils/sycl_naive_broad_phase.h"],
     visibility = ["//geometry:__pkg__"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda -arch=sm_89",
+        "--cuda-gpu-arch=sm_89",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda",
+        #"-lineinfo",
+        #"-gline-tables-only",
+        #"-Xsycl-target-backend=nvptx64-nvidia-cuda -lineinfo",
         "-DEIGEN_DONT_VECTORIZE",
         "-I/opt/intel/oneapi/dpl/2022.8/include",
         "-Wno-old-style-cast",
@@ -45,13 +42,15 @@ drake_cc_library(
         "-Wno-deprecated-copy-with-dtor",
         "-Wno-deprecated-copy-with-user-provided-copy",
         "-Wno-sign-compare",
+        "-Wno-unused-but-set-variable",
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
     ],
     deps = [
         "//common:essential",
+        "//common:problem_size_logger",
         "//geometry:geometry_ids",
         "//math:geometric_transform",
         ":sycl_hydroelastic_surface",
@@ -63,16 +62,17 @@ drake_cc_googletest(
     srcs = ["test/sycl_proximity_engine_test.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
         "-DEIGEN_DONT_VECTORIZE",
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
     ],
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
+        "//geometry/proximity:field_intersection",
         "//math:geometric_transform",
         ":sycl_hydroelastic_surface",
         ":sycl_proximity_engine"

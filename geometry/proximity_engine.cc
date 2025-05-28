@@ -770,13 +770,6 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   ComputeContactSurfaces(
       HydroelasticContactRepresentation representation,
       const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
-    // Instantiate SYCL engine if available but not yet created
-    if (is_sycl_available_ && !sycl_engine_) {
-      // For now, just instantiate it but don't use it
-      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
-          hydroelastic_geometries_.SoftGeometries());
-    }
-
     std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
 
     vector<ContactSurface<T>> surfaces;
@@ -800,6 +793,38 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     CullFlatten(&surface_ptrs, &surfaces);
     DRAKE_ASSERT(IsSortedByOrder(surfaces));
     return surfaces;
+  }
+
+  template <typename T1 = T>
+  typename std::enable_if_t<std::is_same_v<T1, double>,
+                            std::vector<sycl_impl::SYCLHydroelasticSurface>>
+  ComputeContactSurfacesWithSycl(
+      HydroelasticContactRepresentation representation,
+      const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
+    if (!sycl_engine_) {
+      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
+          hydroelastic_geometries_.SoftGeometries());
+    }
+
+    return sycl_engine_->ComputeSYCLHydroelasticSurface(X_WGs);
+  }
+
+  template <typename T1 = T>
+  typename std::enable_if_t<std::is_same_v<T1, double>, void>
+  PrintSyclTimingStats() const {
+    // Only print timing stats if SYCL is available and the engine has been
+    // created
+    if (sycl_engine_) {
+      sycl_engine_->PrintTimingStats();
+    }
+  }
+
+  template <typename T1 = T>
+  typename std::enable_if_t<std::is_same_v<T1, double>, void>
+  PrintSyclTimingStatsJson(const std::string& path) const {
+    if (sycl_engine_) {
+      sycl_engine_->PrintTimingStatsJson(path);
+    }
   }
 
   template <typename T1 = T>
@@ -1443,6 +1468,30 @@ ProximityEngine<T>::ComputeContactSurfacesWithFallback(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<std::is_same_v<T1, double>,
+                          std::vector<sycl_impl::SYCLHydroelasticSurface>>
+ProximityEngine<T>::ComputeContactSurfacesWithSycl(
+    HydroelasticContactRepresentation representation,
+    const std::unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
+  return impl_->ComputeContactSurfacesWithSycl(representation, X_WGs);
+}
+
+template <typename T>
+template <typename T1>
+typename std::enable_if_t<std::is_same_v<T1, double>, void>
+ProximityEngine<T>::PrintSyclTimingStats() const {
+  impl_->PrintSyclTimingStats();
+}
+
+template <typename T>
+template <typename T1>
+typename std::enable_if_t<std::is_same_v<T1, double>, void>
+ProximityEngine<T>::PrintSyclTimingStatsJson(const std::string& path) const {
+  impl_->PrintSyclTimingStatsJson(path);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<std::is_same_v<T1, double>, void>
 ProximityEngine<T>::ComputeDeformableContact(
     DeformableContact<T>* deformable_contact) const {
@@ -1505,6 +1554,16 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(
     DeformableContact<double>*) const;
+
+template std::vector<sycl_impl::SYCLHydroelasticSurface>
+ProximityEngine<double>::ComputeContactSurfacesWithSycl<double>(
+    HydroelasticContactRepresentation,
+    const std::unordered_map<GeometryId, math::RigidTransform<double>>&) const;
+
+template void ProximityEngine<double>::PrintSyclTimingStats<double>() const;
+
+template void ProximityEngine<double>::PrintSyclTimingStatsJson<double>(
+    const std::string&) const;
 
 }  // namespace internal
 }  // namespace geometry

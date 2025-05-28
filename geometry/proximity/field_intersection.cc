@@ -5,7 +5,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "drake/common/cpu_timing_logger.h"
 #include "drake/common/default_scalars.h"
+#include "drake/common/problem_size_logger.h"
 #include "drake/geometry/proximity/contact_surface_utility.h"
 #include "drake/geometry/proximity/mesh_intersection.h"
 #include "drake/geometry/proximity/mesh_plane_intersection.h"
@@ -237,18 +239,27 @@ void VolumeIntersector<MeshBuilder, BvType>::IntersectFields(
     candidate_tetrahedra.emplace_back(tet0, tet1);
     return BvttCallbackResult::Continue;
   };
-
-  bvh0_M.Collide(bvh1_N, convert_to_double(X_MN), callback);
-
+  {
+    DRAKE_CPU_SCOPED_TIMER("BroadPhase");
+    bvh0_M.Collide(bvh1_N, convert_to_double(X_MN), callback);
+  }
   MeshBuilder builder_M;
   const math::RotationMatrix<T> R_NM = X_MN.rotation().inverse();
-  for (const auto& [tet0, tet1] : candidate_tetrahedra) {
-    CalcContactPolygon(field0_M, field1_N, X_MN, R_NM, tet0, tet1, &builder_M);
+  drake::common::ProblemSizeLogger::GetInstance().AddCount(
+      "CandidateTets", candidate_tetrahedra.size());
+  {
+    DRAKE_CPU_SCOPED_TIMER("NarrowPhase");
+    for (const auto& [tet0, tet1] : candidate_tetrahedra) {
+      CalcContactPolygon(field0_M, field1_N, X_MN, R_NM, tet0, tet1,
+                         &builder_M);
+    }
+
+    if (builder_M.num_faces() == 0) return;
+
+    std::tie(*surface_01_M, *e_01_M) = builder_M.MakeMeshAndField();
   }
-
-  if (builder_M.num_faces() == 0) return;
-
-  std::tie(*surface_01_M, *e_01_M) = builder_M.MakeMeshAndField();
+  drake::common::ProblemSizeLogger::GetInstance().AddCount(
+      "FacesInserted", builder_M.num_faces());
 }
 
 template <class MeshBuilder, class BvType>
