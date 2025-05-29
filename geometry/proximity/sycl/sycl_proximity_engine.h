@@ -81,8 +81,7 @@ class SyclProximityEngineAttorney {
 
   static std::vector<uint8_t> get_collision_filter(
       SyclProximityEngine::Impl* impl);
-  static std::vector<size_t> get_prefix_sum(
-      SyclProximityEngine::Impl* impl);
+  static std::vector<size_t> get_prefix_sum(SyclProximityEngine::Impl* impl);
   static std::vector<Vector3<double>> get_vertices_M(
       SyclProximityEngine::Impl* impl);
   static std::vector<Vector3<double>> get_vertices_W(

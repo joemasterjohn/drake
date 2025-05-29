@@ -24,6 +24,59 @@ namespace geometry {
 namespace internal {
 namespace sycl_impl {
 
+// Tetrahedon slice with EqPlane helper code from mesh_plane_intersection.cc
+
+/* This table essentially assigns an index to each edge in the tetrahedron.
+ Each edge is represented by its pair of vertex indexes. */
+using TetrahedronEdge = std::pair<int, int>;
+constexpr std::array<std::pair<int, int>, 6> kTetEdges = {
+    // base formed by vertices 0, 1, 2.
+    TetrahedronEdge{0, 1}, TetrahedronEdge{1, 2}, TetrahedronEdge{2, 0},
+    // pyramid with top at node 3.
+    TetrahedronEdge{0, 3}, TetrahedronEdge{1, 3}, TetrahedronEdge{2, 3}};
+
+/* Marching tetrahedra tables. Each entry in these tables have an index value
+ based on a binary encoding of the signs of the plane's signed distance
+ function evaluated at all tetrahedron vertices. Therefore, with four
+ vertices and two possible signs, we have a total of 16 entries. We encode
+ the table indexes in binary so that a "1" and "0" correspond to a vertex
+ with positive or negative signed distance, respectively. The least
+ significant bit (0) corresponds to vertex 0 in the tetrahedron, and the
+ most significant bit (3) is vertex 3. */
+
+/* Each entry of kMarchingTetsEdgeTable stores a vector of edges.
+ Based on the signed distance values, these edges are the ones that
+ intersect the plane. Edges are numbered according to the table kTetEdges.
+ The edges have been ordered such that a polygon formed by visiting the
+ listed edge's intersection vertices in the array order has a right-handed
+ normal pointing in the direction of the plane's normal. The accompanying
+ unit tests verify this.
+
+ A -1 is a sentinel value indicating no edge encoding. The number of
+ intersecting edges is equal to the index of the *first* -1 (with an implicit
+ logical -1 at index 4).  */
+// clang-format off
+constexpr std::array<std::array<int, 4>, 16> kMarchingTetsEdgeTable = {
+                                /* bits    3210 */
+    std::array<int, 4>{-1, -1, -1, -1}, /* 0000 */
+    std::array<int, 4>{0, 3, 2, -1},    /* 0001 */
+    std::array<int, 4>{0, 1, 4, -1},    /* 0010 */
+    std::array<int, 4>{4, 3, 2, 1},     /* 0011 */
+    std::array<int, 4>{1, 2, 5, -1},    /* 0100 */
+    std::array<int, 4>{0, 3, 5, 1},     /* 0101 */
+    std::array<int, 4>{0, 2, 5, 4},     /* 0110 */
+    std::array<int, 4>{3, 5, 4, -1},    /* 0111 */
+    std::array<int, 4>{3, 4, 5, -1},    /* 1000 */
+    std::array<int, 4>{4, 5, 2, 0},     /* 1001 */
+    std::array<int, 4>{1, 5, 3, 0},     /* 1010 */
+    std::array<int, 4>{1, 5, 2, -1},    /* 1011 */
+    std::array<int, 4>{1, 2, 3, 4},     /* 1100 */
+    std::array<int, 4>{0, 4, 1, -1},    /* 1101 */
+    std::array<int, 4>{0, 2, 3, -1},    /* 1110 */
+    std::array<int, 4>{-1, -1, -1, -1}  /* 1111 */};
+
+
+
 // Implementation class for SyclProximityEngine that contains all SYCL-specific
 // code
 class SyclProximityEngine::Impl {
@@ -723,9 +776,6 @@ class SyclProximityEngine::Impl {
         .wait();
 
     constexpr size_t LOCAL_SIZE = 128;  // 128 per work group
-    // Number of work groups
-    const size_t NUM_GROUPS =
-        (total_narrow_phase_checks + LOCAL_SIZE - 1) / LOCAL_SIZE;
     // Number of threads involved in the computations of one check
     // Minimum that can be set here is 4 -> Limits on shared memory requirements
     // Maximum can be set to 16 -> Limit for meaningful parallelization without
@@ -733,6 +783,12 @@ class SyclProximityEngine::Impl {
     constexpr size_t NUM_THREADS_PER_CHECK = 4;
     constexpr size_t NUM_CHECKS_IN_WORK_GROUP =
         LOCAL_SIZE / NUM_THREADS_PER_CHECK;
+    
+    // Calculate total threads needed (4 threads per check)
+    const size_t TOTAL_THREADS_NEEDED = total_narrow_phase_checks * NUM_THREADS_PER_CHECK;
+    // Number of work groups
+    const size_t NUM_GROUPS =
+        (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE;
     // Calculation of the number of doubles to be stored in shared memory per
     // check Eq. Plane - 2 x 3 = 6 doubles (normal and point), Polygon verticies
     // - 8 x 3 = 24 doubles, Inward normals - 2 x 4 x 3 = 24 doubles (Normals of
@@ -762,7 +818,11 @@ class SyclProximityEngine::Impl {
     constexpr size_t EDGE_B_DOUBLES = 18;
 
     constexpr size_t POLYGON_OFFSET = EDGE_B_OFFSET + EDGE_B_DOUBLES;
-    constexpr size_t POLYGON_DOUBLES = 24;
+    constexpr size_t POLYGON_DOUBLES = 8;
+
+    // Used varylingly through the kernel to express more parallelism
+    constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_OFFSET + POLYGON_DOUBLES;
+    constexpr size_t RANDOM_SCRATCH_DOUBLES = 8;
 
     // Calculate total doubles for verification
     constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
@@ -772,7 +832,13 @@ class SyclProximityEngine::Impl {
 
     constexpr size_t DOUBLES_PER_CHECK = EQ_PLANE_DOUBLES + VERTEX_DOUBLES +
                                          INWARD_NORMAL_DOUBLES + EDGE_DOUBLES +
-                                         POLYGON_DOUBLES;
+                                         POLYGON_DOUBLES + RANDOM_SCRATCH_DOUBLES;
+
+    
+    // Additionally lets have a random scratch space for storing INTS
+    // These will also be used varyingly throughout the kernel to express parallelism
+    constexpr size_t RANDOM_SCRATCH_INTS_OFFSET = 0;
+    constexpr size_t RANDOM_SCRATCH_INTS = 8;
 
     // We need to compute the equilibrium plane for each check
     // We will use the first NUM_CHECKS_IN_WORK_GROUP checks in the work group
@@ -795,6 +861,8 @@ class SyclProximityEngine::Impl {
       // quantities which we need both off)
       sycl::local_accessor<double, 1> slm(
           LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK, h);
+      sycl::local_accessor<int, 1> slm_ints(
+          LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS, h);
       h.parallel_for(
           sycl::nd_range<1>{NUM_GROUPS * LOCAL_SIZE, LOCAL_SIZE},
           [=, narrow_phase_check_indices = narrow_phase_check_indices,
@@ -812,7 +880,7 @@ class SyclProximityEngine::Impl {
                invalidated_narrow_phase_checks_](sycl::nd_item<1> item) {
             size_t global_id = item.get_global_id(0);
             // Early return for extra threads
-            if (global_id >= total_narrow_phase_checks) return;
+            if (global_id >= TOTAL_THREADS_NEEDED) return;
             size_t local_id = item.get_local_id(0);
             // In a group we have NUM_CHECKS_IN_WORK_GROUP checks
             // This gives us which check number in [0, NUM_CHECKS_IN_WORK_GROUP)
@@ -825,6 +893,9 @@ class SyclProximityEngine::Impl {
             // This offset is used to compute the positions each of the
             // quantities for reading and writing to slm
             size_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
+            
+            // Separate offset for slm_ints array
+            size_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
 
             // Each check has NUM_THREADS_PER_CHECK workers.
             // This index helps identify the check local worker id
@@ -979,6 +1050,7 @@ class SyclProximityEngine::Impl {
               slm[slm_offset + EQ_PLANE_OFFSET + 5] = p_WQ_z;
             }
 
+            // Move vertices and edge vectors to slm
             // Some quantities required for indexing
             const size_t geom_index_A = sh_element_mesh_ids_[A_element_index];
             const std::array<int, 4>& tet_vertices_A =
@@ -1003,16 +1075,7 @@ class SyclProximityEngine::Impl {
                     vertices_W_[vertex_mesh_offset_A + tet_vertices_A[llid]][i];
                 slm[slm_offset + VERTEX_B_OFFSET + llid * 3 + i] =
                     vertices_W_[vertex_mesh_offset_B + tet_vertices_B[llid]][i];
-
-                // Inward normals of element A
-                slm[slm_offset + INWARD_NORMAL_A_OFFSET + llid * 3 + i] =
-                    inward_normals_W_[A_element_index][llid][i];
-
-                // Inward normals of element B
-                slm[slm_offset + INWARD_NORMAL_B_OFFSET + llid * 3 + i] =
-                    inward_normals_W_[B_element_index][llid][i];
-              }
-
+                }
               // Quantities that we have "6" of
               for (size_t llid = check_local_item_id; llid < 6;
                    llid += NUM_THREADS_PER_CHECK) {
@@ -1023,6 +1086,109 @@ class SyclProximityEngine::Impl {
                 // Edge vectors of element B
                 slm[slm_offset + EDGE_B_OFFSET + llid * 3 + i] =
                     edge_vectors_W_[B_element_index][llid][i];
+              }
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+
+            // Slice element A with Eq Plane
+
+            // Compute signed distance of all vertices of element A with Eq plane
+            // Parallelization based on distance computation
+
+            for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
+             // Each thread gets 1 vertex of element A in slm
+             const double vertex_A_x = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 0];
+             const double vertex_A_y = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 1];
+             const double vertex_A_z = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 2];
+             // Each thread accesses the same Eq plane from slm
+             // TODO(huzaifa) - Will we have shMem bank conflict on Nvidia GPUs?
+             // Need to know if SYCL backend compiler propertly recognizes that this is a broadcast operation
+             // Normals
+             const double normal_x = slm[slm_offset + EQ_PLANE_OFFSET];
+             const double normal_y = slm[slm_offset + EQ_PLANE_OFFSET + 1];
+             const double normal_z = slm[slm_offset + EQ_PLANE_OFFSET + 2];
+             // Point on the plane
+             const double point_on_plane_x = slm[slm_offset + EQ_PLANE_OFFSET + 3];
+             const double point_on_plane_y = slm[slm_offset + EQ_PLANE_OFFSET + 4];
+             const double point_on_plane_z = slm[slm_offset + EQ_PLANE_OFFSET + 5];
+             // Compute the dispalcement of the plane from the origin of the frame (world in this case) as simple dot product
+             const double displacement = normal_x * point_on_plane_x + normal_y * point_on_plane_y + normal_z * point_on_plane_z;
+
+             // Compute signed distance of this vertex with Eq plane
+             // +ve height indicates point is above the plane
+             // -ve height indicates point is below the plane
+             // Store these in our random scratch space
+             slm[slm_offset + RANDOM_SCRATCH_OFFSET + llid] = normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z - displacement;
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+            
+            // Let one thread compute intersection code and store this in the shared memory for other threads
+            if(check_local_item_id == 0) {
+              int intersection_code = 0;
+              for(size_t llid = 0; llid < 4; llid++) {
+                if(slm[slm_offset + RANDOM_SCRATCH_OFFSET + llid] > 0.0) {
+                  intersection_code |= (1 << llid);
+                }
+              }
+              slm_ints[slm_ints_offset] = intersection_code;
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+            
+            // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon vertices
+            for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
+              const int edge_index = kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
+
+              // Only proceed if we are not at the end of edge list
+              if(edge_index != -1) {
+                // Get the tet edge
+               const TetrahedronEdge& tet_edge = kTetEdges[edge_index];
+                // Get the heights of these vertices from the scratch space
+               const double height_0 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + tet_edge.first];
+               const double height_1 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + tet_edge.second];
+
+               // Compute the intersection point
+               const double t = height_0 / (height_0 - height_1);
+
+
+               // Compute polygon vertices
+               // Loop is over x,y,z
+               for(size_t i = 0; i < 3; i++) {
+                const double vertex_0 = slm[slm_offset + VERTEX_A_OFFSET + tet_edge.first * 3 + i];
+                const double vertex_1 = slm[slm_offset + VERTEX_A_OFFSET + tet_edge.second * 3 + i];
+
+
+                const double intersection = vertex_0 + t * (vertex_1 - vertex_0);
+
+
+                // Store the intersection point in the polygon
+                slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] = intersection;
+               }
+
+
+              }
+              
+            }
+
+
+
+
+            
+            
+
+
+            // Move inward normals, edge vectors
+            // Loop is over x,y,z
+            for (size_t i = 0; i < 3; i++) {
+              // Quantities that we have "4" of
+              for (size_t llid = check_local_item_id; llid < 4;
+                   llid += NUM_THREADS_PER_CHECK) {
+                // Inward normals of element A
+                slm[slm_offset + INWARD_NORMAL_A_OFFSET + llid * 3 + i] =
+                    inward_normals_W_[A_element_index][llid][i];
+
+                // Inward normals of element B
+                slm[slm_offset + INWARD_NORMAL_B_OFFSET + llid * 3 + i] =
+                    inward_normals_W_[B_element_index][llid][i];
               }
               // Quantity that we have "8" of - For now set all the verticies of
               // the polygon to double max so that we know all are stale
