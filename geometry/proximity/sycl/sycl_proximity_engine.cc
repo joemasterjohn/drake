@@ -822,7 +822,7 @@ class SyclProximityEngine::Impl {
 
     // Used varylingly through the kernel to express more parallelism
     constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_OFFSET + POLYGON_DOUBLES;
-    constexpr size_t RANDOM_SCRATCH_DOUBLES = 8;
+    constexpr size_t RANDOM_SCRATCH_DOUBLES = 16;
 
     // Calculate total doubles for verification
     constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
@@ -1172,56 +1172,34 @@ class SyclProximityEngine::Impl {
                 // Store the intersection point in the polygon
                 slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] = intersection;
                }
-
               }
-              
             }
+            item.barrier(sycl::access::fence_space::local_space);
 
-            //Check for nearly duplicate vertices - if found, invalidate the entire check
-            if (check_local_item_id == 0) {
-                constexpr double kEpsSquared = 1e-14 * 1e-14;
-                bool has_duplicates = false;
-                
-                // Count valid vertices first
-                int valid_vertex_count = 0;
-                for (size_t i = 0; i < 4; i++) {
-                    if (slm[slm_offset + POLYGON_OFFSET + i * 3] != std::numeric_limits<double>::max()) {
-                        valid_vertex_count++;
+         
+            // Compute current polygon size by checking number of max values
+            if(check_local_item_id == 0) {
+                int polygon_size = 0;
+                for(size_t i = 0; i < 4; i++) {
+                    // TODO - Is just checking x enough? Should be I think
+                    if(slm[slm_offset + POLYGON_OFFSET + i * 3 + 0] != std::numeric_limits<double>::max()) {
+                        polygon_size++;
                     }
                 }
-                
-                // Only check if we have at least 2 vertices
-                if (valid_vertex_count >= 2) {
-                    // Check all pairs of valid vertices
-                    for (int i = 0; i < valid_vertex_count && !has_duplicates; i++) {
-                        for (int j = i + 1; j < valid_vertex_count; j++) {
-                            double dx = slm[slm_offset + POLYGON_OFFSET + i * 3 + 0] - 
-                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 0];
-                            double dy = slm[slm_offset + POLYGON_OFFSET + i * 3 + 1] - 
-                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 1];
-                            double dz = slm[slm_offset + POLYGON_OFFSET + i * 3 + 2] - 
-                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 2];
-                            
-                            double dist_squared = dx * dx + dy * dy + dz * dz;
-                            
-                            if (dist_squared < kEpsSquared) {
-                                has_duplicates = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // If we have duplicates or too few vertices, invalidate the check
-                if (has_duplicates || valid_vertex_count < 3) {
+                slm_ints[slm_ints_offset] = polygon_size;
+
+                // If size is too small, invalidate the check
+                if(polygon_size < 3) {
                     invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
                 }
             }
+            item.barrier(sycl::access::fence_space::local_space);
 
-            // Exit threads that have invalidated checks
+            // Exit all invalidated checks
             if(invalidated_narrow_phase_checks_[narrow_phase_check_index]) {
-              return;
+                return;
             }
+
 
             // Move inward normals, edge vectors
             // Loop is over x,y,z
@@ -1238,9 +1216,54 @@ class SyclProximityEngine::Impl {
                     inward_normals_W_[B_element_index][llid][i];
               }
             }
+            item.barrier(sycl::access::fence_space::local_space);
 
             // Now we compute the height of the polygon vertices from faces of polygon B
-            // Each thread will handle one vertex of the polygon (there are 4 vertices)
+            // We have 4 faces checked with polygon size vertices =  4 * polygon_size jobs
+            size_t polygon_size = static_cast<size_t>(slm_ints[slm_ints_offset]);
+            size_t jobs = 4 * polygon_size;
+            for(size_t job = check_local_item_id; job < jobs; job += NUM_THREADS_PER_CHECK) {
+              // Get the face index (think of as row index)
+              size_t face = job / polygon_size;
+              // Get the vertex index of polygon (think of as column index)
+              size_t polygon_vertex = job % polygon_size;
+
+              // Get the outward normal of the face, point on face, and polygon vertex
+              double outward_normal[3];
+              double point_on_face[3];
+              double polygon_vertex_coords[3];
+              
+              size_t face_vertex_index = (face + 1) % 4;
+              
+              // This loop is over x,y,z
+              for (size_t i = 0; i < 3; i++) {
+                outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
+                
+                // Get a point from the verticies of element B
+                // 'face' corresponds to the triangle formed by {0, 1, 2, 3} - {face}
+                // so any of (face+1)%4, (face+2)%4, (face+3)%4 are candidates for a
+                // point on the face's plane. We arbitrarily choose (face + 1) % 4.
+                point_on_face[i] = slm[slm_offset + VERTEX_B_OFFSET + face_vertex_index * 3 + i];
+                
+                // Get the polygon vertex
+                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_OFFSET + polygon_vertex * 3 + i];
+              }
+
+              // We will store our heights in the random scratch space that we have (we have upto 16 doubles space)
+              // They will be ordered in row major order
+              // [face_0_vertex_0, face_0_vertex_1, face_0_vertex_2, face_0_vertex_3, face_1_vertex_0, ...]
+              const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
+              slm[slm_offset + RANDOM_SCRATCH_OFFSET + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+
+            
+
+            
+
+
+
+
 
 
 
@@ -1258,7 +1281,7 @@ class SyclProximityEngine::Impl {
 
 
 
-          });
+        });
     });
 
     sycl::free(narrow_phase_check_indices, q_device_);
