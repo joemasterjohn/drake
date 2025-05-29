@@ -824,13 +824,13 @@ class SyclProximityEngine::Impl {
     constexpr size_t EDGE_B_DOUBLES = 18;
 
     constexpr size_t POLYGON_Q_OFFSET = EDGE_B_OFFSET + EDGE_B_DOUBLES;
-    constexpr size_t POLYGON_Q_DOUBLES = 4;
+    constexpr size_t POLYGON_Q_DOUBLES = 12; // 4 vertices
 
     constexpr size_t POLYGON_S_OFFSET = POLYGON_Q_OFFSET + POLYGON_Q_DOUBLES;
-    constexpr size_t POLYGON_S_DOUBLES = 4;
+    constexpr size_t POLYGON_S_DOUBLES = 12; // 4 vertices
 
     constexpr size_t POLYGON_I_OFFSET = POLYGON_S_OFFSET + POLYGON_S_DOUBLES;
-    constexpr size_t POLYGON_I_DOUBLES = 8;
+    constexpr size_t POLYGON_I_DOUBLES = 24; // 8 intersection points
 
     // Used varylingly through the kernel to express more parallelism
     constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_I_OFFSET + POLYGON_I_DOUBLES;
@@ -850,7 +850,7 @@ class SyclProximityEngine::Impl {
     // Additionally lets have a random scratch space for storing INTS
     // These will also be used varyingly throughout the kernel to express parallelism
     constexpr size_t RANDOM_SCRATCH_INTS_OFFSET = 0;
-    constexpr size_t RANDOM_SCRATCH_INTS = 8;
+    constexpr size_t RANDOM_SCRATCH_INTS = 16;
 
     // We need to compute the equilibrium plane for each check
     // We will use the first NUM_CHECKS_IN_WORK_GROUP checks in the work group
@@ -1044,8 +1044,8 @@ class SyclProximityEngine::Impl {
             // Compute signed distance of all vertices of element A with Eq plane
             // Parallelization based on distance computation
 
-            int polygon_Q_size = SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_Q_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
-            
+            SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_Q_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
+            size_t polygon_Q_size = static_cast<size_t>(slm_ints[slm_ints_offset]);
             if(check_local_item_id == 0) {
                 if(polygon_Q_size < 3) {
                     invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
@@ -1056,8 +1056,8 @@ class SyclProximityEngine::Impl {
             // =====================================
             // First element at slm_ints_offset is polygon size of Q, we will store the polygon size of S in the second element
             // Random scratch offset can be overwritten 
-            int polygon_S_size = SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset + 1, VERTEX_B_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_S_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
-
+            SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset + 1, VERTEX_B_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_S_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
+            size_t polygon_S_size = static_cast<size_t>(slm_ints[slm_ints_offset + 1]);
             if(check_local_item_id == 0) {
                 if(polygon_S_size < 3) {
                     invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
@@ -1069,8 +1069,7 @@ class SyclProximityEngine::Impl {
                 return;
             }
 
-
-            // Move inward normals, edge vectors
+            // Move inward normals
             // Loop is over x,y,z
             for (size_t i = 0; i < 3; i++) {
               // Quantities that we have "4" of
@@ -1087,15 +1086,14 @@ class SyclProximityEngine::Impl {
             }
             item.barrier(sycl::access::fence_space::local_space);
 
-            // Now we compute the height of the polygon vertices from faces of polygon B
-            // We have 4 faces checked with polygon size vertices =  4 * polygon_size jobs
-            size_t polygon_size = static_cast<size_t>(slm_ints[slm_ints_offset]);
-            size_t jobs = 4 * polygon_size;
-            for(size_t job = check_local_item_id; job < jobs; job += NUM_THREADS_PER_CHECK) {
+            // Now we compute the height of the polygon Q vertices from faces of polygon B
+            // We have 4 faces checked with polygon Q size vertices =  4 * polygon_Q_size jobs
+            const size_t jobs_Q = 4 * polygon_Q_size;
+            for(size_t job = check_local_item_id; job < jobs_Q; job += NUM_THREADS_PER_CHECK) {
               // Get the face index (think of as row index)
-              size_t face = job / polygon_size;
+              size_t face = job / polygon_Q_size;
               // Get the vertex index of polygon (think of as column index)
-              size_t polygon_vertex = job % polygon_size;
+              size_t polygon_vertex = job % polygon_Q_size;
 
               // Get the outward normal of the face, point on face, and polygon vertex
               double outward_normal[3];
@@ -1122,9 +1120,114 @@ class SyclProximityEngine::Impl {
               // They will be ordered in row major order
               // [face_0_vertex_0, face_0_vertex_1, face_0_vertex_2, face_0_vertex_3, face_1_vertex_0, ...]
               const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
+
+              // <= 0 is inside, > 0 is outside
               slm[slm_offset + RANDOM_SCRATCH_OFFSET + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;
             }
             item.barrier(sycl::access::fence_space::local_space);
+
+
+            // Now we compute the intersection points that may exist between the polygon Q edge and 
+            // the faces of polygon B
+            // We have to check 4 faces with polygon Q size edges (since size > 2, num vertices matches num edges)
+            // Each job now handles an edge of polygon Q
+            // We will just store intersection bools in our int random scratch and then process them into the polygon slm
+            // This is done to minimize slm space since otherwise we would need to store potentially 16 intersection vertices
+            const size_t jobs_Q_edges = 4 * polygon_Q_size;
+            for(size_t job = check_local_item_id; job < jobs_Q_edges; job += NUM_THREADS_PER_CHECK) {
+              // Assume 4 edges
+              // We have edges ordered {0,1}, {1, 2}, {2,3}, {3,1}
+              // First thread needs to look at 
+              //  slm[slm_offset + RANDOM_SCRATCH_OFFSET + 0] and slm[slm_offset + RANDOM_SCRATCH_OFFSET + 1] and compute signs to see if there is intersection with plane
+
+              const size_t face = job / polygon_Q_size;
+              const size_t vertex_0_height_index = job % polygon_Q_size;
+              const size_t vertex_1_height_index = (vertex_0_height_index + 1) % polygon_Q_size;
+
+              // Get the heights of the vertices
+              double height_0 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_0_height_index];
+              double height_1 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_1_height_index];
+              
+              if((height_0 <= 0 && height_1 <= 0) || (height_0 > 0 && height_1 > 0)) { // both outside or both inside
+                // No intersection
+                slm_ints[slm_ints_offset + job] = 0;
+              } else {
+                // Intersection
+                slm_ints[slm_ints_offset + job] = 1;
+              }
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+
+            // Get which edges intersect
+            int total_intersections = 0;
+            if(check_local_item_id == 0) {
+                int intersection_ids[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+                for(size_t i = 0; i < jobs_Q_edges; i++) {
+                    if(slm_ints[slm_ints_offset + i] == 1) {
+                        intersection_ids[total_intersections] = i;
+                        total_intersections++;
+                    }
+                }
+                slm_ints[slm_ints_offset] = total_intersections;
+                for(size_t i = 0; i < 8; i++) {
+                    slm_ints[slm_ints_offset + 1 + i] = intersection_ids[i];
+                }
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // Similarly compute the height of the polygon S vertices from the faces of polygon A
+            const size_t jobs_S = 4 * polygon_S_size;
+            for(size_t job = check_local_item_id; job < jobs_S; job += NUM_THREADS_PER_CHECK) {
+              // Get the face index (think of as row index)
+              size_t face = job / polygon_S_size;
+              // Get the vertex index of polygon (think of as column index)
+              size_t polygon_vertex = job % polygon_S_size;
+
+              // Get the outward normal of the face, point on face, and polygon vertex
+              double outward_normal[3];
+              double point_on_face[3];
+              double polygon_vertex_coords[3];
+              
+              size_t face_vertex_index = (face + 1) % 4;
+              
+              // This loop is over x,y,z
+              for (size_t i = 0; i < 3; i++) {
+                outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_A_OFFSET + face * 3 + i];
+                point_on_face[i] = slm[slm_offset + VERTEX_A_OFFSET + face_vertex_index * 3 + i];
+                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_S_OFFSET + polygon_vertex * 3 + i];
+              }
+              // jobs_Q offset because we still need the above scratch space in the future
+              const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
+              slm[slm_offset + RANDOM_SCRATCH_OFFSET + jobs_Q + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;              
+            }
+            item.barrier(sycl::access::fence_space::local_space);
+
+
+
+
+
+
+
+
 
             
 
@@ -1320,7 +1423,7 @@ class SyclProximityEngine::Impl {
 
 
   // Constructs and stores polygon in slm and returns polygon size
-  SYCL_EXTERNAL int SliceTetWithEqPlane(sycl::nd_item<1> item,
+  SYCL_EXTERNAL void SliceTetWithEqPlane(sycl::nd_item<1> item,
     const sycl::local_accessor<double, 1>& slm, const size_t slm_offset, const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset, const size_t vertex_offset, const size_t eq_plane_offset, const size_t random_scratch_offset, const size_t polygon_offset, const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK) {
 
         for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
@@ -1407,8 +1510,7 @@ class SyclProximityEngine::Impl {
 
         }
         item.barrier(sycl::access::fence_space::local_space);
-        return polygon_size;
-  }
+    }
 };
 
 bool SyclProximityEngine::is_available() {
