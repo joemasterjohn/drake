@@ -24,6 +24,12 @@ namespace geometry {
 namespace internal {
 namespace sycl_impl {
 
+#ifdef __SYCL_DEVICE_ONLY__
+#define DRAKE_SYCL_DEVICE_INLINE [[sycl::device]]
+#else
+#define DRAKE_SYCL_DEVICE_INLINE
+#endif
+
 // Tetrahedon slice with EqPlane helper code from mesh_plane_intersection.cc
 
 /* This table essentially assigns an index to each edge in the tetrahedron.
@@ -817,22 +823,28 @@ class SyclProximityEngine::Impl {
     constexpr size_t EDGE_B_OFFSET = EDGE_A_OFFSET + EDGE_A_DOUBLES;
     constexpr size_t EDGE_B_DOUBLES = 18;
 
-    constexpr size_t POLYGON_OFFSET = EDGE_B_OFFSET + EDGE_B_DOUBLES;
-    constexpr size_t POLYGON_DOUBLES = 8;
+    constexpr size_t POLYGON_Q_OFFSET = EDGE_B_OFFSET + EDGE_B_DOUBLES;
+    constexpr size_t POLYGON_Q_DOUBLES = 4;
+
+    constexpr size_t POLYGON_S_OFFSET = POLYGON_Q_OFFSET + POLYGON_Q_DOUBLES;
+    constexpr size_t POLYGON_S_DOUBLES = 4;
+
+    constexpr size_t POLYGON_I_OFFSET = POLYGON_S_OFFSET + POLYGON_S_DOUBLES;
+    constexpr size_t POLYGON_I_DOUBLES = 8;
 
     // Used varylingly through the kernel to express more parallelism
-    constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_OFFSET + POLYGON_DOUBLES;
-    constexpr size_t RANDOM_SCRATCH_DOUBLES = 16;
+    constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_I_OFFSET + POLYGON_I_DOUBLES;
+    constexpr size_t RANDOM_SCRATCH_DOUBLES = 32;
 
     // Calculate total doubles for verification
     constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
     constexpr size_t INWARD_NORMAL_DOUBLES =
         INWARD_NORMAL_A_DOUBLES + INWARD_NORMAL_B_DOUBLES;
     constexpr size_t EDGE_DOUBLES = EDGE_A_DOUBLES + EDGE_B_DOUBLES;
+    constexpr size_t POLYGON_DOUBLES = POLYGON_Q_DOUBLES + POLYGON_S_DOUBLES + POLYGON_I_DOUBLES;
 
     constexpr size_t DOUBLES_PER_CHECK = EQ_PLANE_DOUBLES + VERTEX_DOUBLES +
-                                         INWARD_NORMAL_DOUBLES + EDGE_DOUBLES +
-                                         POLYGON_DOUBLES + RANDOM_SCRATCH_DOUBLES;
+                                         INWARD_NORMAL_DOUBLES + EDGE_DOUBLES + POLYGON_DOUBLES + RANDOM_SCRATCH_DOUBLES;
 
     
     // Additionally lets have a random scratch space for storing INTS
@@ -865,7 +877,7 @@ class SyclProximityEngine::Impl {
           LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS, h);
       h.parallel_for(
           sycl::nd_range<1>{NUM_GROUPS * LOCAL_SIZE, LOCAL_SIZE},
-          [=, narrow_phase_check_indices = narrow_phase_check_indices,
+          [=, this, narrow_phase_check_indices = narrow_phase_check_indices,
            gradient_W_pressure_at_Wo_ = gradient_W_pressure_at_Wo_,
            sh_element_offsets_ = sh_element_offsets_,
            sh_vertex_offsets_ = sh_vertex_offsets_,
@@ -941,113 +953,33 @@ class SyclProximityEngine::Impl {
             // thread
             if (check_local_item_id == 0) {
               // Get individual quanities for quick access from registers
-              double gradP_A_Wo_x =
+              const double gradP_A_Wo_x =
                   gradient_W_pressure_at_Wo_[A_element_index][0];
-              double gradP_A_Wo_y =
+              const double gradP_A_Wo_y =
                   gradient_W_pressure_at_Wo_[A_element_index][1];
-              double gradP_A_Wo_z =
+              const double gradP_A_Wo_z =
                   gradient_W_pressure_at_Wo_[A_element_index][2];
-              double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
-              double gradP_B_Wo_x =
+              const double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
+              const double gradP_B_Wo_x =
                   gradient_W_pressure_at_Wo_[B_element_index][0];
-              double gradP_B_Wo_y =
+              const double gradP_B_Wo_y =
                   gradient_W_pressure_at_Wo_[B_element_index][1];
-              double gradP_B_Wo_z =
+              const double gradP_B_Wo_z =
                   gradient_W_pressure_at_Wo_[B_element_index][2];
-              double p_B_Wo = gradient_W_pressure_at_Wo_[B_element_index][3];
+              const double p_B_Wo = gradient_W_pressure_at_Wo_[B_element_index][3];
 
-              // In frame W, the two linear functions are:
-              //      f₀(p_Wo) = grad_f0_W.dot(p_Wo) + f0_Wo.
-              //      f₁(p_Wo) = grad_f1_W.dot(p_Wo) + f1_Wo.
-              // Their equilibrium plane is:
-              //   (grad_f0_W - grad_f1_W).dot(p_Wo) + (f0_Wo - f1_Wo) = 0.
-              // Its perpendicular (but not necessarily unit-length) vector
-              // is:
-              //           n_W = grad_f0_W - grad_f1_W,
-              // which is in the direction of increasing f₀ and decreasing f₁.
-              double n_W_x = gradP_A_Wo_x - gradP_B_Wo_x;
-              double n_W_y = gradP_A_Wo_y - gradP_B_Wo_y;
-              double n_W_z = gradP_A_Wo_z - gradP_B_Wo_z;
-
-              double n_W_norm =
-                  sycl::sqrt(n_W_x * n_W_x + n_W_y * n_W_y + n_W_z * n_W_z);
-              double n_W_x_normalized = n_W_x / n_W_norm;
-              double n_W_y_normalized = n_W_y / n_W_norm;
-              double n_W_z_normalized = n_W_z / n_W_norm;
-
-              if (n_W_norm <= 0.0) {
-                // Invalidate this check -> It will not generate a contact
-                // surface
+              double eq_plane[6];
+              bool valid = Impl::ComputeEquilibriumPlane(
+                  gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo,
+                  gradP_B_Wo_x, gradP_B_Wo_y, gradP_B_Wo_z, p_B_Wo,
+                  eq_plane);
+              if (!valid) {
                 invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
               }
-
-              // Normal has to point in the direction of increasing field_0
-              // and decreasing field_1
-              // Normalized pressure gradient is:
-              const double gradP_A_W_norm = sycl::sqrt(
-                  gradP_A_Wo_x * gradP_A_Wo_x + gradP_A_Wo_y * gradP_A_Wo_y +
-                  gradP_A_Wo_z * gradP_A_Wo_z);
-              const double gradP_A_W_normalized_x =
-                  gradP_A_Wo_x / gradP_A_W_norm;
-              const double gradP_A_W_normalized_y =
-                  gradP_A_Wo_y / gradP_A_W_norm;
-              const double gradP_A_W_normalized_z =
-                  gradP_A_Wo_z / gradP_A_W_norm;
-
-              const double cos_theta_A =
-                  n_W_x_normalized * gradP_A_W_normalized_x +
-                  n_W_y_normalized * gradP_A_W_normalized_y +
-                  n_W_z_normalized * gradP_A_W_normalized_z;
-
-              const double kCosAlpha = sycl::cos(5. * M_PI / 8.);
-              if (cos_theta_A < kCosAlpha) {
-                // Invalidate this check -> It will not generate a contact
-                // surface
-                invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
+              // Write for Eq plane to slm
+              for (int i = 0; i < 6; ++i) {
+                slm[slm_offset + EQ_PLANE_OFFSET + i] = eq_plane[i];
               }
-
-              const double gradP_B_W_norm = sycl::sqrt(
-                  gradP_B_Wo_x * gradP_B_Wo_x + gradP_B_Wo_y * gradP_B_Wo_y +
-                  gradP_B_Wo_z * gradP_B_Wo_z);
-              const double gradP_B_W_normalized_x =
-                  gradP_B_Wo_x / gradP_B_W_norm;
-              const double gradP_B_W_normalized_y =
-                  gradP_B_Wo_y / gradP_B_W_norm;
-              const double gradP_B_W_normalized_z =
-                  gradP_B_Wo_z / gradP_B_W_norm;
-
-              // Normal given negative direction because we need to check that
-              // its pointing along the decreasing field
-              const double cos_theta_B =
-                  -n_W_x_normalized * gradP_B_W_normalized_x +
-                  -n_W_y_normalized * gradP_B_W_normalized_y +
-                  -n_W_z_normalized * gradP_B_W_normalized_z;
-              if (cos_theta_B < kCosAlpha) {
-                // Invalidate this check -> It will not generate a contact
-                // surface
-                invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
-              }
-
-              // Using the unit normal vector nhat_W, the plane equation (1)
-              // becomes:
-              //
-              //          nhat_W.dot(p_Wo) + Δ = 0,
-              //
-              // where Δ = (f0_Wo - f1_Wo)/‖n_W‖. One such p_Wo is:
-              //
-              //                          p_Wo = -Δ * nhat_W
-              //
-              double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
-              double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
-              double p_WQ_z = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_z_normalized;
-
-              // Write for Eq plane
-              slm[slm_offset + EQ_PLANE_OFFSET] = n_W_x_normalized;
-              slm[slm_offset + EQ_PLANE_OFFSET + 1] = n_W_y_normalized;
-              slm[slm_offset + EQ_PLANE_OFFSET + 2] = n_W_z_normalized;
-              slm[slm_offset + EQ_PLANE_OFFSET + 3] = p_WQ_x;
-              slm[slm_offset + EQ_PLANE_OFFSET + 4] = p_WQ_y;
-              slm[slm_offset + EQ_PLANE_OFFSET + 5] = p_WQ_z;
             }
 
             // Move vertices and edge vectors to slm
@@ -1067,135 +999,72 @@ class SyclProximityEngine::Impl {
 
             // Loop is over x,y,z
             for (size_t i = 0; i < 3; i++) {
-              // Quantities that we have "4" of
-              for (size_t llid = check_local_item_id; llid < 4;
-                   llid += NUM_THREADS_PER_CHECK) {
-                // All 4 vertices moved at once by our sub items
-                slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + i] =
-                    vertices_W_[vertex_mesh_offset_A + tet_vertices_A[llid]][i];
-                slm[slm_offset + VERTEX_B_OFFSET + llid * 3 + i] =
-                    vertices_W_[vertex_mesh_offset_B + tet_vertices_B[llid]][i];
+                // Quantities that we have "4" of
+                for (size_t llid = check_local_item_id; llid < 4;
+                    llid += NUM_THREADS_PER_CHECK) {
+                  // All 4 vertices moved at once by our sub items
+                  slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + i] =
+                      vertices_W_[vertex_mesh_offset_A + tet_vertices_A[llid]][i];
+                  slm[slm_offset + VERTEX_B_OFFSET + llid * 3 + i] =
+                      vertices_W_[vertex_mesh_offset_B + tet_vertices_B[llid]][i];
+                  // Polygon vertices
+                  slm[slm_offset + POLYGON_Q_OFFSET + llid * 3 + i] =
+                      std::numeric_limits<double>::max();
+                  slm[slm_offset + POLYGON_S_OFFSET + llid * 3 + i] =
+                      std::numeric_limits<double>::max();
                 }
-              // Quantities that we have "6" of
-              for (size_t llid = check_local_item_id; llid < 6;
-                   llid += NUM_THREADS_PER_CHECK) {
-                // Edge vectors of element A
-                slm[slm_offset + EDGE_A_OFFSET + llid * 3 + i] =
-                    edge_vectors_W_[A_element_index][llid][i];
+                // Quantities that we have "6" of
+                for (size_t llid = check_local_item_id; llid < 6;
+                    llid += NUM_THREADS_PER_CHECK) {
+                  // Edge vectors of element A
+                  slm[slm_offset + EDGE_A_OFFSET + llid * 3 + i] =
+                      edge_vectors_W_[A_element_index][llid][i];
 
-                // Edge vectors of element B
-                slm[slm_offset + EDGE_B_OFFSET + llid * 3 + i] =
-                    edge_vectors_W_[B_element_index][llid][i];
-              }
+                  // Edge vectors of element B
+                  slm[slm_offset + EDGE_B_OFFSET + llid * 3 + i] =
+                      edge_vectors_W_[B_element_index][llid][i];
+                }
 
-              // Quantity that we have "8" of - For now set all the verticies of
-              // the polygon to double max so that we know all are stale
-              for (size_t llid = check_local_item_id; llid < 8;
-                   llid += NUM_THREADS_PER_CHECK) {
-                // Polygon vertices
-                slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] =
-                    std::numeric_limits<double>::max();
-              }
+                // Quantity that we have "8" of - For now set all the verticies of
+                // the polygon to double max so that we know all are stale
+                for (size_t llid = check_local_item_id; llid < 8;
+                    llid += NUM_THREADS_PER_CHECK) {
+                  slm[slm_offset + POLYGON_I_OFFSET + llid * 3 + i] =
+                          std::numeric_limits<double>::max();
+
+                }
             }
             item.barrier(sycl::access::fence_space::local_space);
 
-            // Slice element A with Eq Plane
+
+            // =====================================
+            // Intersect element A with Eq Plane
+            // =====================================
 
             // Compute signed distance of all vertices of element A with Eq plane
             // Parallelization based on distance computation
 
-            for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
-             // Each thread gets 1 vertex of element A in slm
-             const double vertex_A_x = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 0];
-             const double vertex_A_y = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 1];
-             const double vertex_A_z = slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + 2];
-             // Each thread accesses the same Eq plane from slm
-             // TODO(huzaifa) - Will we have shMem bank conflict on Nvidia GPUs?
-             // Need to know if SYCL backend compiler propertly recognizes that this is a broadcast operation
-             // Normals
-             const double normal_x = slm[slm_offset + EQ_PLANE_OFFSET];
-             const double normal_y = slm[slm_offset + EQ_PLANE_OFFSET + 1];
-             const double normal_z = slm[slm_offset + EQ_PLANE_OFFSET + 2];
-             // Point on the plane
-             const double point_on_plane_x = slm[slm_offset + EQ_PLANE_OFFSET + 3];
-             const double point_on_plane_y = slm[slm_offset + EQ_PLANE_OFFSET + 4];
-             const double point_on_plane_z = slm[slm_offset + EQ_PLANE_OFFSET + 5];
-             // Compute the dispalcement of the plane from the origin of the frame (world in this case) as simple dot product
-             const double displacement = normal_x * point_on_plane_x + normal_y * point_on_plane_y + normal_z * point_on_plane_z;
-
-             // Compute signed distance of this vertex with Eq plane
-             // +ve height indicates point is above the plane
-             // -ve height indicates point is below the plane
-             // Store these in our random scratch space
-             slm[slm_offset + RANDOM_SCRATCH_OFFSET + llid] = normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z - displacement;
-            }
-            item.barrier(sycl::access::fence_space::local_space);
+            int polygon_Q_size = SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_Q_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
             
-            // Let one thread compute intersection code and store this in the shared memory for other threads
             if(check_local_item_id == 0) {
-              int intersection_code = 0;
-              for(size_t llid = 0; llid < 4; llid++) {
-                if(slm[slm_offset + RANDOM_SCRATCH_OFFSET + llid] > 0.0) {
-                  intersection_code |= (1 << llid);
-                }
-              }
-              slm_ints[slm_ints_offset] = intersection_code;
-            }
-            item.barrier(sycl::access::fence_space::local_space);
-            
-            // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon vertices
-            for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
-              const int edge_index = kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
-
-              // Only proceed if we are not at the end of edge list
-              if(edge_index != -1) {
-                // Get the tet edge
-               const TetrahedronEdge& tet_edge = kTetEdges[edge_index];
-                // Get the heights of these vertices from the scratch space
-               const double height_0 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + tet_edge.first];
-               const double height_1 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + tet_edge.second];
-
-               // Compute the intersection point
-               const double t = height_0 / (height_0 - height_1);
-
-
-               // Compute polygon vertices
-               // Loop is over x,y,z
-               for(size_t i = 0; i < 3; i++) {
-                const double vertex_0 = slm[slm_offset + VERTEX_A_OFFSET + tet_edge.first * 3 + i];
-                const double vertex_1 = slm[slm_offset + VERTEX_A_OFFSET + tet_edge.second * 3 + i];
-
-
-                const double intersection = vertex_0 + t * (vertex_1 - vertex_0);
-
-
-                // Store the intersection point in the polygon
-                slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] = intersection;
-               }
-              }
-            }
-            item.barrier(sycl::access::fence_space::local_space);
-
-         
-            // Compute current polygon size by checking number of max values
-            if(check_local_item_id == 0) {
-                int polygon_size = 0;
-                for(size_t i = 0; i < 4; i++) {
-                    // TODO - Is just checking x enough? Should be I think
-                    if(slm[slm_offset + POLYGON_OFFSET + i * 3 + 0] != std::numeric_limits<double>::max()) {
-                        polygon_size++;
-                    }
-                }
-                slm_ints[slm_ints_offset] = polygon_size;
-
-                // If size is too small, invalidate the check
-                if(polygon_size < 3) {
+                if(polygon_Q_size < 3) {
                     invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
                 }
             }
-            item.barrier(sycl::access::fence_space::local_space);
+            // =====================================
+            // Intersect element B with Eq Plane
+            // =====================================
+            // First element at slm_ints_offset is polygon size of Q, we will store the polygon size of S in the second element
+            // Random scratch offset can be overwritten 
+            int polygon_S_size = SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset + 1, VERTEX_B_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_S_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
 
-            // Exit all invalidated checks
+            if(check_local_item_id == 0) {
+                if(polygon_S_size < 3) {
+                    invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
+                }
+            }
+
+            // Exit all invalidated checks -> we need polygons now because memory access
             if(invalidated_narrow_phase_checks_[narrow_phase_check_index]) {
                 return;
             }
@@ -1246,7 +1115,7 @@ class SyclProximityEngine::Impl {
                 point_on_face[i] = slm[slm_offset + VERTEX_B_OFFSET + face_vertex_index * 3 + i];
                 
                 // Get the polygon vertex
-                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_OFFSET + polygon_vertex * 3 + i];
+                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_Q_OFFSET + polygon_vertex * 3 + i];
               }
 
               // We will store our heights in the random scratch space that we have (we have upto 16 doubles space)
@@ -1390,6 +1259,156 @@ class SyclProximityEngine::Impl {
                                   // elements of the collision filter
 
   friend class SyclProximityEngineAttorney;
+
+  // Helper for equilibrium plane construction, callable from device code
+  SYCL_EXTERNAL static bool ComputeEquilibriumPlane(
+      double gradP_A_Wo_x, double gradP_A_Wo_y, double gradP_A_Wo_z, double p_A_Wo,
+      double gradP_B_Wo_x, double gradP_B_Wo_y, double gradP_B_Wo_z, double p_B_Wo,
+      double* eq_plane_out) {
+    // Compute n_W = grad_f0_W - grad_f1_W
+    double n_W_x = gradP_A_Wo_x - gradP_B_Wo_x;
+    double n_W_y = gradP_A_Wo_y - gradP_B_Wo_y;
+    double n_W_z = gradP_A_Wo_z - gradP_B_Wo_z;
+    double n_W_norm = sycl::sqrt(n_W_x * n_W_x + n_W_y * n_W_y + n_W_z * n_W_z);
+    if (n_W_norm <= 0.0) {
+      return false;
+    }
+    double n_W_x_normalized = n_W_x / n_W_norm;
+    double n_W_y_normalized = n_W_y / n_W_norm;
+    double n_W_z_normalized = n_W_z / n_W_norm;
+
+    // Normalized pressure gradient for A
+    const double gradP_A_W_norm = sycl::sqrt(
+        gradP_A_Wo_x * gradP_A_Wo_x + gradP_A_Wo_y * gradP_A_Wo_y + gradP_A_Wo_z * gradP_A_Wo_z);
+    const double gradP_A_W_normalized_x = gradP_A_Wo_x / gradP_A_W_norm;
+    const double gradP_A_W_normalized_y = gradP_A_Wo_y / gradP_A_W_norm;
+    const double gradP_A_W_normalized_z = gradP_A_Wo_z / gradP_A_W_norm;
+    const double cos_theta_A =
+        n_W_x_normalized * gradP_A_W_normalized_x +
+        n_W_y_normalized * gradP_A_W_normalized_y +
+        n_W_z_normalized * gradP_A_W_normalized_z;
+    
+    constexpr double kCosAlpha = 5. * M_PI / 8.;
+    if (cos_theta_A < kCosAlpha) {
+      return false;
+    }
+    // Normalized pressure gradient for B
+    const double gradP_B_W_norm = sycl::sqrt(
+        gradP_B_Wo_x * gradP_B_Wo_x + gradP_B_Wo_y * gradP_B_Wo_y + gradP_B_Wo_z * gradP_B_Wo_z);
+    const double gradP_B_W_normalized_x = gradP_B_Wo_x / gradP_B_W_norm;
+    const double gradP_B_W_normalized_y = gradP_B_Wo_y / gradP_B_W_norm;
+    const double gradP_B_W_normalized_z = gradP_B_Wo_z / gradP_B_W_norm;
+    const double cos_theta_B =
+        -n_W_x_normalized * gradP_B_W_normalized_x +
+        -n_W_y_normalized * gradP_B_W_normalized_y +
+        -n_W_z_normalized * gradP_B_W_normalized_z;
+    if (cos_theta_B < kCosAlpha) {
+      return false;
+    }
+    // Plane point
+    double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
+    double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
+    double p_WQ_z = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_z_normalized;
+    eq_plane_out[0] = n_W_x_normalized;
+    eq_plane_out[1] = n_W_y_normalized;
+    eq_plane_out[2] = n_W_z_normalized;
+    eq_plane_out[3] = p_WQ_x;
+    eq_plane_out[4] = p_WQ_y;
+    eq_plane_out[5] = p_WQ_z;
+    return true;
+  }
+
+
+  // Constructs and stores polygon in slm and returns polygon size
+  SYCL_EXTERNAL int SliceTetWithEqPlane(sycl::nd_item<1> item,
+    const sycl::local_accessor<double, 1>& slm, const size_t slm_offset, const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset, const size_t vertex_offset, const size_t eq_plane_offset, const size_t random_scratch_offset, const size_t polygon_offset, const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK) {
+
+        for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
+            // Each thread gets 1 vertex of element A in slm
+            const double vertex_A_x = slm[slm_offset + vertex_offset + llid * 3 + 0];
+            const double vertex_A_y = slm[slm_offset + vertex_offset + llid * 3 + 1];
+            const double vertex_A_z = slm[slm_offset + vertex_offset + llid * 3 + 2];
+            // Each thread accesses the same Eq plane from slm
+            // TODO(huzaifa) - Will we have shMem bank conflict on Nvidia GPUs?
+            // Need to know if SYCL backend compiler propertly recognizes that this is a broadcast operation
+            // Normals
+            const double normal_x = slm[slm_offset + eq_plane_offset];
+            const double normal_y = slm[slm_offset + eq_plane_offset + 1];
+            const double normal_z = slm[slm_offset + eq_plane_offset + 2];
+            // Point on the plane
+            const double point_on_plane_x = slm[slm_offset + eq_plane_offset + 3];
+            const double point_on_plane_y = slm[slm_offset + eq_plane_offset + 4];
+            const double point_on_plane_z = slm[slm_offset + eq_plane_offset + 5];
+            // Compute the dispalcement of the plane from the origin of the frame (world in this case) as simple dot product
+            const double displacement = normal_x * point_on_plane_x + normal_y * point_on_plane_y + normal_z * point_on_plane_z;
+
+            // Compute signed distance of this vertex with Eq plane
+            // +ve height indicates point is above the plane
+            // -ve height indicates point is below the plane
+            // Store these in our random scratch space
+            slm[slm_offset + random_scratch_offset + llid] = normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z - displacement;
+        }
+        item.barrier(sycl::access::fence_space::local_space);  
+
+        // Let one thread compute intersection code and store this in the shared memory for other threads
+        if(check_local_item_id == 0) {
+            int intersection_code = 0;
+            for(size_t llid = 0; llid < 4; llid++) {
+                if(slm[slm_offset + random_scratch_offset + llid] > 0.0) {
+                    intersection_code |= (1 << llid);
+                }
+            }
+            slm_ints[slm_ints_offset] = intersection_code;
+        }
+        item.barrier(sycl::access::fence_space::local_space);
+
+        // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon vertices
+        for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
+            const int edge_index = kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
+            // Only proceed if we are not at the end of edge list
+            if(edge_index != -1) {
+                // Get the tet edge
+                const TetrahedronEdge& tet_edge = kTetEdges[edge_index];
+                // Get the heights of these vertices from the scratch space
+                const double height_0 = slm[slm_offset + random_scratch_offset + tet_edge.first];
+                const double height_1 = slm[slm_offset + random_scratch_offset + tet_edge.second];
+
+                // Compute the intersection point
+                const double t = height_0 / (height_0 - height_1);
+
+
+                // Compute polygon vertices
+                // Loop is over x,y,z
+                for(size_t i = 0; i < 3; i++) {
+                  const double vertex_0 = slm[slm_offset + vertex_offset + tet_edge.first * 3 + i];
+                  const double vertex_1 = slm[slm_offset + vertex_offset + tet_edge.second * 3 + i];
+
+
+                  const double intersection = vertex_0 + t * (vertex_1 - vertex_0);
+
+
+                  // Store the intersection point in the polygon
+                  slm[slm_offset + polygon_offset + llid * 3 + i] = intersection;
+                }
+            }
+        }
+        item.barrier(sycl::access::fence_space::local_space);
+
+        // Compute current polygon size by checking number of max values
+        int polygon_size = 0;
+        if(check_local_item_id == 0) {
+            for(size_t i = 0; i < 4; i++) {
+                // TODO - Is just checking x enough? Should be I think
+                if(slm[slm_offset + polygon_offset + i * 3 + 0] != std::numeric_limits<double>::max()) {
+                    polygon_size++;
+                }
+            }
+            slm_ints[slm_ints_offset] = polygon_size;
+
+        }
+        item.barrier(sycl::access::fence_space::local_space);
+        return polygon_size;
+  }
 };
 
 bool SyclProximityEngine::is_available() {
