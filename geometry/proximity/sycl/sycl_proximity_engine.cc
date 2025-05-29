@@ -1087,6 +1087,15 @@ class SyclProximityEngine::Impl {
                 slm[slm_offset + EDGE_B_OFFSET + llid * 3 + i] =
                     edge_vectors_W_[B_element_index][llid][i];
               }
+
+              // Quantity that we have "8" of - For now set all the verticies of
+              // the polygon to double max so that we know all are stale
+              for (size_t llid = check_local_item_id; llid < 8;
+                   llid += NUM_THREADS_PER_CHECK) {
+                // Polygon vertices
+                slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] =
+                    std::numeric_limits<double>::max();
+              }
             }
             item.barrier(sycl::access::fence_space::local_space);
 
@@ -1164,17 +1173,55 @@ class SyclProximityEngine::Impl {
                 slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] = intersection;
                }
 
-
               }
               
             }
 
+            //Check for nearly duplicate vertices - if found, invalidate the entire check
+            if (check_local_item_id == 0) {
+                constexpr double kEpsSquared = 1e-14 * 1e-14;
+                bool has_duplicates = false;
+                
+                // Count valid vertices first
+                int valid_vertex_count = 0;
+                for (size_t i = 0; i < 4; i++) {
+                    if (slm[slm_offset + POLYGON_OFFSET + i * 3] != std::numeric_limits<double>::max()) {
+                        valid_vertex_count++;
+                    }
+                }
+                
+                // Only check if we have at least 2 vertices
+                if (valid_vertex_count >= 2) {
+                    // Check all pairs of valid vertices
+                    for (int i = 0; i < valid_vertex_count && !has_duplicates; i++) {
+                        for (int j = i + 1; j < valid_vertex_count; j++) {
+                            double dx = slm[slm_offset + POLYGON_OFFSET + i * 3 + 0] - 
+                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 0];
+                            double dy = slm[slm_offset + POLYGON_OFFSET + i * 3 + 1] - 
+                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 1];
+                            double dz = slm[slm_offset + POLYGON_OFFSET + i * 3 + 2] - 
+                                      slm[slm_offset + POLYGON_OFFSET + j * 3 + 2];
+                            
+                            double dist_squared = dx * dx + dy * dy + dz * dz;
+                            
+                            if (dist_squared < kEpsSquared) {
+                                has_duplicates = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // If we have duplicates or too few vertices, invalidate the check
+                if (has_duplicates || valid_vertex_count < 3) {
+                    invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
+                }
+            }
 
-
-
-            
-            
-
+            // Exit threads that have invalidated checks
+            if(invalidated_narrow_phase_checks_[narrow_phase_check_index]) {
+              return;
+            }
 
             // Move inward normals, edge vectors
             // Loop is over x,y,z
@@ -1190,15 +1237,27 @@ class SyclProximityEngine::Impl {
                 slm[slm_offset + INWARD_NORMAL_B_OFFSET + llid * 3 + i] =
                     inward_normals_W_[B_element_index][llid][i];
               }
-              // Quantity that we have "8" of - For now set all the verticies of
-              // the polygon to double max so that we know all are stale
-              for (size_t llid = check_local_item_id; llid < 8;
-                   llid += NUM_THREADS_PER_CHECK) {
-                // Polygon vertices
-                slm[slm_offset + POLYGON_OFFSET + llid * 3 + i] =
-                    std::numeric_limits<double>::max();
-              }
             }
+
+            // Now we compute the height of the polygon vertices from faces of polygon B
+            // Each thread will handle one vertex of the polygon (there are 4 vertices)
+
+
+
+            
+
+
+
+
+
+
+
+
+            
+            
+
+
+
           });
     });
 
