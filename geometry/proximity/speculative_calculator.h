@@ -20,6 +20,11 @@ AabbCalculator MovingBoundingSphereAabbCalculator(
     const multibody::SpatialVelocity<T>& V_WG, double dt);
 
 template <typename T>
+AabbCalculator TruncatedTaylorSeriesAabbCalculator(
+    const VolumeMesh<double>& mesh, const math::RigidTransform<T>& X_WG,
+    const multibody::SpatialVelocity<T>& V_WG, double dt);
+
+template <typename T>
 AabbCalculator StaticMeshAabbCalculator(const VolumeMesh<double>& mesh,
                                         const math::RigidTransform<T>& X_WG);
 

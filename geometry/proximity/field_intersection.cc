@@ -231,6 +231,7 @@ void VolumeIntersector<MeshBuilder, BvType>::IntersectFields(
   tet0_of_contact_polygon_.clear();
   tet1_of_contact_polygon_.clear();
 
+  auto start = std::chrono::high_resolution_clock::now();
   std::vector<std::pair<int, int>> candidate_tetrahedra;
   auto callback = [&candidate_tetrahedra](int tet0,
                                           int tet1) -> BvttCallbackResult {
@@ -239,12 +240,25 @@ void VolumeIntersector<MeshBuilder, BvType>::IntersectFields(
   };
 
   bvh0_M.Collide(bvh1_N, convert_to_double(X_MN), callback);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration1 = end - start;
+
+  fmt::print("  ({} elements, {} elements): {} pairs\n",
+             field0_M.mesh().num_elements(), field1_N.mesh().num_elements(),
+             ssize(candidate_tetrahedra));
+  fmt::print("    Broadphase:  {}s\n", duration1.count());
+
+  start = std::chrono::high_resolution_clock::now();
 
   MeshBuilder builder_M;
   const math::RotationMatrix<T> R_NM = X_MN.rotation().inverse();
   for (const auto& [tet0, tet1] : candidate_tetrahedra) {
     CalcContactPolygon(field0_M, field1_N, X_MN, R_NM, tet0, tet1, &builder_M);
   }
+
+  end = std::chrono::high_resolution_clock::now();
+  duration1 = end - start;
+  fmt::print("    Narrowphase: {}s\n", duration1.count());
 
   if (builder_M.num_faces() == 0) return;
 
