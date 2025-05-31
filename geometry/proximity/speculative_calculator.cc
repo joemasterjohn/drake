@@ -50,6 +50,48 @@ AabbCalculator MovingBoundingSphereAabbCalculator(
 }
 
 template <typename T>
+AabbCalculator TruncatedTaylorSeriesAabbCalculator(
+    const VolumeMesh<double>& mesh, const math::RigidTransform<T>& X_WG,
+    const multibody::SpatialVelocity<T>& V_WG, double dt) {
+  const Vector3d p_WG = ExtractDoubleOrThrow(X_WG.translation());
+  const Eigen::Matrix3d R_WG = ExtractDoubleOrThrow(X_WG.rotation().matrix());
+  const Vector3d v_WG = ExtractDoubleOrThrow(V_WG.translational());
+  const Vector3d w_WG = ExtractDoubleOrThrow(V_WG.rotational());
+
+  // Start with a truncation of the vertex trajectories to quadratic.
+  return [&mesh, p_WG, R_WG, v_WG, w_WG, dt](int e) -> Aabb {
+    const VolumeElement& element = mesh.element(e);
+    Vector3d min_corner = mesh.vertex(element.vertex(0));
+    Vector3d max_corner = min_corner;
+
+    for (int i = 0; i < 4; ++i) {
+      const Vector3d p_GV_W = R_WG * mesh.vertex(element.vertex(i));
+      const Vector3d w_x_p = (w_WG).cross(p_GV_W);
+      const Vector3d w_x_w_x_p = (w_WG).cross(w_x_p);
+      const Vector3d p_WV = p_WG + p_GV_W;
+      const auto eval = [&](double t) {
+        return p_WV + t * ((v_WG + w_x_p) + 0.5 * t * w_x_w_x_p);
+      };
+      const Vector3d p_WV_dt = eval(dt);
+      min_corner = min_corner.cwiseMin(p_WV);
+      min_corner = min_corner.cwiseMin(p_WV_dt);
+      max_corner = max_corner.cwiseMax(p_WV);
+      max_corner = max_corner.cwiseMax(p_WV_dt);
+      const Vector3d t = (v_WG + w_x_p).cwiseQuotient(-w_x_w_x_p);
+      for (int j = 0; j < 3; ++j) {
+        if (t(j) > 0 && t(j) < dt) {
+          const Vector3d p_WV_t = eval(t(j));
+          min_corner = min_corner.cwiseMin(p_WV_t);
+          max_corner = max_corner.cwiseMax(p_WV_t);
+        }
+      }
+    }
+
+    return Aabb((max_corner + min_corner) / 2, (max_corner - min_corner) / 2);
+  };
+}
+
+template <typename T>
 AabbCalculator StaticMeshAabbCalculator(const VolumeMesh<double>& mesh,
                                         const math::RigidTransform<T>& X_WG) {
   return [&mesh, &X_WG](int e) -> Aabb {
@@ -91,15 +133,26 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   std::vector<std::pair<int, int>> valid_element_pairs;
   std::vector<T> effective_radius;
 
+  auto start = std::chrono::high_resolution_clock::now();
   std::vector<std::pair<int, int>> element_pairs =
       soft_A.soft_mesh().mesh_dynamic_bvh().GetCollisionCandidates(
           soft_B.soft_mesh().mesh_dynamic_bvh());
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration1 = end - start;
+
+  fmt::print("  (gid({}) {} elements, gid({}) {} elements): {} pairs\n", id_A,
+             soft_A.soft_mesh().mesh().num_elements(), id_B,
+             soft_B.soft_mesh().mesh().num_elements(), ssize(element_pairs));
+
+  fmt::print("    Broadphase:  {}s\n", duration1.count());
 
   // fmt::print("num_candidates: {} sA({}) sB({})\n", element_pairs.size(),
   //            soft_A.mesh().num_elements(), soft_B.mesh().num_elements());
 
   // Quick exit.
   if (ssize(element_pairs) == 0) return;
+  start = std::chrono::high_resolution_clock::now();
 
   // Reserve memory for the surface data.
   p_WC.reserve(element_pairs.size());
@@ -420,14 +473,19 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     valid_element_pairs.emplace_back(std::make_pair(tet_A, tet_B));
   }
 
+  end = std::chrono::high_resolution_clock::now();
+  duration1 = end - start;
+  fmt::print("    Narrowphase: {}s\n", duration1.count());
+
   // Quick exit if no speculative contacts are found.
   if (ssize(p_WC) == 0) return;
 
-  // fmt::print("num_speculative: {}\n", ssize(p_WC));
+  fmt::print("    num constraints: {}\n", ssize(p_WC));
 
   speculative_surfaces->emplace_back(
-      id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W, coefficients, nhat_BA_W,
-      grad_eA_W, grad_eB_W, closest_points, valid_element_pairs, effective_radius);
+      id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W,
+      coefficients, nhat_BA_W, grad_eA_W, grad_eB_W, closest_points,
+      valid_element_pairs, effective_radius);
 }
 
 template <typename T>
@@ -447,7 +505,8 @@ void SpeculativeContactCalculator<T>::ComputeSpeculativeContactSurface(
 }
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
-    (&MovingBoundingSphereAabbCalculator<T>, &StaticMeshAabbCalculator<T>,
+    (&MovingBoundingSphereAabbCalculator<T>,
+     &TruncatedTaylorSeriesAabbCalculator<T>, &StaticMeshAabbCalculator<T>,
      &ComputeSpeculativeContactSurfaceByClosestPoints<T>));
 
 DRAKE_DEFINE_CLASS_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(

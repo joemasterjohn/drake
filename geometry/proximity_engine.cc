@@ -869,8 +869,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     for (int i = 0; i < num_soft; ++i) {
       hydroelastic::SoftGeometry& soft_geometry =
           hydroelastic_geometries_.mutable_soft_geometry(soft_ids[i]);
-      const std::vector<PosedSphere<double>>& mesh_bounding_spheres =
-          soft_geometry.soft_mesh().mesh_bounding_spheres();
+      // const std::vector<PosedSphere<double>>& mesh_bounding_spheres =
+      //     soft_geometry.soft_mesh().mesh_bounding_spheres();
       const math::RigidTransform<T>& X_WG = X_WGs.at(soft_ids[i]);
       const multibody::SpatialVelocity<T>& V_WG = V_WGs.at(soft_ids[i]);
 
@@ -883,8 +883,8 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
             hydroelastic::StaticMeshAabbCalculator(soft_geometry.mesh(), X_WG));
       } else {
         soft_geometry.mutable_soft_mesh().mutable_mesh_dynamic_bvh().Refit(
-            hydroelastic::MovingBoundingSphereAabbCalculator(
-                mesh_bounding_spheres, X_WG, V_WG, dt));
+            hydroelastic::TruncatedTaylorSeriesAabbCalculator(
+                soft_geometry.mesh(), X_WG, V_WG, dt));
       }
 
       // fmt::print("id({}): v: ({} {} {})\n", soft_ids[i],

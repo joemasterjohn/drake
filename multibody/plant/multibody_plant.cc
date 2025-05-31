@@ -2921,14 +2921,24 @@ void MultibodyPlant<T>::CalcGeometryContactData(
     }
     case ContactModel::kHydroelastic: {
       if constexpr (scalar_predicate<T>::is_bool) {
+        auto start = std::chrono::high_resolution_clock::now();
         storage.surfaces = query_object.ComputeContactSurfaces(
             get_contact_surface_representation());
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration1 = end - start;
+        fmt::print("ComputeContactSurfaces: {}s\n\n", duration1.count());
+
+        start = std::chrono::high_resolution_clock::now();
         // TODO(amcastro-tri): Consider evaluating at v* or some other
         // intermediate veolocity and/or configuration.
         const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
             V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
         storage.speculative_surfaces =
             query_object.ComputeSpeculativeContactSurfaces(V_WGs, time_step_);
+        end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration2 = end - start;
+        fmt::print("ComputeSpeculativeContactSurfaces: {}s\n\n",
+                   duration2.count());
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -2940,15 +2950,26 @@ void MultibodyPlant<T>::CalcGeometryContactData(
     }
     case ContactModel::kHydroelasticWithFallback: {
       if constexpr (scalar_predicate<T>::is_bool) {
+        auto start = std::chrono::high_resolution_clock::now();
+
         query_object.ComputeContactSurfacesWithFallback(
             get_contact_surface_representation(), &storage.surfaces,
             &storage.point_pairs);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration1 = end - start;
+        fmt::print("ComputeContactSurfaces: {}s\n", duration1.count());
+
+        start = std::chrono::high_resolution_clock::now();
         // TODO(amcastro-tri): Consider evaluating at v* or some other
         // intermediate veolocity and/or configuration.
         const std::unordered_map<GeometryId, multibody::SpatialVelocity<T>>&
             V_WGs = EvalGeometrySpatialVelocitiesInWorld(context);
         storage.speculative_surfaces =
             query_object.ComputeSpeculativeContactSurfaces(V_WGs, time_step_);
+        end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration2 = end - start;
+        fmt::print("ComputeSpeculativeContactSurfaces: {}s\n\n",
+                   duration2.count());
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
