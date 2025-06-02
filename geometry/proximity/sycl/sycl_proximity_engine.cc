@@ -817,40 +817,30 @@ class SyclProximityEngine::Impl {
         INWARD_NORMAL_A_OFFSET + INWARD_NORMAL_A_DOUBLES;
     constexpr size_t INWARD_NORMAL_B_DOUBLES = 12;
 
-    constexpr size_t EDGE_A_OFFSET =
-        INWARD_NORMAL_B_OFFSET + INWARD_NORMAL_B_DOUBLES;
-    constexpr size_t EDGE_A_DOUBLES = 18;
-    constexpr size_t EDGE_B_OFFSET = EDGE_A_OFFSET + EDGE_A_DOUBLES;
-    constexpr size_t EDGE_B_DOUBLES = 18;
-
-    constexpr size_t POLYGON_Q_OFFSET = EDGE_B_OFFSET + EDGE_B_DOUBLES;
-    constexpr size_t POLYGON_Q_DOUBLES = 12; // 4 vertices
-
-    constexpr size_t POLYGON_S_OFFSET = POLYGON_Q_OFFSET + POLYGON_Q_DOUBLES;
-    constexpr size_t POLYGON_S_DOUBLES = 12; // 4 vertices
-
-    constexpr size_t POLYGON_I_OFFSET = POLYGON_S_OFFSET + POLYGON_S_DOUBLES;
-    constexpr size_t POLYGON_I_DOUBLES = 24; // 8 intersection points
-
     // Used varylingly through the kernel to express more parallelism
-    constexpr size_t RANDOM_SCRATCH_OFFSET = POLYGON_I_OFFSET + POLYGON_I_DOUBLES;
-    constexpr size_t RANDOM_SCRATCH_DOUBLES = 32;
+    constexpr size_t RANDOM_SCRATCH_OFFSET = INWARD_NORMAL_B_OFFSET + INWARD_NORMAL_B_DOUBLES;
+    constexpr size_t RANDOM_SCRATCH_DOUBLES = 8; // 8 heights at max
 
     // Calculate total doubles for verification
     constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
     constexpr size_t INWARD_NORMAL_DOUBLES =
         INWARD_NORMAL_A_DOUBLES + INWARD_NORMAL_B_DOUBLES;
-    constexpr size_t EDGE_DOUBLES = EDGE_A_DOUBLES + EDGE_B_DOUBLES;
-    constexpr size_t POLYGON_DOUBLES = POLYGON_Q_DOUBLES + POLYGON_S_DOUBLES + POLYGON_I_DOUBLES;
 
     constexpr size_t DOUBLES_PER_CHECK = EQ_PLANE_DOUBLES + VERTEX_DOUBLES +
-                                         INWARD_NORMAL_DOUBLES + EDGE_DOUBLES + POLYGON_DOUBLES + RANDOM_SCRATCH_DOUBLES;
+                                         INWARD_NORMAL_DOUBLES + RANDOM_SCRATCH_DOUBLES;
+
+
+    constexpr size_t POLYGON_CURRENT_DOUBLES = 48; // 16 vertices
+    constexpr size_t POLYGON_CLIPPED_DOUBLES = 48; // 16 vertices
+    constexpr size_t POLYGON_DOUBLES = POLYGON_CURRENT_DOUBLES + POLYGON_CLIPPED_DOUBLES;
+
+    constexpr size_t POLYGON_VERTICES = 16; // Just useful to have this in the kernels
 
     
     // Additionally lets have a random scratch space for storing INTS
     // These will also be used varyingly throughout the kernel to express parallelism
-    constexpr size_t RANDOM_SCRATCH_INTS_OFFSET = 0;
-    constexpr size_t RANDOM_SCRATCH_INTS = 16;
+    constexpr size_t RANDOM_SCRATCH_INTS = 1;
+
 
     // We need to compute the equilibrium plane for each check
     // We will use the first NUM_CHECKS_IN_WORK_GROUP checks in the work group
@@ -865,14 +855,14 @@ class SyclProximityEngine::Impl {
                     transform_elem_quantities_event3});
       // Shared Local Memory (SLM) is stored as
       // [Eq_plane_i, Vertices_A_i, Vertices_B_i, Inward_normals_A_i,
-      // Inward_normals_B_i, Edge_vectors_A_i, Edge_vectors_B_i,
-      // Polygon_i, Eq_plane_i+1, Vertices_A_i+1,
-      // Vertices_B_i+1, Inward_normals_A_i+1, Inward_normals_B_i+1,
-      // Edge_vectors_A_i+1, Edge_vectors_B_i+1, Polygon_i+1, ...]
+      // Inward_normals_B_i, Eq_plane_i+1, Vertices_A_i+1,
+      // Vertices_B_i+1, Inward_normals_A_i+1, Inward_normals_B_i+1]
       // Always Polygon A stored first and then Polygon B (for the
       // quantities which we need both off)
       sycl::local_accessor<double, 1> slm(
           LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK, h);
+      sycl::local_accessor<double, 1> slm_polygon(
+          LOCAL_SIZE / NUM_THREADS_PER_CHECK * POLYGON_DOUBLES, h);
       sycl::local_accessor<int, 1> slm_ints(
           LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS, h);
       h.parallel_for(
@@ -883,7 +873,6 @@ class SyclProximityEngine::Impl {
            sh_vertex_offsets_ = sh_vertex_offsets_,
            sh_element_mesh_ids_ = sh_element_mesh_ids_, elements_ = elements_,
            vertices_W_ = vertices_W_, inward_normals_W_ = inward_normals_W_,
-           edge_vectors_W_ = edge_vectors_W_,
            geom_collision_filter_num_cols_ = geom_collision_filter_num_cols_,
            total_checks_per_geometry_ = total_checks_per_geometry_,
            collision_filter_host_body_index_ =
@@ -905,8 +894,12 @@ class SyclProximityEngine::Impl {
             // This offset is used to compute the positions each of the
             // quantities for reading and writing to slm
             size_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
+
+            // This offset is used to compute the positions each of the
+            // quantities for reading and writing to slm_polygon
+            size_t slm_polygon_offset = group_local_check_number * POLYGON_DOUBLES;
             
-            // Separate offset for slm_ints array
+            // Check offset for slm_ints array
             size_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
 
             // Each check has NUM_THREADS_PER_CHECK workers.
@@ -982,6 +975,11 @@ class SyclProximityEngine::Impl {
               }
             }
 
+
+            // Initialize the current polygon offset inside since we need to switch them around later
+            size_t POLYGON_CURRENT_OFFSET = 0;
+            size_t POLYGON_CLIPPED_OFFSET = POLYGON_CURRENT_OFFSET + POLYGON_CURRENT_DOUBLES;
+
             // Move vertices and edge vectors to slm
             // Some quantities required for indexing
             const size_t geom_index_A = sh_element_mesh_ids_[A_element_index];
@@ -1007,35 +1005,18 @@ class SyclProximityEngine::Impl {
                       vertices_W_[vertex_mesh_offset_A + tet_vertices_A[llid]][i];
                   slm[slm_offset + VERTEX_B_OFFSET + llid * 3 + i] =
                       vertices_W_[vertex_mesh_offset_B + tet_vertices_B[llid]][i];
-                  // Polygon vertices
-                  slm[slm_offset + POLYGON_Q_OFFSET + llid * 3 + i] =
-                      std::numeric_limits<double>::max();
-                  slm[slm_offset + POLYGON_S_OFFSET + llid * 3 + i] =
-                      std::numeric_limits<double>::max();
                 }
-                // Quantities that we have "6" of
-                for (size_t llid = check_local_item_id; llid < 6;
-                    llid += NUM_THREADS_PER_CHECK) {
-                  // Edge vectors of element A
-                  slm[slm_offset + EDGE_A_OFFSET + llid * 3 + i] =
-                      edge_vectors_W_[A_element_index][llid][i];
-
-                  // Edge vectors of element B
-                  slm[slm_offset + EDGE_B_OFFSET + llid * 3 + i] =
-                      edge_vectors_W_[B_element_index][llid][i];
-                }
-
-                // Quantity that we have "8" of - For now set all the verticies of
+                // Quantity that we have "16" of - For now set all the verticies of
                 // the polygon to double max so that we know all are stale
-                for (size_t llid = check_local_item_id; llid < 8;
+                for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
                     llid += NUM_THREADS_PER_CHECK) {
-                  slm[slm_offset + POLYGON_I_OFFSET + llid * 3 + i] =
-                          std::numeric_limits<double>::max();
-
+                  slm[slm_offset + POLYGON_CURRENT_OFFSET + llid * 3 + i] =
+                      std::numeric_limits<double>::max();
+                  slm[slm_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + i] =
+                      std::numeric_limits<double>::max();
                 }
             }
             item.barrier(sycl::access::fence_space::local_space);
-
 
             // =====================================
             // Intersect element A with Eq Plane
@@ -1044,29 +1025,11 @@ class SyclProximityEngine::Impl {
             // Compute signed distance of all vertices of element A with Eq plane
             // Parallelization based on distance computation
 
-            SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_Q_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
-            size_t polygon_Q_size = static_cast<size_t>(slm_ints[slm_ints_offset]);
+            SliceTetWithEqPlane(item, slm, slm_offset, slm_polygon, slm_polygon_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_CURRENT_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
             if(check_local_item_id == 0) {
-                if(polygon_Q_size < 3) {
+                if(slm_ints[slm_ints_offset] < 3) {
                     invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
                 }
-            }
-            // =====================================
-            // Intersect element B with Eq Plane
-            // =====================================
-            // First element at slm_ints_offset is polygon size of Q, we will store the polygon size of S in the second element
-            // Random scratch offset can be overwritten 
-            SliceTetWithEqPlane(item, slm, slm_offset, slm_ints, slm_ints_offset + 1, VERTEX_B_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_S_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
-            size_t polygon_S_size = static_cast<size_t>(slm_ints[slm_ints_offset + 1]);
-            if(check_local_item_id == 0) {
-                if(polygon_S_size < 3) {
-                    invalidated_narrow_phase_checks_[narrow_phase_check_index] = 1;
-                }
-            }
-
-            // Exit all invalidated checks -> we need polygons now because memory access
-            if(invalidated_narrow_phase_checks_[narrow_phase_check_index]) {
-                return;
             }
 
             // Move inward normals
@@ -1085,174 +1048,146 @@ class SyclProximityEngine::Impl {
               }
             }
             item.barrier(sycl::access::fence_space::local_space);
+            
+            // Compute the intersection of Polygon Q with the faces of element B
+            // We will sequentially loop over the faces but we will use our work items to parallely compute
+            // the intersection point over each edge
+            // We have 4 faces, so we will have 4 jobs per check
+            for(size_t face = 0; face < 4; face++) {
+                // This is the same as the number of points in the polygon
+                const size_t num_edges_current_polygon = slm_ints[slm_ints_offset];
 
-            // Now we compute the height of the polygon Q vertices from faces of polygon B
-            // We have 4 faces checked with polygon Q size vertices =  4 * polygon_Q_size jobs
-            const size_t jobs_Q = 4 * polygon_Q_size;
-            for(size_t job = check_local_item_id; job < jobs_Q; job += NUM_THREADS_PER_CHECK) {
-              // Get the face index (think of as row index)
-              size_t face = job / polygon_Q_size;
-              // Get the vertex index of polygon (think of as column index)
-              size_t polygon_vertex = job % polygon_Q_size;
+                // First lets find the height of each of these vertices from the face of interest
+                for(size_t job = check_local_item_id; job < num_edges_current_polygon; job += NUM_THREADS_PER_CHECK) {
+                    // Get the outward normal of the face, point on face, and polygon vertex
+                    double outward_normal[3];
+                    double point_on_face[3];
+                    double polygon_vertex_coords[3];
 
-              // Get the outward normal of the face, point on face, and polygon vertex
-              double outward_normal[3];
-              double point_on_face[3];
-              double polygon_vertex_coords[3];
-              
-              size_t face_vertex_index = (face + 1) % 4;
-              
-              // This loop is over x,y,z
-              for (size_t i = 0; i < 3; i++) {
-                outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
-                
-                // Get a point from the verticies of element B
-                // 'face' corresponds to the triangle formed by {0, 1, 2, 3} - {face}
-                // so any of (face+1)%4, (face+2)%4, (face+3)%4 are candidates for a
-                // point on the face's plane. We arbitrarily choose (face + 1) % 4.
-                point_on_face[i] = slm[slm_offset + VERTEX_B_OFFSET + face_vertex_index * 3 + i];
-                
-                // Get the polygon vertex
-                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_Q_OFFSET + polygon_vertex * 3 + i];
-              }
-
-              // We will store our heights in the random scratch space that we have (we have upto 16 doubles space)
-              // They will be ordered in row major order
-              // [face_0_vertex_0, face_0_vertex_1, face_0_vertex_2, face_0_vertex_3, face_1_vertex_0, ...]
-              const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
-
-              // <= 0 is inside, > 0 is outside
-              slm[slm_offset + RANDOM_SCRATCH_OFFSET + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;
-            }
-            item.barrier(sycl::access::fence_space::local_space);
-
-
-            // Now we compute the intersection points that may exist between the polygon Q edge and 
-            // the faces of polygon B
-            // We have to check 4 faces with polygon Q size edges (since size > 2, num vertices matches num edges)
-            // Each job now handles an edge of polygon Q
-            // We will just store intersection bools in our int random scratch and then process them into the polygon slm
-            // This is done to minimize slm space since otherwise we would need to store potentially 16 intersection vertices
-            const size_t jobs_Q_edges = 4 * polygon_Q_size;
-            for(size_t job = check_local_item_id; job < jobs_Q_edges; job += NUM_THREADS_PER_CHECK) {
-              // Assume 4 edges
-              // We have edges ordered {0,1}, {1, 2}, {2,3}, {3,1}
-              // First thread needs to look at 
-              //  slm[slm_offset + RANDOM_SCRATCH_OFFSET + 0] and slm[slm_offset + RANDOM_SCRATCH_OFFSET + 1] and compute signs to see if there is intersection with plane
-
-              const size_t face = job / polygon_Q_size;
-              const size_t vertex_0_height_index = job % polygon_Q_size;
-              const size_t vertex_1_height_index = (vertex_0_height_index + 1) % polygon_Q_size;
-
-              // Get the heights of the vertices
-              double height_0 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_0_height_index];
-              double height_1 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_1_height_index];
-              
-              if((height_0 <= 0 && height_1 <= 0) || (height_0 > 0 && height_1 > 0)) { // both outside or both inside
-                // No intersection
-                slm_ints[slm_ints_offset + job] = 0;
-              } else {
-                // Intersection
-                slm_ints[slm_ints_offset + job] = 1;
-              }
-            }
-            item.barrier(sycl::access::fence_space::local_space);
-
-            // Get which edges intersect
-            int total_intersections = 0;
-            if(check_local_item_id == 0) {
-                int intersection_ids[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
-                for(size_t i = 0; i < jobs_Q_edges; i++) {
-                    if(slm_ints[slm_ints_offset + i] == 1) {
-                        intersection_ids[total_intersections] = i;
-                        total_intersections++;
+                    // 'face' corresponds to the triangle formed by {0, 1, 2, 3} - {face}
+                    // so any of (face+1)%4, (face+2)%4, (face+3)%4 are candidates for a
+                    // point on the face's plane. We arbitrarily choose (face + 1) % 4.
+                    const size_t face_vertex_index = (face + 1) % 4;                   
+                    // This loop is over x,y,z
+                    for (size_t i = 0; i < 3; i++) {
+                        outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
+                        
+                        // Get a point from the verticies of element B
+                        point_on_face[i] = slm[slm_offset + VERTEX_B_OFFSET + face_vertex_index * 3 + i];
+                        
+                        // Get the polygon vertex -> This has to be from POLYGON_CURRENT_OFFSET
+                        polygon_vertex_coords[i] = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + job * 3 + i];
                     }
+                    // We will store our heights in the random scratch space that we have (we have upto 16 doubles space)
+                    // They will be ordered in row major order
+                    // [face_0_vertex_0, face_0_vertex_1, face_0_vertex_2, face_0_vertex_3, face_1_vertex_0, ...]
+                    const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
+
+                    // <= 0 is inside, > 0 is outside
+                    slm[slm_offset + RANDOM_SCRATCH_OFFSET + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;                    
                 }
-                slm_ints[slm_ints_offset] = total_intersections;
-                for(size_t i = 0; i < 8; i++) {
-                    slm_ints[slm_ints_offset + 1 + i] = intersection_ids[i];
+                // Sync shared memory
+                item.barrier(sycl::access::fence_space::local_space);
+
+                // Now we will walk the current polygon and construct the clipped polygon
+                for(size_t vertex_0_index = check_local_item_id; vertex_0_index < num_edges_current_polygon; vertex_0_index += NUM_THREADS_PER_CHECK) {
+                    // Get the height of vertex_1
+                    const size_t vertex_1_index = (vertex_0_index + 1) % num_edges_current_polygon;
+
+
+                    // Get the height of vertex_0
+                    double height_0 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_0_index];
+                    double height_1 = slm[slm_offset + RANDOM_SCRATCH_OFFSET + vertex_1_index];
+                    
+                    // Each edge can store upto two vertices
+                    // We will do a compaction in the end
+                    if(height_0 <= 0) {
+                        // If vertex_0 is inside, it is part of the clipped polygon
+
+                        // Copy vertex_0 into the clipped polygon
+                        // The "2" multiplier is because each edge can contribute in one loop upto 2 vertices.
+                        // The "3" is because of xyz
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 0] = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 0];
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 1] = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 1];
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 2] = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 2];
+
+                        // Now if vertex_1 is outside, we will have an intersection point too
+                        if(height_1 > 0) {
+                            // Compute the intersection point
+                            const double wa = height_1 / (height_1 - height_0);
+                            const double wb = 1 - wa;
+
+                            // Copy the intersection point into the clipped polygon
+                            slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (2 * vertex_0_index + 1) * 3 + 0] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 0] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 0];
+                            slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (2 * vertex_0_index + 1) * 3 + 1] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 1] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 1];
+                            slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (2 * vertex_0_index + 1) * 3 + 2] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 2] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 2];
+                        }
+                    } else if(height_1 <= 0) {
+                        // If vertex_1 is inside and vertex_0 is outside this edge will contribute 1 point (intersection point)
+                        const double wa = height_1 / (height_1 - height_0);
+                        const double wb = 1 - wa;
+
+                        // Copy the intersection point into the clipped polygon
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 0] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 0] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 0];
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 1] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 1] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 1];
+                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + 2 * vertex_0_index * 3 + 2] = wa * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_0_index * 3 + 2] + wb * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_1_index * 3 + 2];
+                    }
+                    
                 }
+                item.barrier(sycl::access::fence_space::local_space);
+
+                // Flip Current and clipped polygon
+                size_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
+                POLYGON_CURRENT_OFFSET = POLYGON_CLIPPED_OFFSET;
+                POLYGON_CLIPPED_OFFSET = temp_polygon_current_offset;
+
+
+                // Now clean up the current polygon to remove out the std::numeric_limits<double>::max() vertices
+                if (check_local_item_id == 0) {
+                    size_t write_index = 0;
+                    // Scan through all potential vertices
+                    for (size_t read_index = 0; read_index < POLYGON_VERTICES; ++read_index) {
+                        // Check if this vertex is valid (not max value)
+                        if (slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + read_index * 3 + 0] != std::numeric_limits<double>::max()) {
+                            // Only copy if read and write indices are different
+                            if (read_index != write_index) {
+                                // Copy the valid vertex to the write position
+                                slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + write_index * 3 + 0] = 
+                                    slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + read_index * 3 + 0];
+                                slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + write_index * 3 + 1] = 
+                                    slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + read_index * 3 + 1];
+                                slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + write_index * 3 + 2] = 
+                                    slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + read_index * 3 + 2];
+                            }
+                            write_index++;
+                        }
+                    }
+                    
+                    // Fill remaining positions with max values to mark them as invalid
+                    // At the same time even fill in the clipped polygon with max values
+                    for (size_t i = write_index; i < POLYGON_VERTICES; ++i) {
+                        slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0] = std::numeric_limits<double>::max();
+                        slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1] = std::numeric_limits<double>::max();
+                        slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 2] = std::numeric_limits<double>::max();
+                    }
+                    
+                    // Update polygon size
+                    slm_ints[slm_ints_offset] = write_index;
+                }
+                item.barrier(sycl::access::fence_space::local_space);
+
+                // Clear out the clipped polygon
+                for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
+                    llid += NUM_THREADS_PER_CHECK) {
+                  slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + 0] =
+                      std::numeric_limits<double>::max();
+                  slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + 1] =
+                      std::numeric_limits<double>::max();
+                  slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + 2] =
+                      std::numeric_limits<double>::max();
+                }                
+                
             }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            // Similarly compute the height of the polygon S vertices from the faces of polygon A
-            const size_t jobs_S = 4 * polygon_S_size;
-            for(size_t job = check_local_item_id; job < jobs_S; job += NUM_THREADS_PER_CHECK) {
-              // Get the face index (think of as row index)
-              size_t face = job / polygon_S_size;
-              // Get the vertex index of polygon (think of as column index)
-              size_t polygon_vertex = job % polygon_S_size;
-
-              // Get the outward normal of the face, point on face, and polygon vertex
-              double outward_normal[3];
-              double point_on_face[3];
-              double polygon_vertex_coords[3];
-              
-              size_t face_vertex_index = (face + 1) % 4;
-              
-              // This loop is over x,y,z
-              for (size_t i = 0; i < 3; i++) {
-                outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_A_OFFSET + face * 3 + i];
-                point_on_face[i] = slm[slm_offset + VERTEX_A_OFFSET + face_vertex_index * 3 + i];
-                polygon_vertex_coords[i] = slm[slm_offset + POLYGON_S_OFFSET + polygon_vertex * 3 + i];
-              }
-              // jobs_Q offset because we still need the above scratch space in the future
-              const double displacement = outward_normal[0] * point_on_face[0] + outward_normal[1] * point_on_face[1] + outward_normal[2] * point_on_face[2];
-              slm[slm_offset + RANDOM_SCRATCH_OFFSET + jobs_Q + job] = outward_normal[0] * polygon_vertex_coords[0] + outward_normal[1] * polygon_vertex_coords[1] + outward_normal[2] * polygon_vertex_coords[2] - displacement;              
-            }
-            item.barrier(sycl::access::fence_space::local_space);
-
-
-
-
-
-
-
-
-
-            
-
-            
-
-
-
-
-
-
-
-            
-
-
-
-
-
-
-
-
-            
-            
-
-
-
         });
     });
 
@@ -1392,9 +1327,7 @@ class SyclProximityEngine::Impl {
         n_W_z_normalized * gradP_A_W_normalized_z;
     
     constexpr double kCosAlpha = 5. * M_PI / 8.;
-    if (cos_theta_A < kCosAlpha) {
-      return false;
-    }
+
     // Normalized pressure gradient for B
     const double gradP_B_W_norm = sycl::sqrt(
         gradP_B_Wo_x * gradP_B_Wo_x + gradP_B_Wo_y * gradP_B_Wo_y + gradP_B_Wo_z * gradP_B_Wo_z);
@@ -1405,9 +1338,7 @@ class SyclProximityEngine::Impl {
         -n_W_x_normalized * gradP_B_W_normalized_x +
         -n_W_y_normalized * gradP_B_W_normalized_y +
         -n_W_z_normalized * gradP_B_W_normalized_z;
-    if (cos_theta_B < kCosAlpha) {
-      return false;
-    }
+
     // Plane point
     double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
     double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
@@ -1418,13 +1349,13 @@ class SyclProximityEngine::Impl {
     eq_plane_out[3] = p_WQ_x;
     eq_plane_out[4] = p_WQ_y;
     eq_plane_out[5] = p_WQ_z;
-    return true;
+    return (cos_theta_A < kCosAlpha || cos_theta_B < kCosAlpha) ? false : true;
   }
 
 
   // Constructs and stores polygon in slm and returns polygon size
   SYCL_EXTERNAL void SliceTetWithEqPlane(sycl::nd_item<1> item,
-    const sycl::local_accessor<double, 1>& slm, const size_t slm_offset, const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset, const size_t vertex_offset, const size_t eq_plane_offset, const size_t random_scratch_offset, const size_t polygon_offset, const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK) {
+    const sycl::local_accessor<double, 1>& slm, const size_t slm_offset, const sycl::local_accessor<double, 1>& slm_polygon, const size_t slm_polygon_offset, const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset, const size_t vertex_offset, const size_t eq_plane_offset, const size_t random_scratch_offset, const size_t polygon_offset, const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK) {
 
         for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
             // Each thread gets 1 vertex of element A in slm
@@ -1491,7 +1422,7 @@ class SyclProximityEngine::Impl {
 
 
                   // Store the intersection point in the polygon
-                  slm[slm_offset + polygon_offset + llid * 3 + i] = intersection;
+                  slm_polygon[slm_polygon_offset + polygon_offset + llid * 3 + i] = intersection;
                 }
             }
         }
@@ -1502,7 +1433,7 @@ class SyclProximityEngine::Impl {
         if(check_local_item_id == 0) {
             for(size_t i = 0; i < 4; i++) {
                 // TODO - Is just checking x enough? Should be I think
-                if(slm[slm_offset + polygon_offset + i * 3 + 0] != std::numeric_limits<double>::max()) {
+                if(slm_polygon[slm_polygon_offset + polygon_offset + i * 3 + 0] != std::numeric_limits<double>::max()) {
                     polygon_size++;
                 }
             }
@@ -1635,3 +1566,4 @@ size_t SyclProximityEngineAttorney::get_total_checks(
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake
+
