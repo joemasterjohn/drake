@@ -416,6 +416,27 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   std::exclusive_scan(expected_filter.begin(), expected_filter.end(),
                       expected_prefix_sum.begin(), 0);
   EXPECT_EQ(prefix_sum, expected_prefix_sum);
+
+  // Get polygon areas and centroids
+  const std::vector<double> polygon_areas =
+      SyclProximityEngineAttorney::get_polygon_areas(impl);
+  const std::vector<Vector3d> polygon_centroids =
+      SyclProximityEngineAttorney::get_polygon_centroids(impl);
+
+  // Get the narrow phase check indices
+  const std::vector<size_t> narrow_phase_check_indices =
+      SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
+
+  // Construct the element id pairs correspinding to each narrow_phase check
+  // These id pairs will map to the global index that was used in the
+  // collision_filter_ (row and column)
+  std::vector<std::pair<int, int>> element_id_pairs;
+  for (size_t i = 0; i < polygon_areas.size(); ++i) {
+    size_t global_check_index = narrow_phase_check_indices[i];
+    int eA = global_check_index / soft_geometryB.mesh().num_elements();
+    int eB = global_check_index - eA * soft_geometryB.mesh().num_elements();
+    element_id_pairs.emplace_back(eA, eB);
+  }
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
@@ -686,6 +707,33 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   std::exclusive_scan(expected_filter.begin(), expected_filter.end(),
                       expected_prefix_sum.begin(), 0);
   EXPECT_EQ(prefix_sum, expected_prefix_sum);
+
+  // Get polygon areas and centroids
+  const std::vector<double> polygon_areas =
+      SyclProximityEngineAttorney::get_polygon_areas(impl);
+  const std::vector<Vector3d> polygon_centroids =
+      SyclProximityEngineAttorney::get_polygon_centroids(impl);
+
+  // Get the narrow phase check indices
+  const std::vector<size_t> narrow_phase_check_indices =
+      SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
+
+  // Construct the element id pairs correspinding to each narrow_phase check
+  // These id pairs will map to the global index that was used in the
+  // collision_filter_ (row and column)
+  std::vector<std::pair<int, int>> element_id_pairs;
+  for (size_t i = 0; i < polygon_areas.size(); ++i) {
+    size_t global_check_index = narrow_phase_check_indices[i];
+    if (global_check_index > static_cast<size_t>(AB_size + AC_size)) {
+      int eB = (global_check_index - (AB_size + AC_size)) / num_C;
+      int eC = (global_check_index - (AB_size + AC_size)) - eB * num_C;
+      element_id_pairs.emplace_back(eB, eC);
+    } else {
+      int eA = global_check_index / (num_B + num_C);
+      int eB = global_check_index - eA * (num_B + num_C);
+      element_id_pairs.emplace_back(eA, eB);
+    }
+  }
 }
 
 }  // namespace
