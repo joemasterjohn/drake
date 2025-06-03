@@ -310,7 +310,7 @@ class SyclProximityEngine::Impl {
     }
 
     // Allocate memory for polygon areas and centroids by estimating the narrow phase checks to be 5% of total element checks
-    estimated_narrow_phase_checks_ = static_cast<size_t>(total_checks_ / 20);
+    estimated_narrow_phase_checks_ = std::max(static_cast<size_t>(1), static_cast<size_t>(total_checks_ / 20));
     current_polygon_areas_size_ = estimated_narrow_phase_checks_;
     polygon_areas_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     // "3" is for each coordinate
@@ -320,14 +320,14 @@ class SyclProximityEngine::Impl {
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
     narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
     narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
-    q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_).wait();
+    q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
 
     // Inital fills
     std::vector<sycl::event> fill_events;
     fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, current_polygon_areas_size_));
     std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
     fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
-    fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_)); // All valid at the start
+    fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_)); // All valid at the start
 
     // Generate collision filter for all checks
     collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
@@ -804,7 +804,7 @@ class SyclProximityEngine::Impl {
 
       sycl::free(narrow_phase_check_validity_, q_device_);
       narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
-      q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_).wait();
+      q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
     }
 
 
