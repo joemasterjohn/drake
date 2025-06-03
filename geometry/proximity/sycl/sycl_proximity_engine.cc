@@ -1093,9 +1093,9 @@ class SyclProximityEngine::Impl {
                 // the polygon to double max so that we know all are stale
                 for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
                     llid += NUM_THREADS_PER_CHECK) {
-                  slm[slm_offset + POLYGON_CURRENT_OFFSET + llid * 3 + i] =
+                  slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + llid * 3 + i] =
                       std::numeric_limits<double>::max();
-                  slm[slm_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + i] =
+                  slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + i] =
                       std::numeric_limits<double>::max();
                 }
             }
@@ -1119,11 +1119,6 @@ class SyclProximityEngine::Impl {
                 return;
             }
 
-            // // Polygon areas
-            // if(check_local_item_id == 0) {
-            //   polygon_areas_[narrow_phase_check_index] = static_cast<double>(slm_ints[slm_ints_offset]);
-            // }
-            // return;
 
             // Move inward normals
             // Loop is over x,y,z
