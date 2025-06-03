@@ -96,6 +96,12 @@ class SyclProximityEngineAttorney {
   static size_t* get_collision_filter_host_body_index(
       SyclProximityEngine::Impl* impl);
   static size_t get_total_checks(SyclProximityEngine::Impl* impl);
+  static size_t get_total_narrow_phase_checks(SyclProximityEngine::Impl* impl);
+  static std::vector<size_t> get_narrow_phase_check_indices(
+      SyclProximityEngine::Impl* impl);
+  static std::vector<double> get_polygon_areas(SyclProximityEngine::Impl* impl);
+  static std::vector<Vector3<double>> get_polygon_centroids(
+      SyclProximityEngine::Impl* impl);
 };
 
 }  // namespace sycl_impl

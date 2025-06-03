@@ -209,6 +209,17 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
     EXPECT_EQ(expected_collision_filter[i], collision_filter[i]);
   }
 
+  // check compacted narrow_phase_check_indices_
+  std::vector<size_t> narrow_phase_check_indices =
+      SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
+  std::vector<size_t> expected_narrow_phase_check_indices{4, 10};
+  ASSERT_EQ(narrow_phase_check_indices.size(),
+            expected_narrow_phase_check_indices.size());
+  for (size_t i = 0; i < narrow_phase_check_indices.size(); ++i) {
+    EXPECT_EQ(narrow_phase_check_indices[i],
+              expected_narrow_phase_check_indices[i]);
+  }
+
   // Move meshes closer so all elements collide
   X_WGs[idB] = RigidTransformd(Vector3d{0, 0, 0.3});
   X_WGs[idC] = RigidTransformd(Vector3d{0, 0, 0.6});
@@ -228,6 +239,17 @@ GTEST_TEST(SPETest, ThreeMeshesAllColliding) {
                       expected_collision_filter.end(),
                       expected_prefix_sum.begin(), 0);
   EXPECT_EQ(prefix_sum, expected_prefix_sum);
+
+  // check compacted narrow_phase_check_indices_
+  narrow_phase_check_indices =
+      SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
+  expected_narrow_phase_check_indices = {0, 2, 4, 5, 6, 7, 8, 10, 11};
+  ASSERT_EQ(narrow_phase_check_indices.size(),
+            expected_narrow_phase_check_indices.size());
+  for (size_t i = 0; i < narrow_phase_check_indices.size(); ++i) {
+    EXPECT_EQ(narrow_phase_check_indices[i],
+              expected_narrow_phase_check_indices[i]);
+  }
 }
 
 GTEST_TEST(SPETest, TwoSpheresColliding) {
@@ -354,7 +376,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     return std::make_pair(min, max);
   };
 
-  for(int i : mismatch_indices) {
+  for (int i : mismatch_indices) {
     int eA = i / soft_geometryB.mesh().num_elements();
     int eB = i - eA * soft_geometryB.mesh().num_elements();
     const auto [minA, maxA] =

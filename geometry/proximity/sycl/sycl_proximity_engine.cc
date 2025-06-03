@@ -314,7 +314,7 @@ class SyclProximityEngine::Impl {
     current_polygon_areas_size_ = estimated_narrow_phase_checks_;
     polygon_areas_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     // "3" is for each coordinate
-    polygon_centroids_ = sycl::malloc_device<double>(current_polygon_areas_size_ * 3, q_device_);
+    polygon_centroids_ = sycl::malloc_device<Vector3<double>>(current_polygon_areas_size_, q_device_);
 
     // Allocate memory for narrow_phase_check_indices_
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
@@ -323,7 +323,9 @@ class SyclProximityEngine::Impl {
     // Fill with 0.0
     std::vector<sycl::event> polygon_fill_events;
     polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0, current_polygon_areas_size_));
-    polygon_fill_events.push_back(q_device_.fill(polygon_centroids_, 0, current_polygon_areas_size_ * 3));
+    // Replace sycl::fill for Eigen type with host buffer and memcpy
+    std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
+    polygon_fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
 
     // Generate collision filter for all checks
     collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
@@ -781,11 +783,12 @@ class SyclProximityEngine::Impl {
       
       // Allocate new memory with larger size
       polygon_areas_ = sycl::malloc_device<double>(new_size, q_device_);
-      polygon_centroids_ = sycl::malloc_device<double>(new_size * 3, q_device_);
+      polygon_centroids_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
       
       // Fill all with 0.0
       polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(polygon_centroids_, 0.0, new_size * 3));
+      std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
+      polygon_fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
       
       current_polygon_areas_size_ = new_size;
     }
@@ -1385,9 +1388,9 @@ class SyclProximityEngine::Impl {
             // Make all threads write simul but only if their check has not been invalidated
             if(valid_check) {
                 if(check_local_item_id == 0) {
-                    polygon_centroids_[narrow_phase_check_index * 3 + 0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0];
-                    polygon_centroids_[narrow_phase_check_index * 3 + 1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1];
-                    polygon_centroids_[narrow_phase_check_index * 3 + 2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2];
+                    polygon_centroids_[narrow_phase_check_index * 3][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0];
+                    polygon_centroids_[narrow_phase_check_index * 3][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1];
+                    polygon_centroids_[narrow_phase_check_index * 3][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2];
                     polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
                 }
             }
@@ -1487,7 +1490,7 @@ class SyclProximityEngine::Impl {
   // Size is initialized to a fixed size of 2000 and all values are set to 0.0
   // If more than 2000 polygons are needed, the size is increased based on  total_number_narrow_phase_checks
   // Memory allocated using malloc_device
-  double* polygon_centroids_ = nullptr;
+  Vector3<double>* polygon_centroids_ = nullptr;
 
   size_t current_polygon_areas_size_ = 0; // Current size of polygon_areas_ to prevent constant reallocation
   
@@ -1787,6 +1790,44 @@ size_t* SyclProximityEngineAttorney::get_collision_filter_host_body_index(
 size_t SyclProximityEngineAttorney::get_total_checks(
     SyclProximityEngine::Impl* impl) {
   return impl->total_checks_;
+}
+
+size_t SyclProximityEngineAttorney::get_total_narrow_phase_checks(
+    SyclProximityEngine::Impl* impl) {
+  return impl->total_narrow_phase_checks_;
+}
+
+std::vector<size_t> SyclProximityEngineAttorney::get_narrow_phase_check_indices(
+    SyclProximityEngine::Impl* impl) {
+  size_t total_narrow_phase_checks = SyclProximityEngineAttorney::get_total_narrow_phase_checks(impl);
+  std::vector<size_t> narrow_phase_check_indices_host(total_narrow_phase_checks);
+  auto q = impl->q_device_;
+  auto narrow_phase_check_indices = impl->narrow_phase_check_indices_;
+  q.memcpy(narrow_phase_check_indices_host.data(), narrow_phase_check_indices,
+           total_narrow_phase_checks * sizeof(size_t)).wait();
+  return narrow_phase_check_indices_host;
+}
+
+std::vector<double> SyclProximityEngineAttorney::get_polygon_areas(
+    SyclProximityEngine::Impl* impl) {
+  size_t total_narrow_phase_checks = SyclProximityEngineAttorney::get_total_narrow_phase_checks(impl);
+  std::vector<double> polygon_areas_host(total_narrow_phase_checks);
+  auto q = impl->q_device_;
+  auto polygon_areas = impl->polygon_areas_;
+  q.memcpy(polygon_areas_host.data(), polygon_areas,
+           total_narrow_phase_checks * sizeof(double)).wait();
+  return polygon_areas_host;
+}
+
+std::vector<Vector3<double>> SyclProximityEngineAttorney::get_polygon_centroids(
+    SyclProximityEngine::Impl* impl) {
+  size_t total_narrow_phase_checks = SyclProximityEngineAttorney::get_total_narrow_phase_checks(impl);
+  std::vector<Vector3<double>> polygon_centroids_host(total_narrow_phase_checks);
+  auto q = impl->q_device_;
+  auto polygon_centroids = impl->polygon_centroids_;
+  q.memcpy(polygon_centroids_host.data(), polygon_centroids,
+           total_narrow_phase_checks * sizeof(Vector3<double>)).wait();
+  return polygon_centroids_host;
 }
 
 }  // namespace sycl_impl
