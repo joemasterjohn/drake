@@ -1156,7 +1156,7 @@ class SyclProximityEngine::Impl {
                     // 'face' corresponds to the triangle formed by {0, 1, 2, 3} - {face}
                     // so any of (face+1)%4, (face+2)%4, (face+3)%4 are candidates for a
                     // point on the face's plane. We arbitrarily choose (face + 1) % 4.
-                    const size_t face_vertex_index = (face + 1) % 4;                   
+                    const size_t face_vertex_index = (face + 1) % num_edges_current_polygon;                   
                     // This loop is over x,y,z
                     for (size_t i = 0; i < 3; i++) {
                         outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
@@ -1436,9 +1436,10 @@ class SyclProximityEngine::Impl {
             // Make all threads write simul but only if their check has not been invalidated
             if(check_local_item_id == 0) {
                 if(narrow_phase_check_validity_[narrow_phase_check_index] == 1) {
-                    polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0];
-                    polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1];
-                    polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2];
+                    const double inv_area = 1.0 / slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
+                    polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0] * inv_area;
+                    polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1] * inv_area;
+                    polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2] * inv_area;
                     polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
                 }
             }
