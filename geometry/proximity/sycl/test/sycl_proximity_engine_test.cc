@@ -440,7 +440,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     // std::cerr << "global_check_index: " << global_check_index << ", eA: " <<
     // eA
     // << ", eB: " << eB << std::endl;
-    std::cerr << "polygon_areas[{}]: " << polygon_areas[i] << std::endl;
+    std::cerr << fmt::format("polygon_areas[{}]: \n", polygon_areas[i]);
     // std::cerr << "polygon_centroids[{}]: " << polygon_centroids[i][0] << ", "
     //           << polygon_centroids[i][1] << ", " << polygon_centroids[i][2]
     //           << std::endl;

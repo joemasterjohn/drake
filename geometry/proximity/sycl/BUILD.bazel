@@ -14,12 +14,12 @@ drake_cc_library(
     hdrs = ["sycl_hydroelastic_surface.h"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
         "-DEIGEN_DONT_VECTORIZE",
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
     ],
     deps = [
         "//common:essential",
@@ -36,7 +36,7 @@ drake_cc_library(
     visibility = ["//geometry:__pkg__"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
         "-DEIGEN_DONT_VECTORIZE",
         "-I/opt/intel/oneapi/dpl/2022.8/include",
         "-Wno-old-style-cast",
@@ -48,7 +48,7 @@ drake_cc_library(
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
     ],
     deps = [
         "//common:essential",
@@ -63,12 +63,12 @@ drake_cc_googletest(
     srcs = ["test/sycl_proximity_engine_test.cc"],
     copts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
         "-DEIGEN_DONT_VECTORIZE",
     ],
     linkopts = [
         "-fsycl",
-        "-fsycl-targets=nvptx64-nvidia-cuda,spir64",
+        "-fsycl-targets=spirv64",
     ],
     deps = [
         "//common:essential",

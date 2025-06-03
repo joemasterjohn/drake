@@ -94,7 +94,7 @@ class SyclProximityEngine::Impl {
   Impl(const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
            soft_geometries) {
     // Initialize SYCL queues
-    q_device_ = sycl::queue(sycl::gpu_selector_v);
+    q_device_ = sycl::queue(sycl::cpu_selector_v);
     q_host_ = sycl::queue(sycl::cpu_selector_v);
 
     DRAKE_THROW_UNLESS(soft_geometries.size() > 0);
@@ -308,6 +308,7 @@ class SyclProximityEngine::Impl {
       geom_collision_filter_check_offsets_[i] = total_checks_;
       total_checks_ += total_checks_per_geometry_[i];
     }
+    total_checks_per_geometry_[num_geometries_ - 1] = 0;
 
     // Allocate memory for polygon areas and centroids by estimating the narrow phase checks to be 5% of total element checks
     estimated_narrow_phase_checks_ = std::max(static_cast<size_t>(1), static_cast<size_t>(total_checks_ / 20));
@@ -344,7 +345,7 @@ class SyclProximityEngine::Impl {
 
     // Fill in geometry index based on checks per geometry
     std::vector<sycl::event> collision_filter_host_body_index_fill_events;
-    for (size_t i = 0; i < num_geometries_; ++i) {
+    for (size_t i = 0; i < num_geometries_-1; ++i) {
       const size_t num_checks = total_checks_per_geometry_[i];
       collision_filter_host_body_index_fill_events.push_back(
           q_device_.fill(collision_filter_host_body_index_ +
