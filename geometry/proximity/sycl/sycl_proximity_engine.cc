@@ -94,7 +94,7 @@ class SyclProximityEngine::Impl {
   Impl(const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
            soft_geometries) {
     // Initialize SYCL queues
-    q_device_ = sycl::queue(sycl::cpu_selector_v);
+    q_device_ = sycl::queue(sycl::gpu_selector_v);
     q_host_ = sycl::queue(sycl::cpu_selector_v);
 
     DRAKE_THROW_UNLESS(soft_geometries.size() > 0);
@@ -935,8 +935,22 @@ class SyclProximityEngine::Impl {
            geom_collision_filter_num_cols_ = geom_collision_filter_num_cols_,
            total_checks_per_geometry_ = total_checks_per_geometry_,
            collision_filter_host_body_index_ =
-               collision_filter_host_body_index_,
-               narrow_phase_check_validity_ = narrow_phase_check_validity_](sycl::nd_item<1> item) {
+           collision_filter_host_body_index_,
+           narrow_phase_check_validity_ = narrow_phase_check_validity_,
+           polygon_areas_ = polygon_areas_,
+           polygon_centroids_ = polygon_centroids_,
+           TOTAL_THREADS_NEEDED = TOTAL_THREADS_NEEDED,
+           NUM_THREADS_PER_CHECK = NUM_THREADS_PER_CHECK,
+           DOUBLES_PER_CHECK = DOUBLES_PER_CHECK,
+           POLYGON_DOUBLES = POLYGON_DOUBLES,
+           RANDOM_SCRATCH_INTS = RANDOM_SCRATCH_INTS,
+           EQ_PLANE_OFFSET = EQ_PLANE_OFFSET,
+           VERTEX_A_OFFSET = VERTEX_A_OFFSET,
+           VERTEX_B_OFFSET = VERTEX_B_OFFSET,
+           INWARD_NORMAL_A_OFFSET = INWARD_NORMAL_A_OFFSET,
+           INWARD_NORMAL_B_OFFSET = INWARD_NORMAL_B_OFFSET,
+           RANDOM_SCRATCH_OFFSET = RANDOM_SCRATCH_OFFSET,
+           POLYGON_VERTICES = POLYGON_VERTICES](sycl::nd_item<1> item) {
             size_t global_id = item.get_global_id(0);
             // Early return for extra threads
             if (global_id >= TOTAL_THREADS_NEEDED) return;
@@ -1025,13 +1039,22 @@ class SyclProximityEngine::Impl {
                   gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo,
                   gradP_B_Wo_x, gradP_B_Wo_y, gradP_B_Wo_z, p_B_Wo,
                   eq_plane);
-              if(!valid_check) {
+              if(valid_check) {
+                // Write for Eq plane to slm
+                #pragma unroll
+                for (int i = 0; i < 6; ++i) {
+                  slm[slm_offset + EQ_PLANE_OFFSET + i] = eq_plane[i];
+                }
+              } 
+              else {
                 narrow_phase_check_validity_[narrow_phase_check_index] = 0;
               }
-              // Write for Eq plane to slm
-              for (int i = 0; i < 6; ++i) {
-                slm[slm_offset + EQ_PLANE_OFFSET + i] = eq_plane[i];
-              }
+            }
+
+            // Return all invalid checks
+            if(narrow_phase_check_validity_[narrow_phase_check_index] == 0) {
+                return;
+                
             }
 
 
@@ -1055,6 +1078,7 @@ class SyclProximityEngine::Impl {
                 sh_vertex_offsets_[geom_index_B];
 
             // Loop is over x,y,z
+            #pragma unroll
             for (size_t i = 0; i < 3; i++) {
                 // Quantities that we have "4" of
                 for (size_t llid = check_local_item_id; llid < 4;
@@ -1095,8 +1119,15 @@ class SyclProximityEngine::Impl {
                 return;
             }
 
+            // // Polygon areas
+            // if(check_local_item_id == 0) {
+            //   polygon_areas_[narrow_phase_check_index] = static_cast<double>(slm_ints[slm_ints_offset]);
+            // }
+            // return;
+
             // Move inward normals
             // Loop is over x,y,z
+            #pragma unroll
             for (size_t i = 0; i < 3; i++) {
               // Quantities that we have "4" of
               for (size_t llid = check_local_item_id; llid < 4;
@@ -1556,16 +1587,18 @@ class SyclProximityEngine::Impl {
       double gradP_B_Wo_x, double gradP_B_Wo_y, double gradP_B_Wo_z, double p_B_Wo,
       double* eq_plane_out) {
     // Compute n_W = grad_f0_W - grad_f1_W
-    double n_W_x = gradP_A_Wo_x - gradP_B_Wo_x;
-    double n_W_y = gradP_A_Wo_y - gradP_B_Wo_y;
-    double n_W_z = gradP_A_Wo_z - gradP_B_Wo_z;
-    double n_W_norm = sycl::sqrt(n_W_x * n_W_x + n_W_y * n_W_y + n_W_z * n_W_z);
-    if (n_W_norm <= 0.0) {
+    const double n_W_x = gradP_A_Wo_x - gradP_B_Wo_x;
+    const double n_W_y = gradP_A_Wo_y - gradP_B_Wo_y;
+    const double n_W_z = gradP_A_Wo_z - gradP_B_Wo_z;
+    const double n_W_norm = sycl::sqrt(n_W_x * n_W_x + n_W_y * n_W_y + n_W_z * n_W_z);
+
+    if(n_W_norm <= 0.0) {
       return false;
     }
-    double n_W_x_normalized = n_W_x / n_W_norm;
-    double n_W_y_normalized = n_W_y / n_W_norm;
-    double n_W_z_normalized = n_W_z / n_W_norm;
+
+    const double n_W_x_normalized = n_W_x / n_W_norm;
+    const double n_W_y_normalized = n_W_y / n_W_norm;
+    const double n_W_z_normalized = n_W_z / n_W_norm;
 
     // Normalized pressure gradient for A
     const double gradP_A_W_norm = sycl::sqrt(
@@ -1578,7 +1611,12 @@ class SyclProximityEngine::Impl {
         n_W_y_normalized * gradP_A_W_normalized_y +
         n_W_z_normalized * gradP_A_W_normalized_z;
     
-    constexpr double kCosAlpha = 5. * M_PI / 8.;
+    constexpr double kAlpha = 5. * M_PI / 8.;
+    const double kCosAlpha = sycl::cos(kAlpha);
+
+    if(cos_theta_A <= kCosAlpha) {
+      return false;
+    }
 
     // Normalized pressure gradient for B
     const double gradP_B_W_norm = sycl::sqrt(
@@ -1591,6 +1629,10 @@ class SyclProximityEngine::Impl {
         -n_W_y_normalized * gradP_B_W_normalized_y +
         -n_W_z_normalized * gradP_B_W_normalized_z;
 
+    if(cos_theta_B <= kCosAlpha) {
+      return false;
+    }
+
     // Plane point
     double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
     double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
@@ -1601,7 +1643,7 @@ class SyclProximityEngine::Impl {
     eq_plane_out[3] = p_WQ_x;
     eq_plane_out[4] = p_WQ_y;
     eq_plane_out[5] = p_WQ_z;
-    return (cos_theta_A < kCosAlpha || cos_theta_B < kCosAlpha) ? false : true;
+    return true;
   }
 
 
@@ -1634,7 +1676,7 @@ class SyclProximityEngine::Impl {
             // Store these in our random scratch space
             slm[slm_offset + random_scratch_offset + llid] = normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z - displacement;
         }
-            item.barrier(sycl::access::fence_space::local_space);
+        item.barrier(sycl::access::fence_space::local_space);
 
         // Let one thread compute intersection code and store this in the shared memory for other threads
         if(check_local_item_id == 0) {
@@ -1645,8 +1687,8 @@ class SyclProximityEngine::Impl {
                 }
             }
             slm_ints[slm_ints_offset] = intersection_code;
-            }
-            item.barrier(sycl::access::fence_space::local_space);
+        }
+        item.barrier(sycl::access::fence_space::local_space);
 
         // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon vertices
         for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
@@ -1665,6 +1707,7 @@ class SyclProximityEngine::Impl {
 
                 // Compute polygon vertices
                 // Loop is over x,y,z
+                #pragma unroll
                 for(size_t i = 0; i < 3; i++) {
                   const double vertex_0 = slm[slm_offset + vertex_offset + tet_edge.first * 3 + i];
                   const double vertex_1 = slm[slm_offset + vertex_offset + tet_edge.second * 3 + i];
@@ -1676,9 +1719,9 @@ class SyclProximityEngine::Impl {
                   // Store the intersection point in the polygon
                   slm_polygon[slm_polygon_offset + polygon_offset + llid * 3 + i] = intersection;
                 }
-                }
             }
-            item.barrier(sycl::access::fence_space::local_space);
+        }
+        item.barrier(sycl::access::fence_space::local_space);
 
         // Compute current polygon size by checking number of max values
         int polygon_size = 0;
@@ -1690,9 +1733,8 @@ class SyclProximityEngine::Impl {
                 }
             }
             slm_ints[slm_ints_offset] = polygon_size;
-
-            }
-            item.barrier(sycl::access::fence_space::local_space);
+        }
+        item.barrier(sycl::access::fence_space::local_space);
     }
 };
 

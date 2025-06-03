@@ -431,7 +431,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   // These id pairs will map to the global index that was used in the
   // collision_filter_ (row and column)
   std::vector<std::pair<int, int>> element_id_pairs;
-  for (size_t i = 0; i < polygon_areas.size(); ++i) {
+  for (size_t i = 0; i < 20; ++i) {
     size_t global_check_index = narrow_phase_check_indices[i];
     int eA = global_check_index / soft_geometryB.mesh().num_elements();
     int eB = global_check_index - eA * soft_geometryB.mesh().num_elements();
@@ -440,7 +440,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     // std::cerr << "global_check_index: " << global_check_index << ", eA: " <<
     // eA
     // << ", eB: " << eB << std::endl;
-    std::cerr << fmt::format("polygon_areas[{}]: \n", polygon_areas[i]);
+    std::cerr << fmt::format("polygon_areas[{}]: {} \n", i, polygon_areas[i]);
     // std::cerr << "polygon_centroids[{}]: " << polygon_centroids[i][0] << ", "
     //           << polygon_centroids[i][1] << ", " << polygon_centroids[i][2]
     //           << std::endl;
