@@ -73,6 +73,7 @@ drake_cc_googletest(
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
+        "//geometry/proximity:field_intersection",
         "//math:geometric_transform",
         ":sycl_hydroelastic_surface",
         ":sycl_proximity_engine"

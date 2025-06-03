@@ -18,6 +18,8 @@
 
 #include "drake/common/text_logging.h"
 #include "drake/geometry/geometry_ids.h"
+#include "drake/geometry/proximity/contact_surface_utility.h"
+#include "drake/geometry/proximity/field_intersection.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
 #include "drake/geometry/proximity/make_sphere_field.h"
 #include "drake/geometry/proximity/make_sphere_mesh.h"
@@ -440,10 +442,54 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     // std::cerr << "global_check_index: " << global_check_index << ", eA: " <<
     // eA
     // << ", eB: " << eB << std::endl;
-    if (polygon_areas[i] > 1e-15) {
-      std::cerr << fmt::format("heights[{}]: {} {} {} {}\n", i,
-                               polygon_centroids[i][0], polygon_centroids[i][1],
-                               polygon_centroids[i][2], polygon_areas[i]);
+    // if (polygon_areas[i] > 1e-15) {
+    //   std::cerr << fmt::format("heights[{}]: {} {} {} {}\n", i,
+    //                            polygon_centroids[i][0], polygon_centroids[i][1],
+    //                            polygon_centroids[i][2], polygon_areas[i]);
+    // }
+  }
+
+  std::unique_ptr<PolygonSurfaceMesh<double>> contact_surface;
+  std::unique_ptr<PolygonSurfaceMeshFieldLinear<double, double>>
+      contact_pressure;
+  VolumeIntersector<PolyMeshBuilder<double>, Aabb> volume_intersector;
+  volume_intersector.IntersectFields(
+      soft_geometryA.pressure_field(), bvhSphereA,
+      soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
+      &contact_pressure);
+  fmt::print("ssize(polygon_areas): {}\n", ssize(polygon_areas));
+  fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
+  std::vector<int> polygons_found;
+  std::vector<int> bad_area;
+  for (int i = 0; i < contact_surface->num_faces(); ++i) {
+    const double expected_area = contact_surface->area(i);
+    // const Vector3d expected_centroid = contact_surface->centroid(i);
+    const int tet0 = volume_intersector.tet0_of_polygon(i);
+    const int tet1 = volume_intersector.tet1_of_polygon(i);
+    const std::pair<int, int> tet_pair{tet0, tet1};
+    const auto it =
+        std::find(element_id_pairs.begin(), element_id_pairs.end(), tet_pair);
+    // We expect to find polygons for every polygon in the cpu surface.
+    EXPECT_TRUE(it != element_id_pairs.end());
+    if (it != element_id_pairs.end()) {
+      int index = (it - element_id_pairs.begin());
+      polygons_found.push_back(index);
+      // EXPECT_NEAR(polygon_areas[index], expected_area,
+      //             1e2 * std::numeric_limits<double>::epsilon());
+      if (std::abs(polygon_areas[index] - expected_area) >
+          1e2 * std::numeric_limits<double>::epsilon()) {
+        bad_area.push_back(index);
+      }
+    }
+  }
+  fmt::print("Polygons found by SYCL implementation: {}\n",
+             ssize(polygons_found));
+  fmt::print("Polygons with area difference beyond rounding error: {}\n",
+             ssize(bad_area));
+  std::sort(polygons_found.begin(), polygons_found.end());
+  for (int i = 0; i < ssize(polygon_areas); ++i) {
+    if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i)) {
+      EXPECT_LT(polygon_areas[i], 1e-15);
     }
   }
 }
