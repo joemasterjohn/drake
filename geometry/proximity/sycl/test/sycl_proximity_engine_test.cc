@@ -436,6 +436,14 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     int eA = global_check_index / soft_geometryB.mesh().num_elements();
     int eB = global_check_index - eA * soft_geometryB.mesh().num_elements();
     element_id_pairs.emplace_back(eA, eB);
+
+    // std::cerr << "global_check_index: " << global_check_index << ", eA: " <<
+    // eA
+    // << ", eB: " << eB << std::endl;
+    std::cerr << "polygon_areas[{}]: " << polygon_areas[i] << std::endl;
+    // std::cerr << "polygon_centroids[{}]: " << polygon_centroids[i][0] << ", "
+    //           << polygon_centroids[i][1] << ", " << polygon_centroids[i][2]
+    //           << std::endl;
   }
 }
 
@@ -543,8 +551,8 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
   };
   bvhSphereB.Collide(bvhSphereC, X_BC, callback_BC);
 
-  // Convert cadidate tets to collision_filter_ that can be compared to one from
-  // sycl_proximity_engine
+  // Convert cadidate tets to collision_filter_ that can be compared to one
+  // from sycl_proximity_engine
   const int num_A = soft_geometryA.mesh().num_elements();
   const int num_B = soft_geometryB.mesh().num_elements();
   const int num_C = soft_geometryC.mesh().num_elements();
@@ -602,8 +610,8 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
 
   // Due to numerical tolerances in the CPU BVH leaf overlap test, there will
   // be false positives in the cpu filter. Therefore, we check that the sycl
-  // filter is a subset of the cpu filter. Later on, we will verify that the cpu
-  // narrow phase filters these out using true geometric quantites.
+  // filter is a subset of the cpu filter. Later on, we will verify that the
+  // cpu narrow phase filters these out using true geometric quantites.
   std::vector<int> mismatch_indices;
   for (int i = 0; i < ssize(expected_filter); ++i) {
     EXPECT_LE(collision_filter[i], expected_filter[i]);
@@ -688,8 +696,8 @@ GTEST_TEST(SPETest, ThreeSpheresColliding) {
                                 soft_geometryB.mesh().element(eB).vertex(3)));
       }
     }
-    // Compute the bounds of the intersection of the Aabbs. The intersection is
-    // empty if at least one of the dimensions has negative width.
+    // Compute the bounds of the intersection of the Aabbs. The intersection
+    // is empty if at least one of the dimensions has negative width.
     const Vector3d intersection_min = min0.cwiseMax(min1);
     const Vector3d intersection_max = max0.cwiseMin(max1);
     const Vector3d intersection_widths = intersection_max - intersection_min;

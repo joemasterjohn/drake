@@ -319,13 +319,15 @@ class SyclProximityEngine::Impl {
     // Allocate memory for narrow_phase_check_indices_
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
     narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
+    narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
+    q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_).wait();
 
-    // Fill with 0.0
-    std::vector<sycl::event> polygon_fill_events;
-    polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0, current_polygon_areas_size_));
-    // Replace sycl::fill for Eigen type with host buffer and memcpy
+    // Inital fills
+    std::vector<sycl::event> fill_events;
+    fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, current_polygon_areas_size_));
     std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
-    polygon_fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
+    fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
+    fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_)); // All valid at the start
 
     // Generate collision filter for all checks
     collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
@@ -352,7 +354,7 @@ class SyclProximityEngine::Impl {
 
     // Wait for all transfers to complete before returning
     sycl::event::wait_and_throw(transfer_events);
-    sycl::event::wait_and_throw(polygon_fill_events);
+    sycl::event::wait_and_throw(fill_events);
     sycl::event::wait_and_throw(collision_filter_host_body_index_fill_events);
   }
 
@@ -414,6 +416,7 @@ class SyclProximityEngine::Impl {
       sycl::free(polygon_areas_, q_device_);
       sycl::free(polygon_centroids_, q_device_);
       sycl::free(narrow_phase_check_indices_, q_device_);
+      sycl::free(narrow_phase_check_validity_, q_device_);
     }
   }
 
@@ -798,6 +801,10 @@ class SyclProximityEngine::Impl {
       sycl::free(narrow_phase_check_indices_, q_device_);
       current_narrow_phase_check_indices_size_ = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
       narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
+
+      sycl::free(narrow_phase_check_validity_, q_device_);
+      narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
+      q_device_.fill(narrow_phase_check_validity_, 1, current_narrow_phase_check_indices_size_).wait();
     }
 
 
@@ -821,7 +828,6 @@ class SyclProximityEngine::Impl {
     // Command group 4: Narrow phase collision detection
     // =========================================
 
-    constexpr size_t LOCAL_SIZE = 128;  // 128 per work group
     // Number of threads involved in the computations of one check
     // Minimum that can be set here is 4 -> Limits on shared memory requirements
     // Maximum can be set to 16 -> Limit for meaningful parallelization without
@@ -830,14 +836,21 @@ class SyclProximityEngine::Impl {
     // Demand that NUM_THREADS_PER_CHECK is factor of 32 and less than 32
     DRAKE_DEMAND(NUM_THREADS_PER_CHECK < 32);
     DRAKE_DEMAND(32 % NUM_THREADS_PER_CHECK == 0);
-    constexpr size_t NUM_CHECKS_IN_WORK_GROUP =
-        LOCAL_SIZE / NUM_THREADS_PER_CHECK;
+
     
     // Calculate total threads needed (4 threads per check)
     const size_t TOTAL_THREADS_NEEDED = total_narrow_phase_checks_ * NUM_THREADS_PER_CHECK;
+    const size_t LOCAL_SIZE = std::min(static_cast<size_t>(128), TOTAL_THREADS_NEEDED);  // 128 per work group if those many are required
+
+    const size_t NUM_CHECKS_IN_WORK_GROUP =
+    LOCAL_SIZE / NUM_THREADS_PER_CHECK;
     // Number of work groups
     const size_t NUM_GROUPS =
         (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE;
+    std::cerr << "TOTAL_THREADS_NEEDED: " << TOTAL_THREADS_NEEDED << std::endl;
+    std::cerr << "LOCAL_SIZE: " << LOCAL_SIZE << std::endl;
+    std::cerr << "NUM_CHECKS_IN_WORK_GROUP: " << NUM_CHECKS_IN_WORK_GROUP << std::endl;
+    std::cerr << "NUM_GROUPS: " << NUM_GROUPS << std::endl;
     // Calculation of the number of doubles to be stored in shared memory per
     // Offsets are required to index the local memory
     constexpr size_t EQ_PLANE_OFFSET = 0;
@@ -868,7 +881,7 @@ class SyclProximityEngine::Impl {
                                          INWARD_NORMAL_DOUBLES + RANDOM_SCRATCH_DOUBLES;
 
 
-    constexpr size_t POLYGON_CURRENT_DOUBLES = 48; // 16 vertices
+    constexpr size_t POLYGON_CURRENT_DOUBLES = 48; // 16 vertices (although 8 is max, we need 16 because each edge can produce 2 vertices which means for parallelization and indexing we need 16)
     constexpr size_t POLYGON_CLIPPED_DOUBLES = 48; // 16 vertices
     constexpr size_t POLYGON_DOUBLES = POLYGON_CURRENT_DOUBLES + POLYGON_CLIPPED_DOUBLES;
 
@@ -921,7 +934,8 @@ class SyclProximityEngine::Impl {
            geom_collision_filter_num_cols_ = geom_collision_filter_num_cols_,
            total_checks_per_geometry_ = total_checks_per_geometry_,
            collision_filter_host_body_index_ =
-               collision_filter_host_body_index_](sycl::nd_item<1> item) {
+               collision_filter_host_body_index_,
+               narrow_phase_check_validity_ = narrow_phase_check_validity_](sycl::nd_item<1> item) {
             size_t global_id = item.get_global_id(0);
             // Early return for extra threads
             if (global_id >= TOTAL_THREADS_NEEDED) return;
@@ -952,10 +966,7 @@ class SyclProximityEngine::Impl {
 
             // Get global element ids
             size_t narrow_phase_check_index = global_id / NUM_THREADS_PER_CHECK;
-            // Each thread holds a flag to indicate if the check is valid
-            // However we only use check_local_item_id == 0 to this flag
-            // Thus this value should not be used for the other threads
-            bool valid_check = false;
+
             // global check index
             size_t global_check_index =
                 narrow_phase_check_indices_[narrow_phase_check_index];
@@ -1009,10 +1020,13 @@ class SyclProximityEngine::Impl {
               const double p_B_Wo = gradient_W_pressure_at_Wo_[B_element_index][3];
 
               double eq_plane[6];
-              valid_check = Impl::ComputeEquilibriumPlane(
+              bool valid_check = Impl::ComputeEquilibriumPlane(
                   gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo,
                   gradP_B_Wo_x, gradP_B_Wo_y, gradP_B_Wo_z, p_B_Wo,
                   eq_plane);
+              if(!valid_check) {
+                narrow_phase_check_validity_[narrow_phase_check_index] = 0;
+              }
               // Write for Eq plane to slm
               for (int i = 0; i < 6; ++i) {
                 slm[slm_offset + EQ_PLANE_OFFSET + i] = eq_plane[i];
@@ -1071,7 +1085,13 @@ class SyclProximityEngine::Impl {
 
             SliceTetWithEqPlane(item, slm, slm_offset, slm_polygon, slm_polygon_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_CURRENT_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
             if(check_local_item_id == 0 && slm_ints[slm_ints_offset] < 3) {
-                valid_check = false;
+                narrow_phase_check_validity_[narrow_phase_check_index] = 0;
+            }
+
+
+            // Return all invalid checks
+            if(narrow_phase_check_validity_[narrow_phase_check_index] == 0) {
+                return;
             }
 
             // Move inward normals
@@ -1383,22 +1403,22 @@ class SyclProximityEngine::Impl {
                         (slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] + factor) * inv_3;
                 }
             }
+            item.barrier(sycl::access::fence_space::local_space);
 
             // Write centroid and area to global memory
             // Make all threads write simul but only if their check has not been invalidated
-            if(valid_check) {
-                if(check_local_item_id == 0) {
-                    polygon_centroids_[narrow_phase_check_index * 3][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0];
-                    polygon_centroids_[narrow_phase_check_index * 3][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1];
-                    polygon_centroids_[narrow_phase_check_index * 3][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2];
+            if(check_local_item_id == 0) {
+                if(narrow_phase_check_validity_[narrow_phase_check_index] == 1) {
+                    polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0];
+                    polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1];
+                    polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2];
                     polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
                 }
             }
         });
     });
 
-
-    
+    compute_contact_polygon_event.wait_and_throw();
     // Placeholder that returns an empty vector
     std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
     return sycl_hydroelastic_surfaces;
@@ -1498,6 +1518,7 @@ class SyclProximityEngine::Impl {
   // Pointer to narrow_phase_check_indices_
   // Memory allocated using malloc_device
   size_t* narrow_phase_check_indices_ = nullptr; 
+  uint8_t* narrow_phase_check_validity_ = nullptr; // 1 if the check is valid, 0 otherwise
   size_t current_narrow_phase_check_indices_size_ = 0; // Current size of narrow_phase_check_indices_ to prevent constant reallocation
 
 
@@ -1786,7 +1807,7 @@ Vector4<double>* SyclProximityEngineAttorney::get_gradient_W_pressure_at_Wo(
 size_t* SyclProximityEngineAttorney::get_collision_filter_host_body_index(
     SyclProximityEngine::Impl* impl) {
   return impl->collision_filter_host_body_index_;
-}
+}   
 size_t SyclProximityEngineAttorney::get_total_checks(
     SyclProximityEngine::Impl* impl) {
   return impl->total_checks_;
