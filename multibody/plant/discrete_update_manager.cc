@@ -13,6 +13,9 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
+#define print_eigen(X) {} // (fmt::print("({}): {}\n", (#X), fmt_eigen((X).transpose())))
+#define print_v(X) {} //(fmt::print("({}): {}\n", (#X), (X)))
+
 using drake::geometry::ContactSurface;
 using drake::geometry::GeometryId;
 using drake::geometry::PenetrationAsPointPair;
@@ -650,6 +653,9 @@ void DiscreteUpdateManager<T>::CalcContactResultsForSpeculativeContact(
       const Vector3<T> f_Bq_W = R_WC * f_Bq_C;
       const Vector3<T> f_Ap_W = -f_Bq_W;
 
+      print_v(fn(icontact));
+      //fmt::print("\n");
+
       // Hack, contact points are coincident, for now.
       contact_results_speculative->emplace_back(
           bodyA_index, bodyB_index, pair.p_WC, pair.p_WC, f_Ap_W, f_Bq_W);
@@ -883,6 +889,8 @@ void DiscreteUpdateManager<T>::
   if (!plant().use_speculative()) {
     return;
   }
+
+  fmt::print("t: {}\n", context.get_time());
   const std::vector<SpeculativeContactSurface<T>>& speculative_surfaces =
       EvalGeometryContactData(context).get().speculative_surfaces;
 
@@ -957,11 +965,13 @@ void DiscreteUpdateManager<T>::
           });
       indices.resize(count);
     }
+    print_v(count);
     for(int face : indices) {
     // for (int face = 0; face < s.num_contact_points(); ++face) {
       // From SpeculativeContactSurface's docs: Geometric "normal" from geometry
       // B into A.
       const Vector3<T>& zhat_BA_W = s.zhat_BA_W()[face];
+      print_eigen(zhat_BA_W);
 
       // Pressure gradients.
       const Vector3<T>& gA = s.grad_eA_W()[face];
@@ -973,6 +983,7 @@ void DiscreteUpdateManager<T>::
       // Then, since we then use v_AcBc_W for the contact velocity, vn > 0
       // implies separation.
       const Vector3<T>& nhat_BA_W = s.nhat_BA_W()[face];
+      print_eigen(nhat_BA_W);
 
       // One dimensional pressure gradient (in Pa/m). Unlike [Masterjohn
       // 2022], for convenience we define both pressure gradients
@@ -982,6 +993,9 @@ void DiscreteUpdateManager<T>::
       // Field Contact Patches.
       const T kappaA = nhat_BA_W.dot(gA);
       const T kappaB = -nhat_BA_W.dot(gB);
+
+      print_v(kappaA);
+      print_v(kappaB);
 
       constexpr double kGradientEpsilon = 1.0e-14;
       if (kappaA < kGradientEpsilon || kappaB < kGradientEpsilon) {
@@ -1000,10 +1014,12 @@ void DiscreteUpdateManager<T>::
       // kappaA*kappaB/(kappaA+gB) but it has the advantage of also being valid
       // if one of the gradients is infinity.
       const T kappa = 1.0 / (1.0 / kappaA + 1.0 / kappaB);
+      print_v(kappa);
 
       // Estimate of the (speculative) contact point position at ToC in the
       // future.
       const Vector3<T>& p_WC = s.p_WC()[face];
+      print_eigen(p_WC);
 
       // Since v_AcBc_W = v_WBc - v_WAc the relative velocity Jacobian
       // will be:
@@ -1030,6 +1046,7 @@ void DiscreteUpdateManager<T>::
       const Vector3<T> v_AcBc_W = Jv_AcBc_W * v;
       const Vector3<T> v_AcBc_C = R_WC.transpose() * v_AcBc_W;
       const T vn0 = v_AcBc_C(2);
+      print_v(vn0);
 
       // We have at most two blocks per contact.
       std::vector<typename DiscreteContactPair<T>::JacobianTreeBlock>
@@ -1069,11 +1086,16 @@ void DiscreteUpdateManager<T>::
       // can use nhat_BA_W or nhat_AB_W.
       const T cos_theta = nhat_BA_W.dot(zhat_BA_W);
 
+      print_v(distance);
+      print_v(cos_theta);
+
       // TODO(amcastro-tri): for now a value larger than the time step that will
       // get ignored.
       const T toc = s.time_of_contact()[face];
+      print_v(toc);
 
       const T effective_radius = s.effective_radius()[face];
+      print_v(effective_radius);
 
       typename DiscreteContactPair<T>::SpeculativeParameters spec_params{
           kappa, volume_coefficient, cos_theta, distance,
@@ -1135,6 +1157,8 @@ void DiscreteUpdateManager<T>::AppendDiscreteContactPairsForHydroelasticContact(
     // One quadrature point per face.
     num_hydro_contacts += s.num_faces();
   }
+
+  print_v(num_hydro_contacts);
   if (num_hydro_contacts == 0) {
     return;
   }
