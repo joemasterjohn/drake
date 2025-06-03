@@ -121,12 +121,12 @@ def plate_and_spatula():
     url = "package://drake/examples/integrators/plate_and_spatula.sdf"
     use_hydroelastic = True
     initial_state = np.array([
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.02,   # plate pos
-        1.0, 0.0, 0.0, 0.0, -0.05, 0.0, 0.08,  # spatula pos
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.012,   # plate pos
+        1.0, 0.0, 0.0, 0.0, -0.15, 0.0, 0.2,  # spatula pos
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         # plate vel
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         # spatula vel
     ])
-    sim_time = 2.0
+    sim_time = 1
     return SimulationExample(
         name, url, use_hydroelastic, initial_state, sim_time
     )
@@ -172,6 +172,7 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
+        sg_config.default_proximity_properties.margin = 0
         scene_graph.set_config(sg_config)
 
     vis_config = VisualizationConfig()

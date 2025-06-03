@@ -33,6 +33,9 @@
             <size>1.2 1.2 0.02</size>
           </box>
         </geometry>
+          <drake:proximity_properties>
+            <drake:rigid_hydroelastic/>
+          </drake:proximity_properties>
       </collision>
     </link>
     <joint name="table_joint" type="fixed">
