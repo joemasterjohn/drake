@@ -1287,41 +1287,26 @@ class SyclProximityEngine::Impl {
             const size_t polygon_size = slm_ints[slm_ints_offset];
             const size_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
             const size_t CENTROID_OFFSET = VERTEX_A_OFFSET;
-            // double thread_area_sum = 0;
-            // double thread_centroid_x = 0;
-            // double thread_centroid_y = 0;
-            // double thread_centroid_z = 0;
-            for(size_t triangle_index = check_local_item_id; triangle_index < polygon_size - 2; triangle_index += NUM_THREADS_PER_CHECK) {
-                // const double v0_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 0];
-                // const double v0_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 1];
-                // const double v0_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 2];
-                // // Compute the thread local cross magnitude
-
-                // // First vertex of triangle edge (current polygon vertex)
-                // const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 0];
-                // const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 1];
-                // const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 2];               
-
-                // // Second vertex of triangle edge (next polygon vertex, wrapping around)
-                // const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 0];
-                // const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 1];
-                // const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 2];
-                
-                const double v0_x = check_local_item_id;
-                const double v0_y = check_local_item_id + 1;
-                const double v0_z = check_local_item_id + 2;
+            double thread_area_sum = 0;
+            double thread_centroid_x = 0;
+            double thread_centroid_y = 0;
+            double thread_centroid_z = 0;
+            for(size_t triangle_index = check_local_item_id; triangle_index + 2 < polygon_size; triangle_index += NUM_THREADS_PER_CHECK) {
+                const double v0_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 0];
+                const double v0_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 1];
+                const double v0_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 2];
                 // Compute the thread local cross magnitude
 
                 // First vertex of triangle edge (current polygon vertex)
-                const double v1_x = check_local_item_id + 3;
-                const double v1_y = check_local_item_id + 4;
-                const double v1_z = check_local_item_id + 5;               
+                const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 0];
+                const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 1];
+                const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 2];               
 
                 // Second vertex of triangle edge (next polygon vertex, wrapping around)
-                const double v2_x = check_local_item_id + 6;
-                const double v2_y = check_local_item_id + 7;
-                const double v2_z = check_local_item_id + 8;
-                
+                const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 0];
+                const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 1];
+                const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 2];
+
                 const double r_UV_x = v1_x - v0_x;
                 const double r_UV_y = v1_y - v0_y;
                 const double r_UV_z = v1_z - v0_z;
@@ -1335,23 +1320,23 @@ class SyclProximityEngine::Impl {
                 const double cross_z = r_UV_x * r_UW_y - r_UV_y * r_UW_x;
 
                 const double cross_magnitude = sycl::sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
-                slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] += cross_magnitude;
+                thread_area_sum += cross_magnitude;
 
                 // Compute the thread local centroid
-                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] += cross_magnitude * (v1_x + v2_x + v0_x);
-                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] += cross_magnitude * (v1_y + v2_y + v0_y);
-                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] += cross_magnitude * (v1_z + v2_z + v0_z);
+                thread_centroid_x += cross_magnitude * (v1_x + v2_x + v0_x);
+                thread_centroid_y += cross_magnitude * (v1_y + v2_y + v0_y);
+                thread_centroid_z += cross_magnitude * (v1_z + v2_z + v0_z);
 
             }
 
             // Now each thread writes its computed values
-            // slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] = thread_area_sum;
-            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] = thread_centroid_x;
-            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] = thread_centroid_y;
-            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] = thread_centroid_z;
+            slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] = thread_area_sum;
+            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] = thread_centroid_x;
+            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] = thread_centroid_y;
+            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] = thread_centroid_z;
                 
             item.barrier(sycl::access::fence_space::local_space);
-            return;
+
             for(size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
                 if(check_local_item_id < stride) {
                     slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] += 
@@ -1375,6 +1360,8 @@ class SyclProximityEngine::Impl {
                 polygon_centroids_[narrow_phase_check_index][1] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
                 polygon_centroids_[narrow_phase_check_index][2] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
             }
+
+            
 
 
             // const size_t polygon_size = slm_ints[slm_ints_offset];

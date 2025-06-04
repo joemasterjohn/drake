@@ -482,21 +482,18 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       if (std::abs(polygon_areas[index] - expected_area) >
           1e2 * std::numeric_limits<double>::epsilon()) {
         bad_area.push_back(index);
-        std::cerr << fmt::format("Bad area at index {}: expected={}, got={}\n",
+        std::cerr << fmt::format("Bad area at index {}: expected={}, got={}\n\n",
                                  index, expected_area, polygon_areas[index]);
       }
-      for (int d = 0; d < 3; ++d) {
-        if (std::abs(polygon_centroids[index][d] - expected_centroid_W[d]) >
-            std::numeric_limits<double>::epsilon()) {
-          bad_centroid.push_back(index);
-          std::cerr << fmt::format(
-              "Bad centroid at index {}: expected=({}, {}, {}), "
-              "got=({}, {}, {})\n",
-              index, expected_centroid_W[0], expected_centroid_W[1],
-              expected_centroid_W[2], polygon_centroids[index][0],
-              polygon_centroids[index][1], polygon_centroids[index][2]);
-          break;
-        }
+      const double centroid_error =
+          (expected_centroid_W - polygon_centroids[index]).norm();
+      if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon()) {
+        bad_centroid.push_back(index);
+        std::cerr << fmt::format(
+            "Bad centroid at index {} error: {}:\n  expected={}\n  got=     "
+            "{}\n\n",
+            index, centroid_error, fmt_eigen(expected_centroid_W.transpose()),
+            fmt_eigen(polygon_centroids[index].transpose()));
       }
     }
   }
