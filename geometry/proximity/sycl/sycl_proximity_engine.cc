@@ -1282,167 +1282,262 @@ class SyclProximityEngine::Impl {
             // Compute mean vertex of the polygon using a reduce
             // We will use the clipped polygon shared memory area for all these intermediate results
             
+            // We use one of the polygon's vertices as our base point to cut the polygon into triangles
+            // We will use the first point for this
             const size_t polygon_size = slm_ints[slm_ints_offset];
-            
-            // First, compute partial sums for each coordinate (x, y, z)
-            // Each thread will sum some vertices, then we'll reduce across threads
-            for (size_t coord = 0; coord < 3; ++coord) {
-                double partial_sum = 0.0;
-                
-                // Each thread sums vertices assigned to it
-                for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
-                     vertex_idx += NUM_THREADS_PER_CHECK) {
-                    partial_sum += slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
-                }
-                
-                // Store partial sum in clipped polygon area for reduction
-                slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
-            }
-            
-            item.barrier(sycl::access::fence_space::local_space);
-            
-            // Parallel reduction within the check's threads
-            // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-                if (check_local_item_id < stride) {
-                    for (size_t coord = 0; coord < 3; ++coord) {
-                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] += 
-                            slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (check_local_item_id + stride) * 3 + coord];
-                    }
-                }
-            }
-            
-            // Thread 0 computes final mean and stores it at the beginning of clipped polygon area
-            if (check_local_item_id == 0) {
-                const double inv_polygon_size = 1.0 / static_cast<double>(polygon_size);
-                for (size_t coord = 0; coord < 3; ++coord) {
-                    // Final sum is in thread 0's slot, divide by polygon size to get mean
-                    slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] = 
-                        slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] * inv_polygon_size;
-                }
-            }
-            item.barrier(sycl::access::fence_space::local_space);
+            const size_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
+            const size_t CENTROID_OFFSET = VERTEX_A_OFFSET;
+            // double thread_area_sum = 0;
+            // double thread_centroid_x = 0;
+            // double thread_centroid_y = 0;
+            // double thread_centroid_z = 0;
+            for(size_t triangle_index = check_local_item_id; triangle_index < polygon_size - 2; triangle_index += NUM_THREADS_PER_CHECK) {
+                // const double v0_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 0];
+                // const double v0_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 1];
+                // const double v0_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + 0 * 3 + 2];
+                // // Compute the thread local cross magnitude
 
-            // Now compute triangle areas that make up Mp and 2 vertices of the clipped polygon
-            // We will use the clipped polygon shared memory area for all these intermediate results
-            // Until now we have used the first 3 doubles of the slm_polygon
-            const size_t MEAN_POINT_OFFSET = POLYGON_CLIPPED_OFFSET;
-            const size_t TRIANGLE_AREAS_OFFSET = POLYGON_CLIPPED_OFFSET + 3;
-            
-            // Triangulate polygon from mean vertex and compute areas
-            // Each triangle is formed by: mean_vertex, polygon_vertex[i], polygon_vertex[i+1]
-            double thread_area_sum = 0.0;
-            for(size_t triangle_index = check_local_item_id; triangle_index < polygon_size; triangle_index += NUM_THREADS_PER_CHECK) {
-                // Mean vertex coordinates (already computed and stored)
-                const double mean_x = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 0];
-                const double mean_y = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 1];
-                const double mean_z = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 2];
+                // // First vertex of triangle edge (current polygon vertex)
+                // const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 0];
+                // const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 1];
+                // const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 1) * 3 + 2];               
+
+                // // Second vertex of triangle edge (next polygon vertex, wrapping around)
+                // const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 0];
+                // const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 1];
+                // const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + (triangle_index + 2) * 3 + 2];
                 
+                const double v0_x = check_local_item_id;
+                const double v0_y = check_local_item_id + 1;
+                const double v0_z = check_local_item_id + 2;
+                // Compute the thread local cross magnitude
+
                 // First vertex of triangle edge (current polygon vertex)
-                const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 0];
-                const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 1];
-                const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 2];
-                
+                const double v1_x = check_local_item_id + 3;
+                const double v1_y = check_local_item_id + 4;
+                const double v1_z = check_local_item_id + 5;               
+
                 // Second vertex of triangle edge (next polygon vertex, wrapping around)
-                const size_t next_vertex_index = (triangle_index + 1) % polygon_size;
-                const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 0];
-                const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 1];
-                const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 2];
+                const double v2_x = check_local_item_id + 6;
+                const double v2_y = check_local_item_id + 7;
+                const double v2_z = check_local_item_id + 8;
                 
-                // Compute vectors from mean to the two edge vertices
-                const double edge1_x = v1_x - mean_x;
-                const double edge1_y = v1_y - mean_y;
-                const double edge1_z = v1_z - mean_z;
-                
-                const double edge2_x = v2_x - mean_x;
-                const double edge2_y = v2_y - mean_y;
-                const double edge2_z = v2_z - mean_z;
-                
-                // Compute cross product to get triangle area (half the magnitude of cross product)
-                const double cross_x = edge1_y * edge2_z - edge1_z * edge2_y;
-                const double cross_y = edge1_z * edge2_x - edge1_x * edge2_z;
-                const double cross_z = edge1_x * edge2_y - edge1_y * edge2_x;
-                
+                const double r_UV_x = v1_x - v0_x;
+                const double r_UV_y = v1_y - v0_y;
+                const double r_UV_z = v1_z - v0_z;
+
+                const double r_UW_x = v2_x - v0_x;
+                const double r_UW_y = v2_y - v0_y;
+                const double r_UW_z = v2_z - v0_z;
+
+                const double cross_x = r_UV_y * r_UW_z - r_UV_z * r_UW_y;
+                const double cross_y = r_UV_z * r_UW_x - r_UV_x * r_UW_z;
+                const double cross_z = r_UV_x * r_UW_y - r_UV_y * r_UW_x;
+
                 const double cross_magnitude = sycl::sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
-                const double triangle_area = 0.5 * cross_magnitude;
+                slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] += cross_magnitude;
+
+                // Compute the thread local centroid
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] += cross_magnitude * (v1_x + v2_x + v0_x);
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] += cross_magnitude * (v1_y + v2_y + v0_y);
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] += cross_magnitude * (v1_z + v2_z + v0_z);
+
+            }
+
+            // Now each thread writes its computed values
+            // slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] = thread_area_sum;
+            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] = thread_centroid_x;
+            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] = thread_centroid_y;
+            // slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] = thread_centroid_z;
                 
-                // Store triangle area in shared memory after the mean vertex (used_doubles + triangle_index)
-                slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + triangle_index] = triangle_area;
-                thread_area_sum += triangle_area;
-            }
-            // Since we have polygon_size triangles
-            const size_t AREA_SUM_OFFSET = TRIANGLE_AREAS_OFFSET + polygon_size;
-            // Store each thread's partial sum in contiguous locations for reduction
-            slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] = thread_area_sum;
             item.barrier(sycl::access::fence_space::local_space);
-
-            // Reduce the partial sums into total area
-            // Parallel reduction within the check's threads
-            // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-                if (check_local_item_id < stride) {
-                    slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] += 
-                        slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + (check_local_item_id + stride)];
+            return;
+            for(size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+                if(check_local_item_id < stride) {
+                    slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] += 
+                        slm_polygon[slm_polygon_offset + AREAS_OFFSET + (check_local_item_id + stride)];
+                    slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] += 
+                        slm[slm_offset + CENTROID_OFFSET + (check_local_item_id + stride) * 3 + 0];
+                    slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] += 
+                        slm[slm_offset + CENTROID_OFFSET + (check_local_item_id + stride) * 3 + 1];
+                    slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] += 
+                        slm[slm_offset + CENTROID_OFFSET + (check_local_item_id + stride) * 3 + 2];
                 }
             }
             item.barrier(sycl::access::fence_space::local_space);
 
-            // Now calculate the centroid of the polygon
-            // First compute \sum_i (A_i + A_{i-1}) * P_i
-            // We store intermediate quantities in the vertex slm since we don't need that anymore
-            const size_t PARTIAL_SUM_OFFSET = VERTEX_A_OFFSET;
-            for (size_t coord = 0; coord < 3; ++coord) {
-                double partial_sum = 0.0;
-                for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
-                     vertex_idx += NUM_THREADS_PER_CHECK) {
-                        double area_sum = 0.0;
-                        if(vertex_idx == 0) {
-                            // We only need the first area
-                            area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx];
-                        } else{
-                            area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx] + slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx - 1];
-                        }
-                        partial_sum += area_sum * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
-                }
-                slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
+            // Now write everything to global memory
+            if(check_local_item_id == 0) {
+                const double polygon_area = slm_polygon[slm_polygon_offset + AREAS_OFFSET + 0] * 0.5;
+                polygon_areas_[narrow_phase_check_index] = polygon_area;
+                const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
+                polygon_centroids_[narrow_phase_check_index][0] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
+                polygon_centroids_[narrow_phase_check_index][1] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
+                polygon_centroids_[narrow_phase_check_index][2] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
             }
-            item.barrier(sycl::access::fence_space::local_space);
 
-            // Parallel reduction within the check's threads
-            // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-                if (check_local_item_id < stride) {
-                    for (size_t coord = 0; coord < 3; ++coord) {
-                        slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] += 
-                            slm[slm_offset + PARTIAL_SUM_OFFSET + (check_local_item_id + stride) * 3 + coord];
-                    }
-                }
-            }
-            item.barrier(sycl::access::fence_space::local_space);
 
-            // Thread 0 computes final centroid and stores at CENTROID_OFFSET
-            const size_t CENTROID_OFFSET = AREA_SUM_OFFSET + 1;
-            if (check_local_item_id == 0) {
-                const double inv_3 = 1.0 / 3.0;
-                for (size_t coord = 0; coord < 3; ++coord) {
-                    const double factor = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET] * slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + coord];
-                    slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] = 
-                        (slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] + factor) * inv_3;
-                }
-            }
-            item.barrier(sycl::access::fence_space::local_space);
+            // const size_t polygon_size = slm_ints[slm_ints_offset];
+            
+            // // First, compute partial sums for each coordinate (x, y, z)
+            // // Each thread will sum some vertices, then we'll reduce across threads
+            // for (size_t coord = 0; coord < 3; ++coord) {
+            //     double partial_sum = 0.0;
+                
+            //     // Each thread sums vertices assigned to it
+            //     for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
+            //          vertex_idx += NUM_THREADS_PER_CHECK) {
+            //         partial_sum += slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
+            //     }
+                
+            //     // Store partial sum in clipped polygon area for reduction
+            //     slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
+            // }
+            
+            // item.barrier(sycl::access::fence_space::local_space);
+            
+            // // Parallel reduction within the check's threads
+            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
+            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+            //     if (check_local_item_id < stride) {
+            //         for (size_t coord = 0; coord < 3; ++coord) {
+            //             slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] += 
+            //                 slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (check_local_item_id + stride) * 3 + coord];
+            //         }
+            //     }
+            // }
+            
+            // // Thread 0 computes final mean and stores it at the beginning of clipped polygon area
+            // if (check_local_item_id == 0) {
+            //     const double inv_polygon_size = 1.0 / static_cast<double>(polygon_size);
+            //     for (size_t coord = 0; coord < 3; ++coord) {
+            //         // Final sum is in thread 0's slot, divide by polygon size to get mean
+            //         slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] = 
+            //             slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] * inv_polygon_size;
+            //     }
+            // }
+            // item.barrier(sycl::access::fence_space::local_space);
+
+            // // Now compute triangle areas that make up Mp and 2 vertices of the clipped polygon
+            // // We will use the clipped polygon shared memory area for all these intermediate results
+            // // Until now we have used the first 3 doubles of the slm_polygon
+            // const size_t MEAN_POINT_OFFSET = POLYGON_CLIPPED_OFFSET;
+            // const size_t TRIANGLE_AREAS_OFFSET = POLYGON_CLIPPED_OFFSET + 3;
+            
+            // // Triangulate polygon from mean vertex and compute areas
+            // // Each triangle is formed by: mean_vertex, polygon_vertex[i], polygon_vertex[i+1]
+            // double thread_area_sum = 0.0;
+            // for(size_t triangle_index = check_local_item_id; triangle_index < polygon_size; triangle_index += NUM_THREADS_PER_CHECK) {
+            //     // Mean vertex coordinates (already computed and stored)
+            //     const double mean_x = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 0];
+            //     const double mean_y = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 1];
+            //     const double mean_z = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 2];
+                
+            //     // First vertex of triangle edge (current polygon vertex)
+            //     const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 0];
+            //     const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 1];
+            //     const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 2];
+                
+            //     // Second vertex of triangle edge (next polygon vertex, wrapping around)
+            //     const size_t next_vertex_index = (triangle_index + 1) % polygon_size;
+            //     const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 0];
+            //     const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 1];
+            //     const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 2];
+                
+            //     // Compute vectors from mean to the two edge vertices
+            //     const double edge1_x = v1_x - mean_x;
+            //     const double edge1_y = v1_y - mean_y;
+            //     const double edge1_z = v1_z - mean_z;
+                
+            //     const double edge2_x = v2_x - mean_x;
+            //     const double edge2_y = v2_y - mean_y;
+            //     const double edge2_z = v2_z - mean_z;
+                
+            //     // Compute cross product to get triangle area (half the magnitude of cross product)
+            //     const double cross_x = edge1_y * edge2_z - edge1_z * edge2_y;
+            //     const double cross_y = edge1_z * edge2_x - edge1_x * edge2_z;
+            //     const double cross_z = edge1_x * edge2_y - edge1_y * edge2_x;
+                
+            //     const double cross_magnitude = sycl::sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
+            //     const double triangle_area = 0.5 * cross_magnitude;
+                
+            //     // Store triangle area in shared memory after the mean vertex (used_doubles + triangle_index)
+            //     slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + triangle_index] = triangle_area;
+            //     thread_area_sum += triangle_area;
+            // }
+            // // Since we have polygon_size triangles
+            // const size_t AREA_SUM_OFFSET = TRIANGLE_AREAS_OFFSET + polygon_size;
+            // // Store each thread's partial sum in contiguous locations for reduction
+            // slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] = thread_area_sum;
+            // item.barrier(sycl::access::fence_space::local_space);
+
+            // // Reduce the partial sums into total area
+            // // Parallel reduction within the check's threads
+            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
+            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+            //     if (check_local_item_id < stride) {
+            //         slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] += 
+            //             slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + (check_local_item_id + stride)];
+            //     }
+            // }
+            // item.barrier(sycl::access::fence_space::local_space);
+
+            // // Now calculate the centroid of the polygon
+            // // First compute \sum_i (A_i + A_{i-1}) * P_i
+            // // We store intermediate quantities in the vertex slm since we don't need that anymore
+            // const size_t PARTIAL_SUM_OFFSET = VERTEX_A_OFFSET;
+            // for (size_t coord = 0; coord < 3; ++coord) {
+            //     double partial_sum = 0.0;
+            //     for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
+            //          vertex_idx += NUM_THREADS_PER_CHECK) {
+            //             double area_sum = 0.0;
+            //             if(vertex_idx == 0) {
+            //                 // We only need the first area
+            //                 area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx];
+            //             } else{
+            //                 area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx] + slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx - 1];
+            //             }
+            //             partial_sum += area_sum * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
+            //     }
+            //     slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
+            // }
+            // item.barrier(sycl::access::fence_space::local_space);
+
+            // // Parallel reduction within the check's threads
+            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
+            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+            //     if (check_local_item_id < stride) {
+            //         for (size_t coord = 0; coord < 3; ++coord) {
+            //             slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] += 
+            //                 slm[slm_offset + PARTIAL_SUM_OFFSET + (check_local_item_id + stride) * 3 + coord];
+            //         }
+            //     }
+            // }
+            // item.barrier(sycl::access::fence_space::local_space);
+
+            // // Thread 0 computes final centroid and stores at CENTROID_OFFSET
+            // const size_t CENTROID_OFFSET = AREA_SUM_OFFSET + 1;
+            // if (check_local_item_id == 0) {
+            //     const double inv_3 = 1.0 / 3.0;
+            //     for (size_t coord = 0; coord < 3; ++coord) {
+            //         const double factor = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET] * slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + coord];
+            //         slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] = 
+            //             (slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] + factor) * inv_3;
+            //     }
+            // }
+            // item.barrier(sycl::access::fence_space::local_space);
 
             // Write centroid and area to global memory
             // Make all threads write simul but only if their check has not been invalidated
-            if(check_local_item_id == 0) {
-                if(narrow_phase_check_validity_[narrow_phase_check_index] == 1) {
-                    const double inv_area = 1.0 / slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
-                    polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0] * inv_area;
-                    polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1] * inv_area;
-                    polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2] * inv_area;
-                    polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
-                }
-            }
+            // if(check_local_item_id == 0) {
+            //     if(narrow_phase_check_validity_[narrow_phase_check_index] == 1) {
+            //         const double inv_area = 1.0 / slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
+            //         polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0] * inv_area;
+            //         polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1] * inv_area;
+            //         polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2] * inv_area;
+            //         polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
+            //     }
+            // }
         });
     });
 

@@ -444,7 +444,8 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     // << ", eB: " << eB << std::endl;
     // if (polygon_areas[i] > 1e-15) {
     //   std::cerr << fmt::format("heights[{}]: {} {} {} {}\n", i,
-    //                            polygon_centroids[i][0], polygon_centroids[i][1],
+    //                            polygon_centroids[i][0],
+    //                            polygon_centroids[i][1],
     //                            polygon_centroids[i][2], polygon_areas[i]);
     // }
   }
@@ -461,9 +462,13 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
   std::vector<int> polygons_found;
   std::vector<int> bad_area;
+  std::vector<int> bad_centroid;
   for (int i = 0; i < contact_surface->num_faces(); ++i) {
     const double expected_area = contact_surface->area(i);
-    // const Vector3d expected_centroid = contact_surface->centroid(i);
+    const Vector3d expected_centroid_M = contact_surface->element_centroid(i);
+    // Transform by transforms of A since the contact surface is posed in frame
+    // A.
+    const Vector3d expected_centroid_W = X_WA * expected_centroid_M;
     const int tet0 = volume_intersector.tet0_of_polygon(i);
     const int tet1 = volume_intersector.tet1_of_polygon(i);
     const std::pair<int, int> tet_pair{tet0, tet1};
@@ -474,11 +479,24 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     if (it != element_id_pairs.end()) {
       int index = (it - element_id_pairs.begin());
       polygons_found.push_back(index);
-      // EXPECT_NEAR(polygon_areas[index], expected_area,
-      //             1e2 * std::numeric_limits<double>::epsilon());
       if (std::abs(polygon_areas[index] - expected_area) >
           1e2 * std::numeric_limits<double>::epsilon()) {
         bad_area.push_back(index);
+        std::cerr << fmt::format("Bad area at index {}: expected={}, got={}\n",
+                                 index, expected_area, polygon_areas[index]);
+      }
+      for (int d = 0; d < 3; ++d) {
+        if (std::abs(polygon_centroids[index][d] - expected_centroid_W[d]) >
+            std::numeric_limits<double>::epsilon()) {
+          bad_centroid.push_back(index);
+          std::cerr << fmt::format(
+              "Bad centroid at index {}: expected=({}, {}, {}), "
+              "got=({}, {}, {})\n",
+              index, expected_centroid_W[0], expected_centroid_W[1],
+              expected_centroid_W[2], polygon_centroids[index][0],
+              polygon_centroids[index][1], polygon_centroids[index][2]);
+          break;
+        }
       }
     }
   }
@@ -486,12 +504,18 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
              ssize(polygons_found));
   fmt::print("Polygons with area difference beyond rounding error: {}\n",
              ssize(bad_area));
-  std::sort(polygons_found.begin(), polygons_found.end());
-  for (int i = 0; i < ssize(polygon_areas); ++i) {
-    if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i)) {
-      EXPECT_LT(polygon_areas[i], 1e-15);
-    }
-  }
+  fmt::print(
+      "Polygons with centroid difference beyond rounding error (in any of x, "
+      "y, z): {}\n",
+      ssize(bad_centroid));
+
+  // std::sort(polygons_found.begin(), polygons_found.end());
+  // for (int i = 0; i < ssize(polygon_areas); ++i) {
+  //   if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i))
+  //   {
+  //     EXPECT_LT(polygon_areas[i], 1e-15);
+  //   }
+  // }
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {

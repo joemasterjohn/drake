@@ -45,6 +45,7 @@ drake_cc_library(
         "-Wno-deprecated-copy-with-dtor",
         "-Wno-deprecated-copy-with-user-provided-copy",
         "-Wno-sign-compare",
+        "-Wno-unused-but-set-variable",
     ],
     linkopts = [
         "-fsycl",
