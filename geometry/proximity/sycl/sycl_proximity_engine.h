@@ -102,6 +102,8 @@ class SyclProximityEngineAttorney {
   static std::vector<double> get_polygon_areas(SyclProximityEngine::Impl* impl);
   static std::vector<Vector3<double>> get_polygon_centroids(
       SyclProximityEngine::Impl* impl);
+  static std::vector<double> get_debug_polygon_vertices(
+      SyclProximityEngine::Impl* impl);
 };
 
 }  // namespace sycl_impl

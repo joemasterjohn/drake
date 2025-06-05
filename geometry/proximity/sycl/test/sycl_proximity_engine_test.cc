@@ -449,6 +449,8 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     //                            polygon_centroids[i][2], polygon_areas[i]);
     // }
   }
+  std::vector<double> debug_polygon_vertices =
+      SyclProximityEngineAttorney::get_debug_polygon_vertices(impl);
 
   std::unique_ptr<PolygonSurfaceMesh<double>> contact_surface;
   std::unique_ptr<PolygonSurfaceMeshFieldLinear<double, double>>
@@ -482,18 +484,29 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       if (std::abs(polygon_areas[index] - expected_area) >
           1e2 * std::numeric_limits<double>::epsilon()) {
         bad_area.push_back(index);
-        std::cerr << fmt::format("Bad area at index {}: expected={}, got={}\n\n",
-                                 index, expected_area, polygon_areas[index]);
+        // if (index == 3382) {
+        std::cerr << fmt::format(
+            "Bad area at index {} for tet pair ({}, {}): expected={}, "
+            "got={}\n\n",
+            index, tet0, tet1, expected_area, polygon_areas[index]);
+        // }
       }
       const double centroid_error =
           (expected_centroid_W - polygon_centroids[index]).norm();
-      if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon()) {
+      if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon() &&
+          expected_area > 1e-15) {
+        // if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon()) {
         bad_centroid.push_back(index);
+        // if (index == 3382) {
         std::cerr << fmt::format(
-            "Bad centroid at index {} error: {}:\n  expected={}\n  got=     "
+            "Bad centroid at index {} for tet pair ({}, {}) error: {} "
+            "expected area: {}:, got area {}\n  "
+            "expected={}\n  got=     "
             "{}\n\n",
-            index, centroid_error, fmt_eigen(expected_centroid_W.transpose()),
+            index, tet0, tet1, centroid_error, expected_area,
+            polygon_areas[index], fmt_eigen(expected_centroid_W.transpose()),
             fmt_eigen(polygon_centroids[index].transpose()));
+        // }
       }
     }
   }
@@ -506,12 +519,40 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       "y, z): {}\n",
       ssize(bad_centroid));
 
-  // std::sort(polygons_found.begin(), polygons_found.end());
-  // for (int i = 0; i < ssize(polygon_areas); ++i) {
-  //   if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i))
-  //   {
-  //     EXPECT_LT(polygon_areas[i], 1e-15);
-  //   }
+  std::sort(polygons_found.begin(), polygons_found.end());
+  int counter = 0;
+  for (int i = 0; i < ssize(polygon_areas); ++i) {
+    if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i)) {
+      // EXPECT_LT(polygon_areas[i], 1e-15);
+      // if (i == 3214) {
+      if (polygon_areas[i] > 1e-15) {
+        std::cerr << fmt::format(
+            "Polygon with index {} and tet pair ({}, {}) has area {} and "
+            "centroid {} in SYCL but not found in Drake\n",
+            i, element_id_pairs[i].first, element_id_pairs[i].second,
+            polygon_areas[i], fmt_eigen(polygon_centroids[i].transpose()));
+        counter++;
+        // for (int j = 0; j < 16; ++j) {
+        //   std::cerr << fmt::format(
+        //       "debug_polygon_vertices[{}]x: {} y: {} z: {}\n", j,
+        //       debug_polygon_vertices[i * 48 + j * 3 + 0],
+        //       debug_polygon_vertices[i * 48 + j * 3 + 1],
+        //       debug_polygon_vertices[i * 48 + j * 3 + 2]);
+        // }
+      }
+      // }
+    }
+  }
+  fmt::print("Polygons found by SYCL implementation but NOT in Drake: {}\n",
+             counter);
+
+  // int i = 3382;
+  // for (int j = 0; j < 16; ++j) {
+  //   std::cerr << fmt::format("debug_polygon_vertices[{}]x: {} y: {} z: {}\n",
+  //   j,
+  //                            debug_polygon_vertices[i * 48 + j * 3 + 0],
+  //                            debug_polygon_vertices[i * 48 + j * 3 + 1],
+  //                            debug_polygon_vertices[i * 48 + j * 3 + 2]);
   // }
 }
 

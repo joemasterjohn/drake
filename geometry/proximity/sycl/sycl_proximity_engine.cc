@@ -418,6 +418,7 @@ class SyclProximityEngine::Impl {
       sycl::free(polygon_centroids_, q_device_);
       sycl::free(narrow_phase_check_indices_, q_device_);
       sycl::free(narrow_phase_check_validity_, q_device_);
+      sycl::free(debug_polygon_vertices_, q_device_);
     }
   }
 
@@ -808,6 +809,10 @@ class SyclProximityEngine::Impl {
       q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
     }
 
+    // Resize debug_polygon_vertices_ if needed
+    current_debug_polygon_vertices_size_ = 48 *  total_narrow_phase_checks_;
+    debug_polygon_vertices_ = sycl::malloc_device<double>(current_debug_polygon_vertices_size_, q_device_);
+    q_device_.fill(debug_polygon_vertices_, std::numeric_limits<double>::max(), current_debug_polygon_vertices_size_).wait();
 
     auto fill_narrow_phase_check_indices_event =
         q_device_.submit([&](sycl::handler& h) {
@@ -939,6 +944,7 @@ class SyclProximityEngine::Impl {
            narrow_phase_check_validity_ = narrow_phase_check_validity_,
            polygon_areas_ = polygon_areas_,
            polygon_centroids_ = polygon_centroids_,
+        //    debug_polygon_vertices_ = debug_polygon_vertices_,
            TOTAL_THREADS_NEEDED = TOTAL_THREADS_NEEDED,
            NUM_THREADS_PER_CHECK = NUM_THREADS_PER_CHECK,
            DOUBLES_PER_CHECK = DOUBLES_PER_CHECK,
@@ -1109,15 +1115,50 @@ class SyclProximityEngine::Impl {
             // Parallelization based on distance computation
 
             SliceTetWithEqPlane(item, slm, slm_offset, slm_polygon, slm_polygon_offset, slm_ints, slm_ints_offset, VERTEX_A_OFFSET, EQ_PLANE_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_CURRENT_OFFSET, check_local_item_id, NUM_THREADS_PER_CHECK);
+
+
+
             if(check_local_item_id == 0 && slm_ints[slm_ints_offset] < 3) {
                 narrow_phase_check_validity_[narrow_phase_check_index] = 0;
             }
-
-
             // Return all invalid checks
             if(narrow_phase_check_validity_[narrow_phase_check_index] == 0) {
                 return;
             }
+
+            // if(check_local_item_id == 0){
+            //         const size_t debug_offset = narrow_phase_check_index * 48;
+            //         for(size_t i = 0; i < POLYGON_VERTICES; ++i) {
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //             //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //             //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //             //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 2];
+
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //             //     slm_ints[slm_ints_offset];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //             //     slm_ints[slm_ints_offset];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //             //     slm_ints[slm_ints_offset];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //             //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 0];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //             //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 1];
+            //             // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //             //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 2];
+            //             debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //                 slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //             debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //                 slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //             debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //                 slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //         }
+            //     }
+            //     return;
+
+
 
 
             // Move inward normals
@@ -1156,7 +1197,7 @@ class SyclProximityEngine::Impl {
                     // 'face' corresponds to the triangle formed by {0, 1, 2, 3} - {face}
                     // so any of (face+1)%4, (face+2)%4, (face+3)%4 are candidates for a
                     // point on the face's plane. We arbitrarily choose (face + 1) % 4.
-                    const size_t face_vertex_index = (face + 1) % num_edges_current_polygon;                   
+                    const size_t face_vertex_index = (face + 1) % 4;                   
                     // This loop is over x,y,z
                     for (size_t i = 0; i < 3; i++) {
                         outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
@@ -1177,6 +1218,39 @@ class SyclProximityEngine::Impl {
                 }
                 // Sync shared memory
                 item.barrier(sycl::access::fence_space::local_space);
+                
+                // Debug
+                // if(check_local_item_id == 0){
+                //     const size_t debug_offset = narrow_phase_check_index * 48;
+                //     for(size_t i = 0; i < POLYGON_VERTICES; ++i) {
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 2];
+
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 0];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 1];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 2];
+                //         debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //             slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //         debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //             slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //         debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //             slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //     }
+                // }
+                // if(face == 0) return;
 
                 // Now we will walk the current polygon and construct the clipped polygon
                 for(size_t vertex_0_index = check_local_item_id; vertex_0_index < num_edges_current_polygon; vertex_0_index += NUM_THREADS_PER_CHECK) {
@@ -1265,6 +1339,39 @@ class SyclProximityEngine::Impl {
                 }
                 item.barrier(sycl::access::fence_space::local_space);
 
+                // Debug
+                // if(check_local_item_id == 0){
+                //     const size_t debug_offset = narrow_phase_check_index * 48;
+                //     for(size_t i = 0; i < POLYGON_VERTICES; ++i) {
+                //         debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0];
+                //         debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1];
+                //         debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 2];
+
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     slm_ints[slm_ints_offset];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 0];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 1];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 2];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+                //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+                //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+                //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+                //     }
+                // }
+                // if(face == 1) return;
+
                 // Clear out the clipped polygon
                 for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
                     llid += NUM_THREADS_PER_CHECK) {
@@ -1277,6 +1384,49 @@ class SyclProximityEngine::Impl {
                 }
                 item.barrier(sycl::access::fence_space::local_space);                
             }
+
+
+            if(check_local_item_id == 0 && slm_ints[slm_ints_offset] < 3) {
+                narrow_phase_check_validity_[narrow_phase_check_index] = 0;
+            }
+            
+            if(narrow_phase_check_validity_[narrow_phase_check_index] == 0) {
+                return;
+            }
+
+            // Debug
+            // if(check_local_item_id == 0){
+            //     const size_t debug_offset = narrow_phase_check_index * 48;
+            //     for(size_t i = 0; i < POLYGON_VERTICES; ++i) {
+            //         debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0];
+            //         debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1];
+            //         debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //             slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 2];
+
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //         //     slm_ints[slm_ints_offset];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //         //     slm_ints[slm_ints_offset];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //         //     slm_ints[slm_ints_offset];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 0];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 1];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //         //     -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + 2];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 0] = 
+            //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 1] = 
+            //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //         // debug_polygon_vertices_[debug_offset + i*3 + 2] = 
+            //         //     slm[slm_offset + RANDOM_SCRATCH_OFFSET + i];
+            //     }
+            // }
+            // return;
+
 
             // Now we compute the area and the centroid of the polygons
             // Compute mean vertex of the polygon using a reduce
@@ -1361,170 +1511,6 @@ class SyclProximityEngine::Impl {
                 polygon_centroids_[narrow_phase_check_index][2] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
             }
 
-            
-
-
-            // const size_t polygon_size = slm_ints[slm_ints_offset];
-            
-            // // First, compute partial sums for each coordinate (x, y, z)
-            // // Each thread will sum some vertices, then we'll reduce across threads
-            // for (size_t coord = 0; coord < 3; ++coord) {
-            //     double partial_sum = 0.0;
-                
-            //     // Each thread sums vertices assigned to it
-            //     for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
-            //          vertex_idx += NUM_THREADS_PER_CHECK) {
-            //         partial_sum += slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
-            //     }
-                
-            //     // Store partial sum in clipped polygon area for reduction
-            //     slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
-            // }
-            
-            // item.barrier(sycl::access::fence_space::local_space);
-            
-            // // Parallel reduction within the check's threads
-            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-            //     if (check_local_item_id < stride) {
-            //         for (size_t coord = 0; coord < 3; ++coord) {
-            //             slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + check_local_item_id * 3 + coord] += 
-            //                 slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + (check_local_item_id + stride) * 3 + coord];
-            //         }
-            //     }
-            // }
-            
-            // // Thread 0 computes final mean and stores it at the beginning of clipped polygon area
-            // if (check_local_item_id == 0) {
-            //     const double inv_polygon_size = 1.0 / static_cast<double>(polygon_size);
-            //     for (size_t coord = 0; coord < 3; ++coord) {
-            //         // Final sum is in thread 0's slot, divide by polygon size to get mean
-            //         slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] = 
-            //             slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + coord] * inv_polygon_size;
-            //     }
-            // }
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // // Now compute triangle areas that make up Mp and 2 vertices of the clipped polygon
-            // // We will use the clipped polygon shared memory area for all these intermediate results
-            // // Until now we have used the first 3 doubles of the slm_polygon
-            // const size_t MEAN_POINT_OFFSET = POLYGON_CLIPPED_OFFSET;
-            // const size_t TRIANGLE_AREAS_OFFSET = POLYGON_CLIPPED_OFFSET + 3;
-            
-            // // Triangulate polygon from mean vertex and compute areas
-            // // Each triangle is formed by: mean_vertex, polygon_vertex[i], polygon_vertex[i+1]
-            // double thread_area_sum = 0.0;
-            // for(size_t triangle_index = check_local_item_id; triangle_index < polygon_size; triangle_index += NUM_THREADS_PER_CHECK) {
-            //     // Mean vertex coordinates (already computed and stored)
-            //     const double mean_x = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 0];
-            //     const double mean_y = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 1];
-            //     const double mean_z = slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + 2];
-                
-            //     // First vertex of triangle edge (current polygon vertex)
-            //     const double v1_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 0];
-            //     const double v1_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 1];
-            //     const double v1_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + triangle_index * 3 + 2];
-                
-            //     // Second vertex of triangle edge (next polygon vertex, wrapping around)
-            //     const size_t next_vertex_index = (triangle_index + 1) % polygon_size;
-            //     const double v2_x = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 0];
-            //     const double v2_y = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 1];
-            //     const double v2_z = slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + next_vertex_index * 3 + 2];
-                
-            //     // Compute vectors from mean to the two edge vertices
-            //     const double edge1_x = v1_x - mean_x;
-            //     const double edge1_y = v1_y - mean_y;
-            //     const double edge1_z = v1_z - mean_z;
-                
-            //     const double edge2_x = v2_x - mean_x;
-            //     const double edge2_y = v2_y - mean_y;
-            //     const double edge2_z = v2_z - mean_z;
-                
-            //     // Compute cross product to get triangle area (half the magnitude of cross product)
-            //     const double cross_x = edge1_y * edge2_z - edge1_z * edge2_y;
-            //     const double cross_y = edge1_z * edge2_x - edge1_x * edge2_z;
-            //     const double cross_z = edge1_x * edge2_y - edge1_y * edge2_x;
-                
-            //     const double cross_magnitude = sycl::sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
-            //     const double triangle_area = 0.5 * cross_magnitude;
-                
-            //     // Store triangle area in shared memory after the mean vertex (used_doubles + triangle_index)
-            //     slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + triangle_index] = triangle_area;
-            //     thread_area_sum += triangle_area;
-            // }
-            // // Since we have polygon_size triangles
-            // const size_t AREA_SUM_OFFSET = TRIANGLE_AREAS_OFFSET + polygon_size;
-            // // Store each thread's partial sum in contiguous locations for reduction
-            // slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] = thread_area_sum;
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // // Reduce the partial sums into total area
-            // // Parallel reduction within the check's threads
-            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-            //     if (check_local_item_id < stride) {
-            //         slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + check_local_item_id] += 
-            //             slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET + (check_local_item_id + stride)];
-            //     }
-            // }
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // // Now calculate the centroid of the polygon
-            // // First compute \sum_i (A_i + A_{i-1}) * P_i
-            // // We store intermediate quantities in the vertex slm since we don't need that anymore
-            // const size_t PARTIAL_SUM_OFFSET = VERTEX_A_OFFSET;
-            // for (size_t coord = 0; coord < 3; ++coord) {
-            //     double partial_sum = 0.0;
-            //     for (size_t vertex_idx = check_local_item_id; vertex_idx < polygon_size; 
-            //          vertex_idx += NUM_THREADS_PER_CHECK) {
-            //             double area_sum = 0.0;
-            //             if(vertex_idx == 0) {
-            //                 // We only need the first area
-            //                 area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx];
-            //             } else{
-            //                 area_sum += slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx] + slm_polygon[slm_polygon_offset + TRIANGLE_AREAS_OFFSET + vertex_idx - 1];
-            //             }
-            //             partial_sum += area_sum * slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + vertex_idx * 3 + coord];
-            //     }
-            //     slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] = partial_sum;
-            // }
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // // Parallel reduction within the check's threads
-            // // No barrier because NUM_THREADS_PER_CHECK is less than 32 and guarenteed to be a factor of 32
-            // for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-            //     if (check_local_item_id < stride) {
-            //         for (size_t coord = 0; coord < 3; ++coord) {
-            //             slm[slm_offset + PARTIAL_SUM_OFFSET + check_local_item_id * 3 + coord] += 
-            //                 slm[slm_offset + PARTIAL_SUM_OFFSET + (check_local_item_id + stride) * 3 + coord];
-            //         }
-            //     }
-            // }
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // // Thread 0 computes final centroid and stores at CENTROID_OFFSET
-            // const size_t CENTROID_OFFSET = AREA_SUM_OFFSET + 1;
-            // if (check_local_item_id == 0) {
-            //     const double inv_3 = 1.0 / 3.0;
-            //     for (size_t coord = 0; coord < 3; ++coord) {
-            //         const double factor = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET] * slm_polygon[slm_polygon_offset + MEAN_POINT_OFFSET + coord];
-            //         slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] = 
-            //             (slm_polygon[slm_polygon_offset + CENTROID_OFFSET + coord] + factor) * inv_3;
-            //     }
-            // }
-            // item.barrier(sycl::access::fence_space::local_space);
-
-            // Write centroid and area to global memory
-            // Make all threads write simul but only if their check has not been invalidated
-            // if(check_local_item_id == 0) {
-            //     if(narrow_phase_check_validity_[narrow_phase_check_index] == 1) {
-            //         const double inv_area = 1.0 / slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
-            //         polygon_centroids_[narrow_phase_check_index][0] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 0] * inv_area;
-            //         polygon_centroids_[narrow_phase_check_index][1] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 1] * inv_area;
-            //         polygon_centroids_[narrow_phase_check_index][2] = slm_polygon[slm_polygon_offset + CENTROID_OFFSET + 2] * inv_area;
-            //         polygon_areas_[narrow_phase_check_index] = slm_polygon[slm_polygon_offset + AREA_SUM_OFFSET];
-            //     }
-            // }
         });
     });
 
@@ -1630,6 +1616,10 @@ class SyclProximityEngine::Impl {
   size_t* narrow_phase_check_indices_ = nullptr; 
   uint8_t* narrow_phase_check_validity_ = nullptr; // 1 if the check is valid, 0 otherwise
   size_t current_narrow_phase_check_indices_size_ = 0; // Current size of narrow_phase_check_indices_ to prevent constant reallocation
+
+
+  double* debug_polygon_vertices_ = nullptr;
+  size_t current_debug_polygon_vertices_size_ = 0;
 
 
 
@@ -1760,13 +1750,22 @@ class SyclProximityEngine::Impl {
         if(check_local_item_id == 0) {
             int intersection_code = 0;
             for(size_t llid = 0; llid < 4; llid++) {
-                if(slm[slm_offset + random_scratch_offset + llid] > 0.0) {
+                if(slm[slm_offset + random_scratch_offset + llid] >  0) {
                     intersection_code |= (1 << llid);
                 }
             }
             slm_ints[slm_ints_offset] = intersection_code;
         }
         item.barrier(sycl::access::fence_space::local_space);
+
+        
+        if(kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][0] == -1) {
+            // First thread writes
+            if(check_local_item_id == 0) {
+                slm_ints[slm_ints_offset] = 0; // No edges to process
+            }
+            return; // No edges to process, so we can return early
+        }
 
         // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon vertices
         for(size_t llid = check_local_item_id; llid < 4; llid += NUM_THREADS_PER_CHECK) {
@@ -1970,6 +1969,16 @@ std::vector<Vector3<double>> SyclProximityEngineAttorney::get_polygon_centroids(
   q.memcpy(polygon_centroids_host.data(), polygon_centroids,
            total_narrow_phase_checks * sizeof(Vector3<double>)).wait();
   return polygon_centroids_host;
+}
+
+std::vector<double> SyclProximityEngineAttorney::get_debug_polygon_vertices(
+    SyclProximityEngine::Impl* impl) {
+  std::vector<double> debug_polygon_vertices_host(impl->current_debug_polygon_vertices_size_);
+  auto q = impl->q_device_;
+  auto debug_polygon_vertices = impl->debug_polygon_vertices_;
+  q.memcpy(debug_polygon_vertices_host.data(), debug_polygon_vertices,
+           impl->current_debug_polygon_vertices_size_ * sizeof(double)).wait();
+  return debug_polygon_vertices_host;
 }
 
 }  // namespace sycl_impl
