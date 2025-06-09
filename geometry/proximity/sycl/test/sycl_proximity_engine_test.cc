@@ -313,9 +313,9 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
 
   // Arbitrarily pose the spheres into a colliding configuration.
   const RigidTransformd X_WA =
-      RigidTransformd(Vector3d{0.2 * radius, 0.1 * radius, 0.3 * radius});
+      RigidTransformd(Vector3d{0.0 * radius, 0.0 * radius, 0.3 * radius});
   const RigidTransformd X_WB =
-      RigidTransformd(Vector3d{0.1 * radius, 0.2 * radius, 0.3 * radius});
+      RigidTransformd(Vector3d{1.0 * radius, 0.0 * radius, 0.3 * radius});
   const RigidTransformd X_AB = X_WA.InvertAndCompose(X_WB);
 
   bvhSphereA.Collide(bvhSphereB, X_AB, callback);

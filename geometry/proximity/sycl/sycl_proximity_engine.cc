@@ -466,6 +466,7 @@ class SyclProximityEngine::Impl {
       // over the unordered_map because it is not ordered
       const auto& X_WG = X_WGs.at(geometry_id);
       const auto& transform = X_WG.GetAsMatrix34();
+      #pragma unroll
       for (size_t i = 0; i < 12; ++i) {
         size_t row = i / 4;
         size_t col = i % 4;
@@ -494,6 +495,7 @@ class SyclProximityEngine::Impl {
                        const double y = vertices_M_[vertex_index][1];
                        const double z = vertices_M_[vertex_index][2];
                        double T[12];
+                       #pragma unroll
                        for (size_t i = 0; i < 12; ++i) {
                          T[i] = transforms_[mesh_index * 12 + i];
                        }
@@ -520,6 +522,7 @@ class SyclProximityEngine::Impl {
                 const size_t mesh_index = sh_element_mesh_ids_[element_index];
 
                 double T[12];
+                #pragma unroll
                 for (size_t i = 0; i < 12; ++i) {
                   T[i] = transforms_[mesh_index * 12 + i];
                 }
@@ -555,6 +558,7 @@ class SyclProximityEngine::Impl {
                 const size_t mesh_index = sh_element_mesh_ids_[element_index];
 
                 double T[12];
+                #pragma unroll
                 for (size_t i = 0; i < 12; ++i) {
                   T[i] = transforms_[mesh_index * 12 + i];
                 }
@@ -780,9 +784,9 @@ class SyclProximityEngine::Impl {
     }
 
     // Resize debug_polygon_vertices_ if needed
-    current_debug_polygon_vertices_size_ = 48 *  total_narrow_phase_checks_;
-    debug_polygon_vertices_ = sycl::malloc_device<double>(current_debug_polygon_vertices_size_, q_device_);
-    q_device_.fill(debug_polygon_vertices_, std::numeric_limits<double>::max(), current_debug_polygon_vertices_size_).wait();
+    // current_debug_polygon_vertices_size_ = 48 *  total_narrow_phase_checks_;
+    // debug_polygon_vertices_ = sycl::malloc_device<double>(current_debug_polygon_vertices_size_, q_device_);
+    // q_device_.fill(debug_polygon_vertices_, std::numeric_limits<double>::max(), current_debug_polygon_vertices_size_).wait();
 
     auto fill_narrow_phase_check_indices_event =
         q_device_.submit([&](sycl::handler& h) {
@@ -835,22 +839,19 @@ class SyclProximityEngine::Impl {
     constexpr size_t VERTEX_A_DOUBLES = 12;
     constexpr size_t VERTEX_B_OFFSET = VERTEX_A_OFFSET + VERTEX_A_DOUBLES;
     constexpr size_t VERTEX_B_DOUBLES = 12;
+ 
 
-    constexpr size_t INWARD_NORMAL_A_OFFSET =
+    // Only need inward normals of element B
+    constexpr size_t INWARD_NORMAL_OFFSET =
         VERTEX_B_OFFSET + VERTEX_B_DOUBLES;
-    constexpr size_t INWARD_NORMAL_A_DOUBLES = 12;
-    constexpr size_t INWARD_NORMAL_B_OFFSET =
-        INWARD_NORMAL_A_OFFSET + INWARD_NORMAL_A_DOUBLES;
-    constexpr size_t INWARD_NORMAL_B_DOUBLES = 12;
+    constexpr size_t INWARD_NORMAL_DOUBLES = 12;
 
     // Used varylingly through the kernel to express more parallelism
-    constexpr size_t RANDOM_SCRATCH_OFFSET = INWARD_NORMAL_B_OFFSET + INWARD_NORMAL_B_DOUBLES;
+    constexpr size_t RANDOM_SCRATCH_OFFSET = INWARD_NORMAL_OFFSET + INWARD_NORMAL_DOUBLES;
     constexpr size_t RANDOM_SCRATCH_DOUBLES = 8; // 8 heights at max
 
     // Calculate total doubles for verification
     constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
-    constexpr size_t INWARD_NORMAL_DOUBLES =
-        INWARD_NORMAL_A_DOUBLES + INWARD_NORMAL_B_DOUBLES;
 
     constexpr size_t DOUBLES_PER_CHECK = EQ_PLANE_DOUBLES + VERTEX_DOUBLES +
                                          INWARD_NORMAL_DOUBLES + RANDOM_SCRATCH_DOUBLES;
@@ -877,6 +878,7 @@ class SyclProximityEngine::Impl {
                                                                   h) {
       // Create dependency vector
       std::vector<sycl::event> dependencies = {
+          generate_collision_filter_event,
           fill_narrow_phase_check_indices_event,
           transform_elem_quantities_event1,
           transform_elem_quantities_event2
@@ -931,8 +933,7 @@ class SyclProximityEngine::Impl {
            EQ_PLANE_OFFSET = EQ_PLANE_OFFSET,
            VERTEX_A_OFFSET = VERTEX_A_OFFSET,
            VERTEX_B_OFFSET = VERTEX_B_OFFSET,
-           INWARD_NORMAL_A_OFFSET = INWARD_NORMAL_A_OFFSET,
-           INWARD_NORMAL_B_OFFSET = INWARD_NORMAL_B_OFFSET,
+           INWARD_NORMAL_OFFSET = INWARD_NORMAL_OFFSET,
            RANDOM_SCRATCH_OFFSET = RANDOM_SCRATCH_OFFSET,
            POLYGON_VERTICES = POLYGON_VERTICES](sycl::nd_item<1> item) {
             size_t global_id = item.get_global_id(0);
@@ -1146,12 +1147,8 @@ class SyclProximityEngine::Impl {
               // Quantities that we have "4" of
               for (size_t llid = check_local_item_id; llid < 4;
                    llid += NUM_THREADS_PER_CHECK) {
-                // Inward normals of element A
-                slm[slm_offset + INWARD_NORMAL_A_OFFSET + llid * 3 + i] =
-                    inward_normals_W_[A_element_index][llid][i];
-
                 // Inward normals of element B
-                slm[slm_offset + INWARD_NORMAL_B_OFFSET + llid * 3 + i] =
+                slm[slm_offset + INWARD_NORMAL_OFFSET + llid * 3 + i] =
                     inward_normals_W_[B_element_index][llid][i];
               }
             }
@@ -1177,8 +1174,9 @@ class SyclProximityEngine::Impl {
                     // point on the face's plane. We arbitrarily choose (face + 1) % 4.
                     const size_t face_vertex_index = (face + 1) % 4;                   
                     // This loop is over x,y,z
+                    #pragma unroll
                     for (size_t i = 0; i < 3; i++) {
-                        outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_B_OFFSET + face * 3 + i];
+                        outward_normal[i] = -slm[slm_offset + INWARD_NORMAL_OFFSET + face * 3 + i];
                         
                         // Get a point from the verticies of element B
                         point_on_face[i] = slm[slm_offset + VERTEX_B_OFFSET + face_vertex_index * 3 + i];
@@ -1458,15 +1456,17 @@ class SyclProximityEngine::Impl {
             }
 
             // Now each thread writes its computed values
-            slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] = thread_area_sum;
-            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] = thread_centroid_x;
-            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] = thread_centroid_y;
-            slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] = thread_centroid_z;
+            if(check_local_item_id < polygon_size) {
+                slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] = thread_area_sum;
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] = thread_centroid_x;
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 1] = thread_centroid_y;
+                slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 2] = thread_centroid_z;
+            }
                 
             item.barrier(sycl::access::fence_space::local_space);
 
             for(size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
-                if(check_local_item_id < stride) {
+                if(check_local_item_id < stride && check_local_item_id + stride < polygon_size) {
                     slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] += 
                         slm_polygon[slm_polygon_offset + AREAS_OFFSET + (check_local_item_id + stride)];
                     slm[slm_offset + CENTROID_OFFSET + check_local_item_id * 3 + 0] += 
