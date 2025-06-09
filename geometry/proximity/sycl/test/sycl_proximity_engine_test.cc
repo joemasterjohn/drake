@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -474,6 +475,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   std::vector<int> polygons_found;
   std::vector<int> bad_area;
   std::vector<int> bad_centroid;
+  std::vector<std::pair<int, int>> degenerate_tets;
   for (int i = 0; i < contact_surface->num_faces(); ++i) {
     const double expected_area = contact_surface->area(i);
     const Vector3d expected_centroid_M = contact_surface->element_centroid(i);
@@ -499,6 +501,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
             "got={}\n\n",
             index, tet0, tet1, expected_area, polygon_areas[index]);
         // }
+        degenerate_tets.push_back(tet_pair);
       }
       const double centroid_error =
           (expected_centroid_W - polygon_centroids[index]).norm();
@@ -563,6 +566,24 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   //                            debug_polygon_vertices[i * 48 + j * 3 + 1],
   //                            debug_polygon_vertices[i * 48 + j * 3 + 2]);
   // }
+
+  // Spit out degenerate tet vertices into file
+  std::ofstream file("degenerate_tets_vertices.txt");
+  for (auto [tet0, tet1] : degenerate_tets) {
+    file << fmt::format("Tet 0: {}\n", tet0);
+    file << fmt::format("Tet 1: {}\n", tet1);
+    for (int i = 0; i < 4; ++i) {
+      auto tet0_vertex = soft_geometryA.mesh().vertex(
+          soft_geometryA.mesh().element(tet0).vertex(i));
+      auto tet1_vertex = soft_geometryB.mesh().vertex(
+          soft_geometryB.mesh().element(tet1).vertex(i));
+      file << fmt::format("Tet 0 Vertex {}: {}\n", i,
+                          fmt_eigen(tet0_vertex.transpose()));
+      file << fmt::format("Tet 1 Vertex {}: {}\n", i,
+                          fmt_eigen(tet1_vertex.transpose()));
+    }
+  }
+  file.close();
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
