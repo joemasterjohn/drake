@@ -1862,7 +1862,7 @@ std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
   auto total_vertices = impl->total_vertices_;
   std::vector<Vector3<double>> vertices_M_host(total_vertices);
   q.memcpy(vertices_M_host.data(), vertices_M,
-           total_vertices * sizeof(Vector3<double>));
+           total_vertices * sizeof(Vector3<double>)).wait();
   return vertices_M_host;
 }
 std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_W(
@@ -1872,7 +1872,7 @@ std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_W(
   auto total_vertices = impl->total_vertices_;
   std::vector<Vector3<double>> vertices_W_host(total_vertices);
   q.memcpy(vertices_W_host.data(), vertices_W,
-           total_vertices * sizeof(Vector3<double>));
+           total_vertices * sizeof(Vector3<double>)).wait();
   return vertices_W_host;
 }
 std::vector<std::array<int, 4>> SyclProximityEngineAttorney::get_elements(
@@ -1882,7 +1882,7 @@ std::vector<std::array<int, 4>> SyclProximityEngineAttorney::get_elements(
   auto total_elements = impl->total_elements_;
   std::vector<std::array<int, 4>> elements_host(total_elements);
   q.memcpy(elements_host.data(), elements,
-           total_elements * sizeof(std::array<int, 4>));
+           total_elements * sizeof(std::array<int, 4>)).wait();
   return elements_host;
 }
 double* SyclProximityEngineAttorney::get_pressures(
