@@ -215,6 +215,14 @@ class SyclProximityEngine::Impl {
           elements_ + element_offset, mesh_vertices.data(),
           num_elements * sizeof(std::array<int, 4>)));
 
+      const auto& elements = mesh.tetrahedra();
+      for (size_t i = 0; i < num_elements; ++i) {
+          const std::array<int, 4>& vertices = elements[i].getAllVertices();
+          // Copy element by element to maintain lifetime safety
+          transfer_events.push_back(q_device_.memcpy(
+              elements_ + element_offset + i, &vertices,
+              sizeof(std::array<int, 4>)));
+      }
       // Fill in the mesh id for all elements in this mesh
       transfer_events.push_back(q_device_.fill(
           sh_element_mesh_ids_ + element_offset, id_index, num_elements));
