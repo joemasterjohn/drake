@@ -94,7 +94,14 @@ class SyclProximityEngine::Impl {
   Impl(const std::unordered_map<GeometryId, hydroelastic::SoftGeometry>&
            soft_geometries) {
     // Initialize SYCL queues
-    q_device_ = sycl::queue(sycl::gpu_selector_v);
+    try{
+        q_device_ = sycl::queue(sycl::gpu_selector_v);
+    } catch (sycl::exception const &e) {
+        std::cout << "Cannot select a GPU\n" << e.what() << std::endl;
+        std::cout << "Using a CPU device" << std::endl;
+        q_device_ = sycl::queue(sycl::cpu_selector_v);
+    }
+    std::cout << "Using " << q_device_.get_device().get_info<sycl::info::device::name>() << std::endl;
 
     DRAKE_THROW_UNLESS(soft_geometries.size() > 0);
 
@@ -800,17 +807,16 @@ class SyclProximityEngine::Impl {
     
     // Calculate total threads needed (4 threads per check)
     const size_t TOTAL_THREADS_NEEDED = total_narrow_phase_checks_ * NUM_THREADS_PER_CHECK;
-    const size_t LOCAL_SIZE = std::min(static_cast<size_t>(128), TOTAL_THREADS_NEEDED);  // 128 per work group if those many are required
+    
+    // Check device work group size limits for CPU compatibility
+    size_t max_work_group_size = q_device_.get_device().get_info<sycl::info::device::max_work_group_size>();
+    const size_t LOCAL_SIZE = std::min({static_cast<size_t>(128), TOTAL_THREADS_NEEDED, max_work_group_size});
 
     const size_t NUM_CHECKS_IN_WORK_GROUP =
     LOCAL_SIZE / NUM_THREADS_PER_CHECK;
     // Number of work groups
     const size_t NUM_GROUPS =
         (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE;
-    std::cerr << "TOTAL_THREADS_NEEDED: " << TOTAL_THREADS_NEEDED << std::endl;
-    std::cerr << "LOCAL_SIZE: " << LOCAL_SIZE << std::endl;
-    std::cerr << "NUM_CHECKS_IN_WORK_GROUP: " << NUM_CHECKS_IN_WORK_GROUP << std::endl;
-    std::cerr << "NUM_GROUPS: " << NUM_GROUPS << std::endl;
     // Calculation of the number of doubles to be stored in shared memory per
     // Offsets are required to index the local memory
     constexpr size_t EQ_PLANE_OFFSET = 0;
@@ -870,18 +876,28 @@ class SyclProximityEngine::Impl {
       dependencies.insert(dependencies.end(), polygon_fill_events.begin(), polygon_fill_events.end());
       
       h.depends_on(dependencies);
+      
+      // Check local memory size constraints for CPU compatibility
+      size_t slm_size = LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK;
+      size_t slm_polygon_size = LOCAL_SIZE / NUM_THREADS_PER_CHECK * POLYGON_DOUBLES;
+      size_t slm_ints_size = LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS;
+      
+      size_t total_local_memory = (slm_size + slm_polygon_size) * sizeof(double) + slm_ints_size * sizeof(int);
+      size_t max_local_memory = q_device_.get_device().get_info<sycl::info::device::local_mem_size>();
+      if (total_local_memory > max_local_memory) {
+        throw std::runtime_error("Requested local memory (" + std::to_string(total_local_memory) + 
+                                " bytes) exceeds device limit (" + std::to_string(max_local_memory) + " bytes)");
+      }
+      
       // Shared Local Memory (SLM) is stored as
       // [Eq_plane_i, Vertices_A_i, Vertices_B_i, Inward_normals_A_i,
       // Inward_normals_B_i, Eq_plane_i+1, Vertices_A_i+1,
       // Vertices_B_i+1, Inward_normals_A_i+1, Inward_normals_B_i+1]
       // Always Polygon A stored first and then Polygon B (for the
       // quantities which we need both off)
-      sycl::local_accessor<double, 1> slm(
-          LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK, h);
-      sycl::local_accessor<double, 1> slm_polygon(
-          LOCAL_SIZE / NUM_THREADS_PER_CHECK * POLYGON_DOUBLES, h);
-      sycl::local_accessor<int, 1> slm_ints(
-          LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS, h);
+      sycl::local_accessor<double, 1> slm(slm_size, h);
+      sycl::local_accessor<double, 1> slm_polygon(slm_polygon_size, h);
+      sycl::local_accessor<int, 1> slm_ints(slm_ints_size, h);
       h.parallel_for(
           sycl::nd_range<1>{NUM_GROUPS * LOCAL_SIZE, LOCAL_SIZE},
           [=, this, narrow_phase_check_indices_ = narrow_phase_check_indices_,
