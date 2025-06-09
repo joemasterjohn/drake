@@ -55,18 +55,17 @@ class SYCLHydroelasticSurface {
   SYCLHydroelasticSurface(std::vector<Vector3<double>> centroids,
                           std::vector<double> areas,
                           std::vector<double> pressure_Ws,
-                          std::vector<Vector3<double>> grad_pressure_Ms,
-                          std::vector<Vector3<double>> grad_pressure_Ns,
                           std::vector<Vector3<double>> normal_Ws,
+                          std::vector<double> g_M, std::vector<double> g_N,
                           GeometryId id_M, GeometryId id_N);
 
  private:
   std::vector<Vector3<double>> centroid_;
   std::vector<double> area_;
   std::vector<double> pressure_W_;
-  std::vector<Vector3<double>> grad_pressure_M_;
-  std::vector<Vector3<double>> grad_pressure_N_;
   std::vector<Vector3<double>> normal_W_;
+  std::vector<double> g_M_;
+  std::vector<double> g_N_;
   GeometryId id_M_{};
   GeometryId id_N_{};
 };

@@ -323,6 +323,11 @@ class SyclProximityEngine::Impl {
     polygon_areas_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     // "3" is for each coordinate
     polygon_centroids_ = sycl::malloc_device<Vector3<double>>(current_polygon_areas_size_, q_device_);
+    polygon_normals_ = sycl::malloc_device<Vector3<double>>(current_polygon_areas_size_, q_device_);
+    polygon_g_M_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
+    polygon_g_N_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
+    polygon_pressure_W_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
+
 
     // Allocate memory for narrow_phase_check_indices_
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
@@ -333,8 +338,13 @@ class SyclProximityEngine::Impl {
     // Inital fills
     std::vector<sycl::event> fill_events;
     fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, current_polygon_areas_size_));
+    fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, current_polygon_areas_size_));
+    fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, current_polygon_areas_size_));
+    fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, current_polygon_areas_size_));
+
     std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
     fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
+    fill_events.push_back(q_device_.memcpy(polygon_normals_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
     fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_)); // All valid at the start
 
     // Generate collision filter for all checks
@@ -759,15 +769,27 @@ class SyclProximityEngine::Impl {
       // Free old memory
       sycl::free(polygon_areas_, q_device_);
       sycl::free(polygon_centroids_, q_device_);
-      
+      sycl::free(polygon_normals_, q_device_);
+      sycl::free(polygon_g_M_, q_device_);
+      sycl::free(polygon_g_N_, q_device_);
+      sycl::free(polygon_pressure_W_, q_device_);
+
       // Allocate new memory with larger size
       polygon_areas_ = sycl::malloc_device<double>(new_size, q_device_);
       polygon_centroids_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
+      polygon_normals_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
+      polygon_g_M_ = sycl::malloc_device<double>(new_size, q_device_);
+      polygon_g_N_ = sycl::malloc_device<double>(new_size, q_device_);
+      polygon_pressure_W_ = sycl::malloc_device<double>(new_size, q_device_);
       
       // Fill all with 0.0
       polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, new_size));
       std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
       polygon_fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      polygon_fill_events.push_back(q_device_.memcpy(polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      polygon_fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, new_size));
       
       current_polygon_areas_size_ = new_size;
     }
@@ -832,8 +854,9 @@ class SyclProximityEngine::Impl {
         (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE;
     // Calculation of the number of doubles to be stored in shared memory per
     // Offsets are required to index the local memory
+    // Two extra for gM and gN
     constexpr size_t EQ_PLANE_OFFSET = 0;
-    constexpr size_t EQ_PLANE_DOUBLES = 6;
+    constexpr size_t EQ_PLANE_DOUBLES = 8;
 
     constexpr size_t VERTEX_A_OFFSET = EQ_PLANE_OFFSET + EQ_PLANE_DOUBLES;
     constexpr size_t VERTEX_A_DOUBLES = 12;
@@ -924,6 +947,10 @@ class SyclProximityEngine::Impl {
            narrow_phase_check_validity_ = narrow_phase_check_validity_,
            polygon_areas_ = polygon_areas_,
            polygon_centroids_ = polygon_centroids_,
+           polygon_normals_ = polygon_normals_,
+           polygon_g_M_ = polygon_g_M_,
+           polygon_g_N_ = polygon_g_N_,
+        //    polygon_pressure_W_ = polygon_pressure_W_,
         //    debug_polygon_vertices_ = debug_polygon_vertices_,
            TOTAL_THREADS_NEEDED = TOTAL_THREADS_NEEDED,
            NUM_THREADS_PER_CHECK = NUM_THREADS_PER_CHECK,
@@ -1019,7 +1046,7 @@ class SyclProximityEngine::Impl {
                   gradient_W_pressure_at_Wo_[B_element_index][2];
               const double p_B_Wo = gradient_W_pressure_at_Wo_[B_element_index][3];
 
-              double eq_plane[6];
+              double eq_plane[EQ_PLANE_DOUBLES];
               bool valid_check = Impl::ComputeEquilibriumPlane(
                   gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo,
                   gradP_B_Wo_x, gradP_B_Wo_y, gradP_B_Wo_z, p_B_Wo,
@@ -1027,7 +1054,7 @@ class SyclProximityEngine::Impl {
               if(valid_check) {
                 // Write for Eq plane to slm
                 #pragma unroll
-                for (int i = 0; i < 6; ++i) {
+                for (int i = 0; i < EQ_PLANE_DOUBLES; ++i) {
                   slm[slm_offset + EQ_PLANE_OFFSET + i] = eq_plane[i];
                 }
               } 
@@ -1481,12 +1508,26 @@ class SyclProximityEngine::Impl {
 
             // Now write everything to global memory
             if(check_local_item_id == 0) {
+                // Write Polygon Area and Centroid
                 const double polygon_area = slm_polygon[slm_polygon_offset + AREAS_OFFSET + 0] * 0.5;
                 polygon_areas_[narrow_phase_check_index] = polygon_area;
                 const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
                 polygon_centroids_[narrow_phase_check_index][0] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
                 polygon_centroids_[narrow_phase_check_index][1] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
                 polygon_centroids_[narrow_phase_check_index][2] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
+
+
+                // Write Polygon Normal -> This is already normalized
+                polygon_normals_[narrow_phase_check_index][0] = slm[slm_offset + EQ_PLANE_OFFSET];
+                polygon_normals_[narrow_phase_check_index][1] = slm[slm_offset + EQ_PLANE_OFFSET + 1];
+                polygon_normals_[narrow_phase_check_index][2] = slm[slm_offset + EQ_PLANE_OFFSET + 2];
+
+                // Write Polygon g_M_
+                polygon_g_M_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 6];
+                // Write Polygon g_N_
+                polygon_g_N_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 7];
+
+                
             }
 
         });
@@ -1576,10 +1617,21 @@ class SyclProximityEngine::Impl {
   // Memory allocated using malloc_device
   double* polygon_areas_ = nullptr;
   // Pointer to contact polygon centroids
-  // Size is initialized to a fixed size of 2000 and all values are set to 0.0
-  // If more than 2000 polygons are needed, the size is increased based on  total_number_narrow_phase_checks
-  // Memory allocated using malloc_device
   Vector3<double>* polygon_centroids_ = nullptr;
+
+  // Pointer to contact polygon outward normals
+  Vector3<double>* polygon_normals_ = nullptr;
+
+  // Pointer to contact polygon g_M_
+  double* polygon_g_M_ = nullptr;
+
+  // Pointer to contact polygon g_N_
+  double* polygon_g_N_ = nullptr;
+
+  // Pointer to contact polygon pressure
+  double* polygon_pressure_W_ = nullptr;
+
+
 
   size_t current_polygon_areas_size_ = 0; // Current size of polygon_areas_ to prevent constant reallocation
   
@@ -1674,6 +1726,16 @@ class SyclProximityEngine::Impl {
       return false;
     }
 
+    // gM corresponds to the dot product of gradient for object A with the normal
+    const double gM = gradP_A_Wo_x * n_W_x_normalized + 
+                    gradP_A_Wo_y * n_W_y_normalized + 
+                    gradP_A_Wo_z * n_W_z_normalized;
+
+    // gN corresponds to the negative dot product of gradient for object B with the normal  
+    const double gN = -(gradP_B_Wo_x * n_W_x_normalized + 
+                        gradP_B_Wo_y * n_W_y_normalized + 
+                        gradP_B_Wo_z * n_W_z_normalized);
+
     // Plane point
     double p_WQ_x = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_x_normalized;
     double p_WQ_y = ((p_B_Wo - p_A_Wo) / n_W_norm) * n_W_y_normalized;
@@ -1684,6 +1746,8 @@ class SyclProximityEngine::Impl {
     eq_plane_out[3] = p_WQ_x;
     eq_plane_out[4] = p_WQ_y;
     eq_plane_out[5] = p_WQ_z;
+    eq_plane_out[6] = gM;
+    eq_plane_out[7] = gN;
     return true;
   }
 

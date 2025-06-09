@@ -7,16 +7,15 @@ namespace sycl_impl {
 
 SYCLHydroelasticSurface::SYCLHydroelasticSurface(
     std::vector<Vector3<double>> centroids, std::vector<double> areas,
-    std::vector<double> pressure_Ws,
-    std::vector<Vector3<double>> grad_pressure_Ms,
-    std::vector<Vector3<double>> grad_pressure_Ns,
-    std::vector<Vector3<double>> normal_Ws, GeometryId id_M, GeometryId id_N)
+    std::vector<double> pressure_Ws, std::vector<Vector3<double>> normal_Ws,
+    std::vector<double> g_M, std::vector<double> g_N, GeometryId id_M,
+    GeometryId id_N)
     : centroid_(std::move(centroids)),
       area_(std::move(areas)),
       pressure_W_(std::move(pressure_Ws)),
-      grad_pressure_M_(std::move(grad_pressure_Ms)),
-      grad_pressure_N_(std::move(grad_pressure_Ns)),
       normal_W_(std::move(normal_Ws)),
+      g_M_(std::move(g_M)),
+      g_N_(std::move(g_N)),
       id_M_(id_M),
       id_N_(id_N) {}
 
