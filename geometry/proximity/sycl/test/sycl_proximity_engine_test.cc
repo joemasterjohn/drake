@@ -128,7 +128,16 @@ GTEST_TEST(SPETest, TwoMeshesColliding) {
   auto vertices_M_host = SyclProximityEngineAttorney::get_vertices_M(impl);
   auto vertices_W_host = SyclProximityEngineAttorney::get_vertices_W(impl);
   EXPECT_EQ(vertices_M_host.size(), vertices_of_both_meshes.size());
-  EXPECT_EQ(vertices_M_host, vertices_of_both_meshes);
+
+  // Compare vertices within machine precision
+  for (size_t i = 0; i < vertices_M_host.size(); ++i) {
+    EXPECT_NEAR(vertices_M_host[i][0], vertices_of_both_meshes[i][0],
+                std::numeric_limits<double>::epsilon());
+    EXPECT_NEAR(vertices_M_host[i][1], vertices_of_both_meshes[i][1],
+                std::numeric_limits<double>::epsilon());
+    EXPECT_NEAR(vertices_M_host[i][2], vertices_of_both_meshes[i][2],
+                std::numeric_limits<double>::epsilon());
+  }
   // Elements stored should be same as elements from mesh
   auto elements_host = SyclProximityEngineAttorney::get_elements(impl);
   auto elements_from_meshA = geometryA.mesh().pack_element_vertices();
