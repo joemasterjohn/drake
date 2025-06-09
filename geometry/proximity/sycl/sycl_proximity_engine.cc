@@ -209,9 +209,10 @@ class SyclProximityEngine::Impl {
       size_t num_elements = sh_element_counts_[id_index];
       size_t num_vertices = sh_vertex_counts_[id_index];
 
+      auto mesh_vertices = mesh.pack_element_vertices();
       // Copy mesh data using the offsets with async operations
       transfer_events.push_back(q_device_.memcpy(
-          elements_ + element_offset, mesh.pack_element_vertices().data(),
+          elements_ + element_offset, mesh_vertices.data(),
           num_elements * sizeof(std::array<int, 4>)));
 
       // Fill in the mesh id for all elements in this mesh
