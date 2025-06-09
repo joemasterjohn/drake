@@ -95,7 +95,6 @@ class SyclProximityEngine::Impl {
            soft_geometries) {
     // Initialize SYCL queues
     q_device_ = sycl::queue(sycl::gpu_selector_v);
-    q_host_ = sycl::queue(sycl::cpu_selector_v);
 
     DRAKE_THROW_UNLESS(soft_geometries.size() > 0);
 
@@ -161,8 +160,6 @@ class SyclProximityEngine::Impl {
 
     inward_normals_M_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
         total_elements_, q_device_);
-    edge_vectors_M_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
-        total_elements_, q_device_);
     min_pressures_ = sycl::malloc_device<double>(total_elements_, q_device_);
     max_pressures_ = sycl::malloc_device<double>(total_elements_, q_device_);
 
@@ -174,8 +171,6 @@ class SyclProximityEngine::Impl {
     vertices_W_ =
         sycl::malloc_device<Vector3<double>>(total_vertices_, q_device_);
     inward_normals_W_ = sycl::malloc_device<std::array<Vector3<double>, 4>>(
-        total_elements_, q_device_);
-    edge_vectors_W_ = sycl::malloc_device<std::array<Vector3<double>, 6>>(
         total_elements_, q_device_);
     gradient_W_pressure_at_Wo_ =
         sycl::malloc_device<Vector4<double>>(total_elements_, q_device_);
@@ -235,10 +230,6 @@ class SyclProximityEngine::Impl {
           inward_normals_M_ + element_offset, mesh.inward_normals().data(),
           num_elements * sizeof(std::array<Vector3<double>, 4>)));
 
-      // Edge Vectors
-      transfer_events.push_back(q_device_.memcpy(
-          edge_vectors_M_ + element_offset, mesh.edge_vectors().data(),
-          num_elements * sizeof(std::array<Vector3<double>, 6>)));
 
       // Min Pressures
       transfer_events.push_back(q_device_.memcpy(
@@ -364,7 +355,6 @@ class SyclProximityEngine::Impl {
     // TODO(huzaifa): Implement deep copy of SYCL resources
     // For now, we'll just create a shallow copy which isn't ideal
     q_device_ = other.q_device_;
-    q_host_ = other.q_host_;
     collision_candidates_ = other.collision_candidates_;
     num_geometries_ = other.num_geometries_;
   }
@@ -375,7 +365,6 @@ class SyclProximityEngine::Impl {
       // TODO(huzaifa): Implement deep copy of SYCL resources
       // For now, we'll just create a shallow copy which isn't ideal
       q_device_ = other.q_device_;
-      q_host_ = other.q_host_;
       collision_candidates_ = other.collision_candidates_;
       num_geometries_ = other.num_geometries_;
     }
@@ -400,8 +389,6 @@ class SyclProximityEngine::Impl {
       sycl::free(vertices_W_, q_device_);
       sycl::free(inward_normals_M_, q_device_);
       sycl::free(inward_normals_W_, q_device_);
-      sycl::free(edge_vectors_M_, q_device_);
-      sycl::free(edge_vectors_W_, q_device_);
       sycl::free(pressures_, q_device_);
       sycl::free(min_pressures_, q_device_);
       sycl::free(max_pressures_, q_device_);
@@ -538,42 +525,9 @@ class SyclProximityEngine::Impl {
               });
         });
 
-    // Transform edge vectors
-    auto transform_elem_quantities_event2 =
-        q_device_.submit([&](sycl::handler& h) {
-          h.parallel_for(
-              sycl::range<1>(total_elements_), sycl::id<1>(0),
-              [=, edge_vectors_M_ = edge_vectors_M_,
-               edge_vectors_W_ = edge_vectors_W_,
-               sh_element_mesh_ids_ = sh_element_mesh_ids_,
-               transforms_ = transforms_](sycl::id<1> idx) {
-                const size_t element_index = idx[0];
-                const size_t mesh_index = sh_element_mesh_ids_[element_index];
-
-                double T[12];
-                for (size_t i = 0; i < 12; ++i) {
-                  T[i] = transforms_[mesh_index * 12 + i];
-                }
-
-                // Each element has 6 edge vectors
-                for (size_t j = 0; j < 6; ++j) {
-                  const double vx = edge_vectors_M_[element_index][j][0];
-                  const double vy = edge_vectors_M_[element_index][j][1];
-                  const double vz = edge_vectors_M_[element_index][j][2];
-
-                  // Only rotation
-                  edge_vectors_W_[element_index][j][0] =
-                      T[0] * vx + T[1] * vy + T[2] * vz;
-                  edge_vectors_W_[element_index][j][1] =
-                      T[4] * vx + T[5] * vy + T[6] * vz;
-                  edge_vectors_W_[element_index][j][2] =
-                      T[8] * vx + T[9] * vy + T[10] * vz;
-                }
-              });
-        });
 
     // Transform pressure gradients
-    auto transform_elem_quantities_event3 =
+    auto transform_elem_quantities_event2 =
         q_device_.submit([&](sycl::handler& h) {
           h.parallel_for(
               sycl::range<1>(total_elements_), sycl::id<1>(0),
@@ -910,8 +864,7 @@ class SyclProximityEngine::Impl {
       std::vector<sycl::event> dependencies = {
           fill_narrow_phase_check_indices_event,
           transform_elem_quantities_event1,
-          transform_elem_quantities_event2,
-          transform_elem_quantities_event3
+          transform_elem_quantities_event2
       };
       // Add polygon fill events to dependencies
       dependencies.insert(dependencies.end(), polygon_fill_events.begin(), polygon_fill_events.end());
@@ -1525,7 +1478,6 @@ class SyclProximityEngine::Impl {
   // We have a CPU queue for operations beneficial to perform on the host and a
   // device queue for operations beneficial to perform on the Accelerator.
   sycl::queue q_device_;
-  sycl::queue q_host_;
   // The collision candidates.
   std::vector<SortedPair<GeometryId>> collision_candidates_;
   // GeometryIds of soft geometries (host-side)
@@ -1574,10 +1526,6 @@ class SyclProximityEngine::Impl {
       nullptr;  // Inward normals in mesh frame
   std::array<Vector3<double>, 4>* inward_normals_W_ =
       nullptr;  // Inward normals in world frame
-  std::array<Vector3<double>, 6>* edge_vectors_M_ =
-      nullptr;  // Edge vectors in mesh frame
-  std::array<Vector3<double>, 6>* edge_vectors_W_ =
-      nullptr;  // Edge vectors in world frame
 
   // Mesh vertex data - accessed by vertex_offset + local_vertex_index
   Vector3<double>* vertices_M_ = nullptr;  // Vertices in mesh frame
