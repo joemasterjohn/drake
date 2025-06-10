@@ -341,23 +341,6 @@ class SyclProximityEngine::Impl {
     narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
     prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
 
-    // Inital fills
-    std::vector<sycl::event> fill_events;
-    fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, current_polygon_areas_size_));
-    fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, current_polygon_areas_size_));
-    fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, current_polygon_areas_size_));
-    fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, current_polygon_areas_size_));
-    fill_events.push_back(q_device_.fill(polygon_geom_index_A_, GeometryId::get_new_id(), current_polygon_areas_size_));
-    fill_events.push_back(q_device_.fill(polygon_geom_index_B_, GeometryId::get_new_id(), current_polygon_areas_size_));
-
-    std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
-    fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
-    fill_events.push_back(q_device_.memcpy(polygon_normals_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
-    fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_)); // All valid at the start
-    fill_events.push_back(q_device_.fill(prefix_sum_narrow_phase_checks_, 0, current_narrow_phase_check_indices_size_));
-
-
-
 
     // Resize compacted data structures based on the estimated polygon sizes
     current_polygon_indices_size_= estimated_polygons_;
@@ -371,26 +354,9 @@ class SyclProximityEngine::Impl {
     compacted_polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(current_polygon_indices_size_, q_device_);
     valid_polygon_indices_ = sycl::malloc_device<size_t>(current_polygon_indices_size_, q_device_);
 
-    fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, current_polygon_indices_size_));
-    std::vector<Vector3<double>> compacted_zero_centroids(current_polygon_indices_size_, Vector3<double>::Zero());
-    fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, compacted_zero_centroids.data(), current_polygon_indices_size_ * sizeof(Vector3<double>)));
-    fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, compacted_zero_centroids.data(), current_polygon_indices_size_ * sizeof(Vector3<double>)));
-    fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, current_polygon_indices_size_));
-    fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, current_polygon_indices_size_));
-    fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, current_polygon_indices_size_));
-    fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), current_polygon_indices_size_));
-    fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), current_polygon_indices_size_));
-    fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, current_polygon_indices_size_));
-
     // Generate collision filter for all checks
     collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
-    // Required in ComputeSYCLHydroelasticSurface
     prefix_sum_total_checks_ = sycl::malloc_device<size_t>(total_checks_, q_device_);
-    // memset all to 0 for now (will be filled in when we have AABBs for each
-    // element)
-    auto collision_filter_memset_event =
-        q_device_.memset(collision_filter_, 0, total_checks_ * sizeof(uint8_t));
-    collision_filter_memset_event.wait();
 
     collision_filter_host_body_index_ =
         sycl::malloc_host<size_t>(total_checks_, q_device_);
@@ -407,7 +373,6 @@ class SyclProximityEngine::Impl {
 
     // Wait for all transfers to complete before returning
     sycl::event::wait_and_throw(transfer_events);
-    sycl::event::wait_and_throw(fill_events);
     sycl::event::wait_and_throw(collision_filter_host_body_index_fill_events);
   }
 
@@ -523,6 +488,9 @@ class SyclProximityEngine::Impl {
     if (total_checks_ == 0) {
       return {};
     }
+
+    auto collision_filter_memset_event =
+        q_device_.memset(collision_filter_, 0, total_checks_ * sizeof(uint8_t));
 
     // Get transfomers in host
     for (size_t geom_index = 0; geom_index < num_geometries_; ++geom_index) {
@@ -716,7 +684,7 @@ class SyclProximityEngine::Impl {
     // Now generate collision filter with the AABBs that we computed
     auto generate_collision_filter_event =
         q_device_.submit([&](sycl::handler& h) {
-          h.depends_on(element_aabb_event);
+          h.depends_on({element_aabb_event,collision_filter_memset_event});
           h.parallel_for(
               sycl::range<1>(total_checks_),
               [=, collision_filter_ = collision_filter_,
@@ -816,8 +784,6 @@ class SyclProximityEngine::Impl {
     total_narrow_phase_checks_ += static_cast<size_t>(last_check_flag);
 
 
-    // Resize Polygon areas and centroids if needed
-    std::vector<sycl::event> polygon_fill_events;
     if (total_narrow_phase_checks_ > current_polygon_areas_size_) {
       // Give a 10 % bigger size
       size_t new_size = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
@@ -849,39 +815,13 @@ class SyclProximityEngine::Impl {
       narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(new_size, q_device_);
       prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(new_size, q_device_);
       narrow_phase_check_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);
-      
-      // Fill all with 0.0
-      polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, new_size));
-      std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
-      polygon_fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      polygon_fill_events.push_back(q_device_.memcpy(polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      polygon_fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
-      polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
-
-      polygon_fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), new_size));
-      polygon_fill_events.push_back(q_device_.fill(prefix_sum_narrow_phase_checks_, static_cast<size_t>(0), new_size));
-      polygon_fill_events.push_back(q_device_.fill(narrow_phase_check_indices_, static_cast<size_t>(0), new_size));
-      
       current_polygon_areas_size_ = new_size;
     }
 
-    // Resize narrow_phase_check_indices_ if needed
-    // if (total_narrow_phase_checks_ > current_narrow_phase_check_indices_size_) {
-    //   sycl::free(narrow_phase_check_indices_, q_device_);
-    //   current_narrow_phase_check_indices_size_ = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
-    //   narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
-
-    //   sycl::free(narrow_phase_check_validity_, q_device_);
-    //   narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
-    //   q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
-
-    //   sycl::free(prefix_sum_narrow_phase_checks_, q_device_);
-    //   prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
-    //   q_device_.fill(prefix_sum_narrow_phase_checks_, 0, current_narrow_phase_check_indices_size_).wait();
-    // }
+   /// Reset quantities that need to be reset across timesteps
+    std::vector<sycl::event> fill_events;
+    fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_polygon_areas_size_)); // All valid at the start
+    fill_events.push_back(q_device_.fill(prefix_sum_narrow_phase_checks_, 0, current_polygon_areas_size_));
 
     // Resize debug_polygon_vertices_ if needed
     // current_debug_polygon_vertices_size_ = 48 *  total_narrow_phase_checks_;
@@ -985,7 +925,7 @@ class SyclProximityEngine::Impl {
           transform_elem_quantities_event2
       };
       // Add polygon fill events to dependencies
-      dependencies.insert(dependencies.end(), polygon_fill_events.begin(), polygon_fill_events.end());
+      dependencies.insert(dependencies.end(), fill_events.begin(), fill_events.end());
       
       h.depends_on(dependencies);
       
@@ -1663,7 +1603,6 @@ class SyclProximityEngine::Impl {
     // If last check is 1, then we need to add one more check
     total_polygons_ += static_cast<size_t>(last_check_flag);
     
-    std::vector<sycl::event> compact_polygon_fill_events;
     if (total_polygons_ > current_polygon_indices_size_) {
       // Give a 10 % bigger size
       size_t new_size = static_cast<size_t>(1.1 * total_polygons_);
@@ -1688,23 +1627,12 @@ class SyclProximityEngine::Impl {
       compacted_polygon_pressure_W_ = sycl::malloc_device<double>(new_size, q_device_);
       compacted_polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
       compacted_polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
-      valid_polygon_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);
-      
-      // Fill all with 0.0
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, new_size));
-      std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
-      compact_polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      compact_polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, new_size));
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, new_size));
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, new_size));
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
-      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
-      compact_polygon_fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, new_size));
-
-      
+      valid_polygon_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);  
       current_polygon_indices_size_ = new_size;
     }
+
+    auto memset_event = q_device_.memset(valid_polygon_indices_, 0, current_polygon_indices_size_ * sizeof(size_t));
+    memset_event.wait_and_throw();
 
     auto fill_valid_polygon_indices_event =
         q_device_.submit([&](sycl::handler& h) {
@@ -1722,7 +1650,7 @@ class SyclProximityEngine::Impl {
               });
         });
     fill_valid_polygon_indices_event.wait_and_throw();
-    sycl::event::wait_and_throw(compact_polygon_fill_events);
+
     // Compact all the data to data only with valid polygons
     auto compact_event = q_device_.submit([&](sycl::handler& h) {
       h.depends_on({fill_valid_polygon_indices_event});
