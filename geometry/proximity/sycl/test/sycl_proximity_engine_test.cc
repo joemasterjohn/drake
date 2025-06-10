@@ -459,25 +459,52 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       soft_geometryA.pressure_field(), bvhSphereA,
       soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
       &contact_pressure);
+
   fmt::print("ssize(compacted_polygon_areas): {}\n", total_polygons);
   fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
   std::vector<int> polygons_found;
   std::vector<int> bad_area;
   std::vector<int> bad_centroid;
+  std::vector<int> bad_normal;
+  std::vector<int> bad_gM;
+  std::vector<int> bad_gN;
+  std::vector<int> bad_pressure;
   std::vector<std::pair<int, int>> degenerate_tets;
+
   for (int i = 0; i < contact_surface->num_faces(); ++i) {
     const double expected_area = contact_surface->area(i);
     const Vector3d expected_centroid_M = contact_surface->element_centroid(i);
     // Transform by transforms of A since the contact surface is posed in frame
     // A.
+    const Vector3d expected_normal_M = contact_surface->face_normal(i);
+
     const Vector3d expected_centroid_W = X_WA * expected_centroid_M;
+    const Vector3d expected_normal_W =
+        (X_WA.rotation() * expected_normal_M).normalized();
+
+    // Find the correct tet pair
     const int tet0 = volume_intersector.tet0_of_polygon(i);
     const int tet1 = volume_intersector.tet1_of_polygon(i);
+    const Vector3d grad_field0_M =
+        soft_geometryA.pressure_field().EvaluateGradient(tet0);
+    const Vector3d grad_field1_M =
+        soft_geometryB.pressure_field().EvaluateGradient(tet1);
+    const Vector3d grad_field0_W = X_WA.rotation() * grad_field0_M;
+    const Vector3d grad_field1_W = X_WB.rotation() * grad_field1_M;
+
+    const double expected_gM = grad_field0_M.dot(expected_normal_M);
+    const double expected_gN = grad_field1_M.dot(expected_normal_M);
+
+    const double expected_pressure =
+        contact_pressure->EvaluateCartesian(i, expected_centroid_M);
+
     const std::pair<int, int> tet_pair{tet0, tet1};
     const auto it =
         std::find(element_id_pairs.begin(), element_id_pairs.end(), tet_pair);
     // We expect to find polygons for every polygon in the cpu surface.
     EXPECT_TRUE(it != element_id_pairs.end());
+
+    // Do all the checks
     if (it != element_id_pairs.end()) {
       int index = (it - element_id_pairs.begin());
       polygons_found.push_back(index);
@@ -505,6 +532,55 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
             fmt_eigen(expected_centroid_W.transpose()),
             fmt_eigen(surfaces[0].centroids()[index].transpose()));
       }
+      const double normal_error =
+          (expected_normal_W - surfaces[0].normals()[index]).norm();
+      if (normal_error > 1e2 * std::numeric_limits<double>::epsilon() &&
+          expected_area > 1e-15) {
+        bad_normal.push_back(index);
+        std::cerr << fmt::format(
+            "Bad normal at index {} for tet pair ({}, {}) error: {} "
+            "expected area: {}, got area {}\n  "
+            "expected={}\n  got=     "
+            "{}\n\n",
+            index, tet0, tet1, normal_error, expected_area,
+            surfaces[0].areas()[index],
+            fmt_eigen(expected_normal_W.transpose()),
+            fmt_eigen(surfaces[0].normals()[index].transpose()));
+      }
+      if (expected_gM - surfaces[0].g_M()[index] > 1e-8) {
+        bad_gM.push_back(index);
+        std::cerr << fmt::format(
+            "Bad gM at index {} for tet pair ({}, {}) error: {} "
+            "expected area: {}, got area {}\n  "
+            "expected={}\n  got=     "
+            "{}\n\n",
+            index, tet0, tet1, expected_gM - surfaces[0].g_M()[index],
+            expected_area, surfaces[0].areas()[index], expected_gM,
+            surfaces[0].g_M()[index]);
+      }
+      if (expected_gN - surfaces[0].g_N()[index] > 1e-8) {
+        bad_gN.push_back(index);
+        std::cerr << fmt::format(
+            "Bad gN at index {} for tet pair ({}, {}) error: {} "
+            "expected area: {}, got area {}\n  "
+            "expected={}\n  got=     "
+            "{}\n\n",
+            index, tet0, tet1, expected_gN - surfaces[0].g_N()[index],
+            expected_area, surfaces[0].areas()[index], expected_gN,
+            surfaces[0].g_N()[index]);
+      }
+      if (expected_pressure - surfaces[0].pressures()[index] > 1e-8) {
+        bad_pressure.push_back(index);
+        std::cerr << fmt::format(
+            "Bad pressure at index {} for tet pair ({}, {}) error: {} "
+            "expected area: {}, got area {}\n  "
+            "expected={}\n  got=     "
+            "{}\n\n",
+            index, tet0, tet1,
+            expected_pressure - surfaces[0].pressures()[index], expected_area,
+            surfaces[0].areas()[index], expected_pressure,
+            surfaces[0].pressures()[index]);
+      }
     }
   }
   fmt::print("Polygons found by SYCL implementation: {}\n",
@@ -517,6 +593,18 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       "y, z): {}\n",
       ssize(bad_centroid));
   EXPECT_EQ(bad_centroid.size(), 0);
+  fmt::print("Polygons with normal difference beyond rounding error: {}\n",
+             ssize(bad_normal));
+  EXPECT_EQ(bad_normal.size(), 0);
+  fmt::print("Polygons with gM difference beyond rounding error: {}\n",
+             ssize(bad_gM));
+  EXPECT_EQ(bad_gM.size(), 0);
+  fmt::print("Polygons with gN difference beyond rounding error: {}\n",
+             ssize(bad_gN));
+  EXPECT_EQ(bad_gN.size(), 0);
+  fmt::print("Polygons with pressure difference beyond rounding error: {}\n",
+             ssize(bad_pressure));
+  EXPECT_EQ(bad_pressure.size(), 0);
 
   std::sort(polygons_found.begin(), polygons_found.end());
   int counter = 0;

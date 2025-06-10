@@ -1663,6 +1663,7 @@ class SyclProximityEngine::Impl {
     // If last check is 1, then we need to add one more check
     total_polygons_ += static_cast<size_t>(last_check_flag);
     
+    std::vector<sycl::event> compact_polygon_fill_events;
     if (total_polygons_ > current_polygon_indices_size_) {
       // Give a 10 % bigger size
       size_t new_size = static_cast<size_t>(1.1 * total_polygons_);
@@ -1690,16 +1691,16 @@ class SyclProximityEngine::Impl {
       valid_polygon_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);
       
       // Fill all with 0.0
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, new_size));
       std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
-      polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, new_size));
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
-      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
-      polygon_fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, new_size));
+      compact_polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      compact_polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
+      compact_polygon_fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, new_size));
 
       
       current_polygon_indices_size_ = new_size;
@@ -1721,9 +1722,10 @@ class SyclProximityEngine::Impl {
               });
         });
     fill_valid_polygon_indices_event.wait_and_throw();
+    sycl::event::wait_and_throw(compact_polygon_fill_events);
     // Compact all the data to data only with valid polygons
     auto compact_event = q_device_.submit([&](sycl::handler& h) {
-      h.depends_on(fill_valid_polygon_indices_event);
+      h.depends_on({fill_valid_polygon_indices_event});
       h.parallel_for(
           sycl::range<1>(total_polygons_),
           [=, compacted_polygon_areas_ = compacted_polygon_areas_,
