@@ -117,7 +117,7 @@ class SyclProximityEngine::Impl {
     num_geometries_ = soft_geometries.size();
 
     // Allocate host memory for geometry IDs
-    soft_geometry_ids_ = new GeometryId[num_geometries_];
+    soft_geometry_ids_ = sycl::malloc_host<GeometryId>(num_geometries_, q_device_);
 
     // Allocate device memory for lookup arrays
     sh_element_offsets_ = sycl::malloc_host<size_t>(num_geometries_, q_device_);
@@ -327,7 +327,8 @@ class SyclProximityEngine::Impl {
     polygon_g_M_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     polygon_g_N_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     polygon_pressure_W_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
-
+    polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(current_polygon_areas_size_, q_device_);
+    polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(current_polygon_areas_size_, q_device_);
 
     // Allocate memory for narrow_phase_check_indices_
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
@@ -341,6 +342,8 @@ class SyclProximityEngine::Impl {
     fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, current_polygon_areas_size_));
     fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, current_polygon_areas_size_));
     fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, current_polygon_areas_size_));
+    fill_events.push_back(q_device_.fill(polygon_geom_index_A_, GeometryId::get_new_id(), current_polygon_areas_size_));
+    fill_events.push_back(q_device_.fill(polygon_geom_index_B_, GeometryId::get_new_id(), current_polygon_areas_size_));
 
     std::vector<Vector3<double>> zero_centroids(current_polygon_areas_size_, Vector3<double>::Zero());
     fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
@@ -401,7 +404,7 @@ class SyclProximityEngine::Impl {
   ~Impl() {
     // Free device memory
     if (num_geometries_ > 0) {
-      delete[] soft_geometry_ids_;
+      sycl::free(soft_geometry_ids_, q_device_);
 
       sycl::free(sh_element_offsets_, q_device_);
       sycl::free(sh_vertex_offsets_, q_device_);
@@ -465,7 +468,7 @@ class SyclProximityEngine::Impl {
       const std::unordered_map<GeometryId, math::RigidTransform<double>>&
           X_WGs) {
     if (total_checks_ == 0) {
-      return std::vector<SYCLHydroelasticSurface>();
+      return {};
     }
 
     // Get transfomers in host
@@ -773,6 +776,8 @@ class SyclProximityEngine::Impl {
       sycl::free(polygon_g_M_, q_device_);
       sycl::free(polygon_g_N_, q_device_);
       sycl::free(polygon_pressure_W_, q_device_);
+      sycl::free(polygon_geom_index_A_, q_device_);
+      sycl::free(polygon_geom_index_B_, q_device_);
 
       // Allocate new memory with larger size
       polygon_areas_ = sycl::malloc_device<double>(new_size, q_device_);
@@ -781,6 +786,8 @@ class SyclProximityEngine::Impl {
       polygon_g_M_ = sycl::malloc_device<double>(new_size, q_device_);
       polygon_g_N_ = sycl::malloc_device<double>(new_size, q_device_);
       polygon_pressure_W_ = sycl::malloc_device<double>(new_size, q_device_);
+      polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
+      polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
       
       // Fill all with 0.0
       polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, new_size));
@@ -790,6 +797,8 @@ class SyclProximityEngine::Impl {
       polygon_fill_events.push_back(q_device_.fill(polygon_g_M_, 0.0, new_size));
       polygon_fill_events.push_back(q_device_.fill(polygon_g_N_, 0.0, new_size));
       polygon_fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
+      polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
       
       current_polygon_areas_size_ = new_size;
     }
@@ -950,7 +959,10 @@ class SyclProximityEngine::Impl {
            polygon_normals_ = polygon_normals_,
            polygon_g_M_ = polygon_g_M_,
            polygon_g_N_ = polygon_g_N_,
-        //    polygon_pressure_W_ = polygon_pressure_W_,
+           polygon_pressure_W_ = polygon_pressure_W_,
+           polygon_geom_index_A_ = polygon_geom_index_A_,
+           polygon_geom_index_B_ = polygon_geom_index_B_,
+           soft_geometry_ids_ = soft_geometry_ids_,
         //    debug_polygon_vertices_ = debug_polygon_vertices_,
            TOTAL_THREADS_NEEDED = TOTAL_THREADS_NEEDED,
            NUM_THREADS_PER_CHECK = NUM_THREADS_PER_CHECK,
@@ -1512,9 +1524,12 @@ class SyclProximityEngine::Impl {
                 const double polygon_area = slm_polygon[slm_polygon_offset + AREAS_OFFSET + 0] * 0.5;
                 polygon_areas_[narrow_phase_check_index] = polygon_area;
                 const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
-                polygon_centroids_[narrow_phase_check_index][0] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
-                polygon_centroids_[narrow_phase_check_index][1] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
-                polygon_centroids_[narrow_phase_check_index][2] = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
+                const double centroid_x = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
+                const double centroid_y = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
+                const double centroid_z = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
+                polygon_centroids_[narrow_phase_check_index][0] = centroid_x;
+                polygon_centroids_[narrow_phase_check_index][1] = centroid_y;
+                polygon_centroids_[narrow_phase_check_index][2] = centroid_z;
 
 
                 // Write Polygon Normal -> This is already normalized
@@ -1527,16 +1542,41 @@ class SyclProximityEngine::Impl {
                 // Write Polygon g_N_
                 polygon_g_N_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 7];
 
-                
+                // Compute the pressure at the centroid
+                // TODO(Huzaifa): Check this for correctness
+                const double gradP_A_Wo_x =
+                    gradient_W_pressure_at_Wo_[A_element_index][0];
+                const double gradP_A_Wo_y =
+                    gradient_W_pressure_at_Wo_[A_element_index][1];
+                const double gradP_A_Wo_z =
+                    gradient_W_pressure_at_Wo_[A_element_index][2];
+                const double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
+                polygon_pressure_W_[narrow_phase_check_index] = gradP_A_Wo_x * centroid_x + gradP_A_Wo_y * centroid_y + gradP_A_Wo_z * centroid_z + p_A_Wo;
+
+                // Write Geometry Index A
+                polygon_geom_index_A_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_A];
+                // Write Geometry Index B
+                polygon_geom_index_B_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_B];
             }
 
         });
     });
 
     compute_contact_polygon_event.wait_and_throw();
-    // Placeholder that returns an empty vector
-    std::vector<SYCLHydroelasticSurface> sycl_hydroelastic_surfaces;
-    return sycl_hydroelastic_surfaces;
+
+    // Create the SYCL hydro surface containing all the information required by the solver
+    return {SYCLHydroelasticSurface::CreateFromDeviceMemory(
+        q_device_,
+        polygon_centroids_,
+        polygon_areas_,
+        polygon_pressure_W_,
+        polygon_normals_,
+        polygon_g_M_,
+        polygon_g_N_,
+        polygon_geom_index_A_,
+        polygon_geom_index_B_,
+        narrow_phase_check_validity_,
+        total_narrow_phase_checks_)};
   }
 
  private:
@@ -1630,6 +1670,12 @@ class SyclProximityEngine::Impl {
 
   // Pointer to contact polygon pressure
   double* polygon_pressure_W_ = nullptr;
+
+  // Needs redirection with sorted_ids_ to get the geometry IDs
+  // Geometry A identifier for polygon area
+  GeometryId* polygon_geom_index_A_ = nullptr;
+  // Geometry B identifier for polygon area
+  GeometryId* polygon_geom_index_B_ = nullptr;
 
 
 

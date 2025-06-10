@@ -8,6 +8,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <sycl/sycl.hpp>
+
 #include "drake/geometry/geometry_ids.h"
 #include "drake/math/rigid_transform.h"
 
@@ -17,47 +19,79 @@ namespace internal {
 namespace sycl_impl {
 
 /*
-  This class is used to store the hydroelastic collision surface for a given
-  pair of geometries in a Structure of Arrays (SoA) format. It holds the id's of
-  the two geometries that it belongs to. Additionally, it holds arrays (as
-  std::vectors) for properties of each polygon that make up the hydroelastic
-  surface.
-
-
+  This class is used to store the hydroelastic collision surface data for
+  all geometry pairs in a Structure of Arrays (SoA) format. It holds arrays
+  (as std::vectors) for properties of each polygon that make up the hydroelastic
+  surfaces, along with the geometry IDs that each polygon belongs to.
 */
 class SYCLHydroelasticSurface {
  public:
   /*
-    Constructs a SYCLHydroelasticSurface between two geometries of ids
-    `id_M` and `id_N` using a collection of polygons. A surface is not
-    "constructed" in a traditional geometric sense but rather the relevant
-    properties of each polygon are stored in arrays.
+    Constructs a SYCLHydroelasticSurface containing all collision polygons.
 
     @param centroids Vector of centroids of each polygon expressed in the world
     frame.
     @param areas Vector of areas of each polygon.
     @param pressure_Ws Pressure at the centroid of each polygon.
-    @param grad_pressure_Ms Gradient of pressure in the domain of `tet0` from
-    Mesh `M` expressed in the world frame.
-    @param grad_pressure_Ns Gradient of pressure in the domain of `tet1` from
-    Mesh `N` expressed in the world frame.
-
-    * TODO(huzaifa): Do we need the grad_pressure's?
-    * These gradients might not be needed because they are only used to compute
-    * the scalar pressure gradients g_M and g_N. So we could just store g_M and
-    * g_N directly.
-
     @param normal_Ws Vector of normal vectors of each polygon expressed in the
     world frame.
-    @param id_M The id of the first geometry.
-    @param id_N The id of the second geometry.
+    @param g_M Vector of scalar pressure gradients g_M for each polygon.
+    @param g_N Vector of scalar pressure gradients g_N for each polygon.
+    @param geometry_ids_M Vector of geometry IDs for the first geometry of each
+    polygon.
+    @param geometry_ids_N Vector of geometry IDs for the second geometry of each
+    polygon.
   */
   SYCLHydroelasticSurface(std::vector<Vector3<double>> centroids,
                           std::vector<double> areas,
                           std::vector<double> pressure_Ws,
                           std::vector<Vector3<double>> normal_Ws,
                           std::vector<double> g_M, std::vector<double> g_N,
-                          GeometryId id_M, GeometryId id_N);
+                          std::vector<GeometryId> geometry_ids_M,
+                          std::vector<GeometryId> geometry_ids_N);
+
+  /*
+    Factory method to create a SYCLHydroelasticSurface from device memory
+    arrays. This method transfers data from device to host
+
+    @param q_device SYCL queue for memory transfers
+    @param polygon_centroids Device pointer to polygon centroids
+    @param polygon_areas Device pointer to polygon areas
+    @param polygon_pressure_W Device pointer to polygon pressures
+    @param polygon_normals Device pointer to polygon normals
+    @param polygon_g_M Device pointer to g_M values
+    @param polygon_g_N Device pointer to g_N values
+    @param polygon_geom_index_A Device pointer to geometry A indices
+    @param polygon_geom_index_B Device pointer to geometry B indices
+    @param narrow_phase_check_validity Device pointer to validity flags
+    @param total_narrow_phase_checks Total number of narrow phase checks
+    @returns SYCLHydroelasticSurface containing all valid polygons
+  */
+  static SYCLHydroelasticSurface CreateFromDeviceMemory(
+      sycl::queue& q_device, Vector3<double>* polygon_centroids,
+      double* polygon_areas, double* polygon_pressure_W,
+      Vector3<double>* polygon_normals, double* polygon_g_M,
+      double* polygon_g_N, GeometryId* polygon_geom_index_A,
+      GeometryId* polygon_geom_index_B, uint8_t* narrow_phase_check_validity,
+      size_t total_narrow_phase_checks);
+
+  // Accessors
+  const std::vector<Vector3<double>>& centroids() const { return centroid_; }
+  const std::vector<double>& areas() const { return area_; }
+  const std::vector<double>& pressures() const { return pressure_W_; }
+  const std::vector<Vector3<double>>& normals() const { return normal_W_; }
+  const std::vector<double>& g_M() const { return g_M_; }
+  const std::vector<double>& g_N() const { return g_N_; }
+  const std::vector<GeometryId>& geometry_ids_M() const {
+    return geometry_ids_M_;
+  }
+  const std::vector<GeometryId>& geometry_ids_N() const {
+    return geometry_ids_N_;
+  }
+
+  // Utility methods
+  size_t num_polygons() const { return area_.size(); }
+  bool empty() const { return area_.empty(); }
 
  private:
   std::vector<Vector3<double>> centroid_;
@@ -66,8 +100,8 @@ class SYCLHydroelasticSurface {
   std::vector<Vector3<double>> normal_W_;
   std::vector<double> g_M_;
   std::vector<double> g_N_;
-  GeometryId id_M_{};
-  GeometryId id_N_{};
+  std::vector<GeometryId> geometry_ids_M_;
+  std::vector<GeometryId> geometry_ids_N_;
 };
 
 }  // namespace sycl_impl

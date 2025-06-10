@@ -429,12 +429,6 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
                       expected_prefix_sum.begin(), 0);
   EXPECT_EQ(prefix_sum, expected_prefix_sum);
 
-  // Get polygon areas and centroids
-  const std::vector<double> polygon_areas =
-      SyclProximityEngineAttorney::get_polygon_areas(impl);
-  const std::vector<Vector3d> polygon_centroids =
-      SyclProximityEngineAttorney::get_polygon_centroids(impl);
-
   // Get the narrow phase check indices
   const std::vector<size_t> narrow_phase_check_indices =
       SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
@@ -443,21 +437,11 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   // These id pairs will map to the global index that was used in the
   // collision_filter_ (row and column)
   std::vector<std::pair<int, int>> element_id_pairs;
-  for (size_t i = 0; i < polygon_areas.size(); ++i) {
+  for (size_t i = 0; i < surfaces[0].num_polygons(); ++i) {
     size_t global_check_index = narrow_phase_check_indices[i];
     int eA = global_check_index / soft_geometryB.mesh().num_elements();
     int eB = global_check_index - eA * soft_geometryB.mesh().num_elements();
     element_id_pairs.emplace_back(eA, eB);
-
-    // std::cerr << "global_check_index: " << global_check_index << ", eA: " <<
-    // eA
-    // << ", eB: " << eB << std::endl;
-    // if (polygon_areas[i] > 1e-15) {
-    //   std::cerr << fmt::format("heights[{}]: {} {} {} {}\n", i,
-    //                            polygon_centroids[i][0],
-    //                            polygon_centroids[i][1],
-    //                            polygon_centroids[i][2], polygon_areas[i]);
-    // }
   }
   std::vector<double> debug_polygon_vertices =
       SyclProximityEngineAttorney::get_debug_polygon_vertices(impl);
@@ -470,7 +454,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       soft_geometryA.pressure_field(), bvhSphereA,
       soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
       &contact_pressure);
-  fmt::print("ssize(polygon_areas): {}\n", ssize(polygon_areas));
+  fmt::print("ssize(polygon_areas): {}\n", surfaces[0].num_polygons());
   fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
   std::vector<int> polygons_found;
   std::vector<int> bad_area;
@@ -492,33 +476,29 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     if (it != element_id_pairs.end()) {
       int index = (it - element_id_pairs.begin());
       polygons_found.push_back(index);
-      if (std::abs(polygon_areas[index] - expected_area) >
+      if (std::abs(surfaces[0].areas()[index] - expected_area) >
           1e2 * std::numeric_limits<double>::epsilon()) {
         bad_area.push_back(index);
-        // if (index == 3382) {
         std::cerr << fmt::format(
             "Bad area at index {} for tet pair ({}, {}): expected={}, "
             "got={}\n\n",
-            index, tet0, tet1, expected_area, polygon_areas[index]);
-        // }
+            index, tet0, tet1, expected_area, surfaces[0].areas()[index]);
         degenerate_tets.push_back(tet_pair);
       }
       const double centroid_error =
-          (expected_centroid_W - polygon_centroids[index]).norm();
+          (expected_centroid_W - surfaces[0].centroids()[index]).norm();
       if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon() &&
           expected_area > 1e-15) {
-        // if (centroid_error > 1e2 * std::numeric_limits<double>::epsilon()) {
         bad_centroid.push_back(index);
-        // if (index == 3382) {
         std::cerr << fmt::format(
             "Bad centroid at index {} for tet pair ({}, {}) error: {} "
             "expected area: {}:, got area {}\n  "
             "expected={}\n  got=     "
             "{}\n\n",
             index, tet0, tet1, centroid_error, expected_area,
-            polygon_areas[index], fmt_eigen(expected_centroid_W.transpose()),
-            fmt_eigen(polygon_centroids[index].transpose()));
-        // }
+            surfaces[0].areas()[index],
+            fmt_eigen(expected_centroid_W.transpose()),
+            fmt_eigen(surfaces[0].centroids()[index].transpose()));
       }
     }
   }
@@ -533,57 +513,21 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
 
   std::sort(polygons_found.begin(), polygons_found.end());
   int counter = 0;
-  for (int i = 0; i < ssize(polygon_areas); ++i) {
+  for (int i = 0; i < static_cast<int>(surfaces[0].num_polygons()); ++i) {
     if (!std::binary_search(polygons_found.begin(), polygons_found.end(), i)) {
-      // EXPECT_LT(polygon_areas[i], 1e-15);
-      // if (i == 3214) {
-      if (polygon_areas[i] > 1e-15) {
+      if (surfaces[0].areas()[i] > 1e-15) {
         std::cerr << fmt::format(
             "Polygon with index {} and tet pair ({}, {}) has area {} and "
             "centroid {} in SYCL but not found in Drake\n",
             i, element_id_pairs[i].first, element_id_pairs[i].second,
-            polygon_areas[i], fmt_eigen(polygon_centroids[i].transpose()));
+            surfaces[0].areas()[i],
+            fmt_eigen(surfaces[0].centroids()[i].transpose()));
         counter++;
-        // for (int j = 0; j < 16; ++j) {
-        //   std::cerr << fmt::format(
-        //       "debug_polygon_vertices[{}]x: {} y: {} z: {}\n", j,
-        //       debug_polygon_vertices[i * 48 + j * 3 + 0],
-        //       debug_polygon_vertices[i * 48 + j * 3 + 1],
-        //       debug_polygon_vertices[i * 48 + j * 3 + 2]);
-        // }
       }
-      // }
     }
   }
   fmt::print("Polygons found by SYCL implementation but NOT in Drake: {}\n",
              counter);
-
-  // int i = 3382;
-  // for (int j = 0; j < 16; ++j) {
-  //   std::cerr << fmt::format("debug_polygon_vertices[{}]x: {} y: {} z: {}\n",
-  //   j,
-  //                            debug_polygon_vertices[i * 48 + j * 3 + 0],
-  //                            debug_polygon_vertices[i * 48 + j * 3 + 1],
-  //                            debug_polygon_vertices[i * 48 + j * 3 + 2]);
-  // }
-
-  // Spit out degenerate tet vertices into file
-  std::ofstream file("degenerate_tets_vertices.txt");
-  for (auto [tet0, tet1] : degenerate_tets) {
-    file << fmt::format("Tet 0: {}\n", tet0);
-    file << fmt::format("Tet 1: {}\n", tet1);
-    for (int i = 0; i < 4; ++i) {
-      auto tet0_vertex = soft_geometryA.mesh().vertex(
-          soft_geometryA.mesh().element(tet0).vertex(i));
-      auto tet1_vertex = soft_geometryB.mesh().vertex(
-          soft_geometryB.mesh().element(tet1).vertex(i));
-      file << fmt::format("Tet 0 Vertex {}: {}\n", i,
-                          fmt_eigen(tet0_vertex.transpose()));
-      file << fmt::format("Tet 1 Vertex {}: {}\n", i,
-                          fmt_eigen(tet1_vertex.transpose()));
-    }
-  }
-  file.close();
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
