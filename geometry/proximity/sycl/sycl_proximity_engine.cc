@@ -18,6 +18,7 @@
 #include "drake/geometry/proximity/hydroelastic_internal.h"
 #include "drake/geometry/proximity/sycl/sycl_hydroelastic_surface.h"
 #include "drake/geometry/proximity/sycl/utils/sycl_equilibrium_plane.h"
+#include "drake/geometry/proximity/sycl/utils/sycl_hydroelastic_surface_creator.h"
 #include "drake/geometry/proximity/sycl/utils/sycl_tetrahedron_slicing.h"
 #include "drake/math/rigid_transform.h"
 
@@ -1697,9 +1698,8 @@ class SyclProximityEngine::Impl {
 
     compact_event.wait_and_throw();
 
-    // Create the SYCL hydro surface containing all the information required by
-    // the solver
-    return {SYCLHydroelasticSurface::CreateFromDeviceMemory(
+    // For now return a vector
+    return {CreateHydroelasticSurface(
         q_device_, compacted_polygon_centroids_, compacted_polygon_areas_,
         compacted_polygon_pressure_W_, compacted_polygon_normals_,
         compacted_polygon_g_M_, compacted_polygon_g_N_,

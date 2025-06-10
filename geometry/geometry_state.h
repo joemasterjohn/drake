@@ -584,6 +584,17 @@ class GeometryState {
                                                     kinematics_data_.X_WGs);
   }
 
+  /** Implementation of QueryObject::ComputeContactSurfacesWithSycl().  */
+  template <typename T1 = T>
+  typename std::enable_if_t<
+      std::is_same_v<T1, double>,
+      std::vector<internal::sycl_impl::SYCLHydroelasticSurface>>
+  ComputeContactSurfacesWithSycl(
+      HydroelasticContactRepresentation representation) const {
+    return geometry_engine_->ComputeContactSurfacesWithSycl(
+        representation, kinematics_data_.X_WGs);
+  }
+
   /** Implementation of QueryObject::ComputeContactSurfacesWithFallback().  */
   template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>

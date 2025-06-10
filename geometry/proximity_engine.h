@@ -16,6 +16,7 @@
 #include "drake/geometry/proximity/collision_filter.h"
 #include "drake/geometry/proximity/deformable_contact_internal.h"
 #include "drake/geometry/proximity/hydroelastic_internal.h"
+#include "drake/geometry/proximity/sycl/sycl_hydroelastic_surface.h"
 #include "drake/geometry/proximity/sycl/sycl_proximity_engine.h"
 #include "drake/geometry/query_results/contact_surface.h"
 #include "drake/geometry/query_results/deformable_contact.h"
@@ -273,6 +274,18 @@ class ProximityEngine {
       const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs,
       std::vector<ContactSurface<T>>* surfaces,
       std::vector<PenetrationAsPointPair<T>>* point_pairs) const;
+
+  /* Implementation of GeometryState::ComputeContactSurfacesWithSycl(). Computed
+   on the GPU with SYCL
+   @param X_WGs the current poses of all geometries in World in the
+                current scalar type, keyed on each geometry's GeometryId.  */
+  template <typename T1 = T>
+  typename std::enable_if_t<std::is_same_v<T1, double>,
+                            std::vector<sycl_impl::SYCLHydroelasticSurface>>
+  ComputeContactSurfacesWithSycl(
+      HydroelasticContactRepresentation representation,
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
+      const;
 
   /* Implementation of GeometryState::ComputeDeformableContact(). Assumes
    the poses of rigid bodies and the vertex positions of the deformable bodies

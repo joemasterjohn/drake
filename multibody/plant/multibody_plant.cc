@@ -2267,9 +2267,8 @@ void MultibodyPlant<T>::CalcContactResultsContinuous(
 template <typename T>
 void MultibodyPlant<T>::CalcContactResultsHydroelasticContinuous(
     const systems::Context<T>& context,
-    std::vector<HydroelasticContactInfo<T>>* contact_results_hydroelastic) const
-  requires scalar_predicate<T>::is_bool
-{  // NOLINT(whitespace/braces)
+    std::vector<HydroelasticContactInfo<T>>* contact_results_hydroelastic)
+    const requires scalar_predicate<T>::is_bool {  // NOLINT(whitespace/braces)
   this->ValidateContext(context);
   DRAKE_DEMAND(contact_results_hydroelastic != nullptr);
   DRAKE_DEMAND(!is_discrete());
@@ -2478,9 +2477,8 @@ void MultibodyPlant<T>::CalcAndAddPointContactForcesContinuous(
 template <typename T>
 void MultibodyPlant<T>::CalcHydroelasticContactForcesContinuous(
     const Context<T>& context,
-    internal::HydroelasticContactForcesContinuousCacheData<T>* output) const
-  requires scalar_predicate<T>::is_bool
-{  // NOLINT(whitespace/braces)
+    internal::HydroelasticContactForcesContinuousCacheData<T>* output)
+    const requires scalar_predicate<T>::is_bool {  // NOLINT(whitespace/braces)
   this->ValidateContext(context);
   DRAKE_DEMAND(output != nullptr);
   DRAKE_DEMAND(!is_discrete());
@@ -2580,9 +2578,8 @@ void MultibodyPlant<T>::CalcHydroelasticContactForcesContinuous(
 template <typename T>
 const internal::HydroelasticContactForcesContinuousCacheData<T>&
 MultibodyPlant<T>::EvalHydroelasticContactForcesContinuous(
-    const systems::Context<T>& context) const
-  requires scalar_predicate<T>::is_bool
-{  // NOLINT(whitespace/braces)
+    const systems::Context<T>& context) const requires
+    scalar_predicate<T>::is_bool {  // NOLINT(whitespace/braces)
   this->ValidateContext(context);
   DRAKE_DEMAND(!is_discrete());
   return this
@@ -2923,8 +2920,13 @@ void MultibodyPlant<T>::CalcGeometryContactData(
       break;
     }
     case ContactModel::kHydroelastic: {
-      if constexpr (scalar_predicate<T>::is_bool) {
-        storage.surfaces = query_object.ComputeContactSurfaces(
+      // if constexpr (scalar_predicate<T>::is_bool) {
+      //   storage.surfaces = query_object.ComputeContactSurfaces(
+      //       get_contact_surface_representation());
+      //   break;
+      // }
+      if constexpr (std::is_same_v<T, double>) {
+        query_object.ComputeContactSurfacesWithSycl(
             get_contact_surface_representation());
         break;
       } else {

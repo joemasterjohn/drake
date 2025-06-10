@@ -8,8 +8,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <sycl/sycl.hpp>
-
 #include "drake/geometry/geometry_ids.h"
 #include "drake/math/rigid_transform.h"
 
@@ -49,33 +47,6 @@ class SYCLHydroelasticSurface {
                           std::vector<double> g_M, std::vector<double> g_N,
                           std::vector<GeometryId> geometry_ids_M,
                           std::vector<GeometryId> geometry_ids_N);
-
-  /*
-    Factory method to create a SYCLHydroelasticSurface from device memory
-    arrays. This method transfers data from device to host
-
-    @param q_device SYCL queue for memory transfers
-    @param polygon_centroids Device pointer to polygon centroids
-    @param polygon_areas Device pointer to polygon areas
-    @param polygon_pressure_W Device pointer to polygon pressures
-    @param polygon_normals Device pointer to polygon normals
-    @param polygon_g_M Device pointer to g_M values
-    @param polygon_g_N Device pointer to g_N values
-    @param polygon_geom_index_A Device pointer to geometry A indices
-    @param polygon_geom_index_B Device pointer to geometry B indices
-    @param narrow_phase_check_validity Device pointer to validity flags
-    @param total_narrow_phase_checks Total number of narrow phase checks
-    @returns SYCLHydroelasticSurface containing all valid polygons
-  */
-  static SYCLHydroelasticSurface CreateFromDeviceMemory(
-      sycl::queue& q_device, const Vector3<double>* compacted_polygon_centroids,
-      const double* compacted_polygon_areas,
-      const double* compacted_polygon_pressure_W,
-      const Vector3<double>* compacted_polygon_normals,
-      const double* compacted_polygon_g_M, const double* compacted_polygon_g_N,
-      const GeometryId* compacted_polygon_geom_index_A,
-      const GeometryId* compacted_polygon_geom_index_B,
-      const size_t total_polygons);
 
   // Accessors
   const std::vector<Vector3<double>>& centroids() const { return centroid_; }

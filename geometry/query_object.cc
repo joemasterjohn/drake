@@ -147,6 +147,20 @@ QueryObject<T>::ComputeContactSurfaces(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<
+    std::is_same_v<T1, double>,
+    std::vector<internal::sycl_impl::SYCLHydroelasticSurface>>
+QueryObject<T>::ComputeContactSurfacesWithSycl(
+    HydroelasticContactRepresentation representation) const {
+  ThrowIfNotCallable();
+
+  FullPoseUpdate();
+  const GeometryState<T>& state = geometry_state();
+  return state.ComputeContactSurfacesWithSycl(representation);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<scalar_predicate<T1>::is_bool, void>
 QueryObject<T>::ComputeContactSurfacesWithFallback(
     HydroelasticContactRepresentation representation,

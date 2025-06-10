@@ -12,15 +12,6 @@ drake_cc_library(
     name = "sycl_hydroelastic_surface",
     srcs = ["sycl_hydroelastic_surface.cc"],
     hdrs = ["sycl_hydroelastic_surface.h"],
-    copts = [
-        "-fsycl",
-        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
-        "-DEIGEN_DONT_VECTORIZE",
-    ],
-    linkopts = [
-        "-fsycl",
-        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
-    ],
     deps = [
         "//common:essential",
         "//geometry:geometry_ids",
@@ -32,7 +23,7 @@ drake_cc_library(
 drake_cc_library(
     name = "sycl_proximity_engine",
     srcs = ["sycl_proximity_engine.cc"],
-    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h"],
+    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h", "utils/sycl_hydroelastic_surface_creator.h"],
     visibility = ["//geometry:__pkg__"],
     copts = [
         "-fsycl",

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "drake/geometry/proximity/sycl/sycl_hydroelastic_surface.h"
 #include "drake/geometry/query_results/contact_surface.h"
 #include "drake/geometry/query_results/deformable_contact.h"
 #include "drake/geometry/query_results/penetration_as_point_pair.h"
@@ -389,6 +390,14 @@ class QueryObject {
   typename std::enable_if_t<scalar_predicate<T1>::is_bool,
                             std::vector<ContactSurface<T>>>
   ComputeContactSurfaces(
+      HydroelasticContactRepresentation representation) const;
+
+  // SYCL Contact Surface Computation
+  template <typename T1 = T>
+  typename std::enable_if_t<
+      std::is_same_v<T1, double>,
+      std::vector<internal::sycl_impl::SYCLHydroelasticSurface>>
+  ComputeContactSurfacesWithSycl(
       HydroelasticContactRepresentation representation) const;
 
   /** Reports pairwise intersections and characterizes each non-empty

@@ -770,13 +770,6 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   ComputeContactSurfaces(
       HydroelasticContactRepresentation representation,
       const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
-    // Instantiate SYCL engine if available but not yet created
-    if (is_sycl_available_ && !sycl_engine_) {
-      // For now, just instantiate it but don't use it
-      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
-          hydroelastic_geometries_.SoftGeometries());
-    }
-
     std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
 
     vector<ContactSurface<T>> surfaces;
@@ -800,6 +793,24 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     CullFlatten(&surface_ptrs, &surfaces);
     DRAKE_ASSERT(IsSortedByOrder(surfaces));
     return surfaces;
+  }
+
+  template <typename T1 = T>
+  typename std::enable_if_t<std::is_same_v<T1, double>,
+                            std::vector<sycl_impl::SYCLHydroelasticSurface>>
+  ComputeContactSurfacesWithSycl(
+      HydroelasticContactRepresentation representation,
+      const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
+    // Instantiate SYCL engine if available but not yet created
+    if (!is_sycl_available_) {
+      DRAKE_ASSERT(false);
+    }
+    if (!sycl_engine_) {
+      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
+          hydroelastic_geometries_.SoftGeometries());
+    }
+
+    return sycl_engine_->ComputeSYCLHydroelasticSurface(X_WGs);
   }
 
   template <typename T1 = T>
