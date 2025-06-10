@@ -68,12 +68,14 @@ class SYCLHydroelasticSurface {
     @returns SYCLHydroelasticSurface containing all valid polygons
   */
   static SYCLHydroelasticSurface CreateFromDeviceMemory(
-      sycl::queue& q_device, Vector3<double>* polygon_centroids,
-      double* polygon_areas, double* polygon_pressure_W,
-      Vector3<double>* polygon_normals, double* polygon_g_M,
-      double* polygon_g_N, GeometryId* polygon_geom_index_A,
-      GeometryId* polygon_geom_index_B, uint8_t* narrow_phase_check_validity,
-      size_t total_narrow_phase_checks);
+      sycl::queue& q_device, const Vector3<double>* compacted_polygon_centroids,
+      const double* compacted_polygon_areas,
+      const double* compacted_polygon_pressure_W,
+      const Vector3<double>* compacted_polygon_normals,
+      const double* compacted_polygon_g_M, const double* compacted_polygon_g_N,
+      const GeometryId* compacted_polygon_geom_index_A,
+      const GeometryId* compacted_polygon_geom_index_B,
+      const size_t total_polygons);
 
   // Accessors
   const std::vector<Vector3<double>>& centroids() const { return centroid_; }

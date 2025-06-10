@@ -35,56 +35,48 @@ SYCLHydroelasticSurface::SYCLHydroelasticSurface(
 }
 
 SYCLHydroelasticSurface SYCLHydroelasticSurface::CreateFromDeviceMemory(
-    sycl::queue& q_device, Vector3<double>* polygon_centroids,
-    double* polygon_areas, double* polygon_pressure_W,
-    Vector3<double>* polygon_normals, double* polygon_g_M, double* polygon_g_N,
-    GeometryId* polygon_geom_index_A, GeometryId* polygon_geom_index_B,
-    uint8_t* narrow_phase_check_validity, size_t total_narrow_phase_checks) {
-  if (total_narrow_phase_checks == 0) {
-    return SYCLHydroelasticSurface({}, {}, {}, {}, {}, {}, {}, {});
-  }
-
+    sycl::queue& q_device, const Vector3<double>* compacted_polygon_centroids,
+    const double* compacted_polygon_areas,
+    const double* compacted_polygon_pressure_W,
+    const Vector3<double>* compacted_polygon_normals,
+    const double* compacted_polygon_g_M, const double* compacted_polygon_g_N,
+    const GeometryId* compacted_polygon_geom_index_A,
+    const GeometryId* compacted_polygon_geom_index_B,
+    const size_t total_polygons) {
   // Transfer data from device to host
-  std::vector<Vector3<double>> host_centroids(total_narrow_phase_checks);
-  std::vector<double> host_areas(total_narrow_phase_checks);
-  std::vector<double> host_pressure_W(total_narrow_phase_checks);
-  std::vector<Vector3<double>> host_normals(total_narrow_phase_checks);
-  std::vector<double> host_g_M(total_narrow_phase_checks);
-  std::vector<double> host_g_N(total_narrow_phase_checks);
-  std::vector<GeometryId> host_geom_A(total_narrow_phase_checks);
-  std::vector<GeometryId> host_geom_B(total_narrow_phase_checks);
-  std::vector<uint8_t> host_validity(total_narrow_phase_checks);
+  std::vector<Vector3<double>> host_centroids(total_polygons);
+  std::vector<double> host_areas(total_polygons);
+  std::vector<double> host_pressure_W(total_polygons);
+  std::vector<Vector3<double>> host_normals(total_polygons);
+  std::vector<double> host_g_M(total_polygons);
+  std::vector<double> host_g_N(total_polygons);
+  std::vector<GeometryId> host_geom_A(total_polygons);
+  std::vector<GeometryId> host_geom_B(total_polygons);
 
   // Perform all memory transfers in parallel
   std::vector<sycl::event> transfer_events;
   transfer_events.push_back(
-      q_device.memcpy(host_centroids.data(), polygon_centroids,
-                      total_narrow_phase_checks * sizeof(Vector3<double>)));
+      q_device.memcpy(host_centroids.data(), compacted_polygon_centroids,
+                      total_polygons * sizeof(Vector3<double>)));
+  transfer_events.push_back(q_device.memcpy(host_areas.data(),
+                                            compacted_polygon_areas,
+                                            total_polygons * sizeof(double)));
+  transfer_events.push_back(q_device.memcpy(host_pressure_W.data(),
+                                            compacted_polygon_pressure_W,
+                                            total_polygons * sizeof(double)));
   transfer_events.push_back(
-      q_device.memcpy(host_areas.data(), polygon_areas,
-                      total_narrow_phase_checks * sizeof(double)));
+      q_device.memcpy(host_normals.data(), compacted_polygon_normals,
+                      total_polygons * sizeof(Vector3<double>)));
+  transfer_events.push_back(q_device.memcpy(
+      host_g_M.data(), compacted_polygon_g_M, total_polygons * sizeof(double)));
+  transfer_events.push_back(q_device.memcpy(
+      host_g_N.data(), compacted_polygon_g_N, total_polygons * sizeof(double)));
   transfer_events.push_back(
-      q_device.memcpy(host_pressure_W.data(), polygon_pressure_W,
-                      total_narrow_phase_checks * sizeof(double)));
+      q_device.memcpy(host_geom_A.data(), compacted_polygon_geom_index_A,
+                      total_polygons * sizeof(GeometryId)));
   transfer_events.push_back(
-      q_device.memcpy(host_normals.data(), polygon_normals,
-                      total_narrow_phase_checks * sizeof(Vector3<double>)));
-  transfer_events.push_back(
-      q_device.memcpy(host_g_M.data(), polygon_g_M,
-                      total_narrow_phase_checks * sizeof(double)));
-  transfer_events.push_back(
-      q_device.memcpy(host_g_N.data(), polygon_g_N,
-                      total_narrow_phase_checks * sizeof(double)));
-  transfer_events.push_back(
-      q_device.memcpy(host_geom_A.data(), polygon_geom_index_A,
-                      total_narrow_phase_checks * sizeof(GeometryId)));
-  transfer_events.push_back(
-      q_device.memcpy(host_geom_B.data(), polygon_geom_index_B,
-                      total_narrow_phase_checks * sizeof(GeometryId)));
-  transfer_events.push_back(
-      q_device.memcpy(host_validity.data(), narrow_phase_check_validity,
-                      total_narrow_phase_checks * sizeof(uint8_t)));
-
+      q_device.memcpy(host_geom_B.data(), compacted_polygon_geom_index_B,
+                      total_polygons * sizeof(GeometryId)));
   // Wait for all transfers to complete
   sycl::event::wait_and_throw(transfer_events);
 

@@ -317,8 +317,13 @@ class SyclProximityEngine::Impl {
     }
     total_checks_per_geometry_[num_geometries_ - 1] = 0;
 
-    // Allocate memory for polygon areas and centroids by estimating the narrow phase checks to be 5% of total element checks
-    estimated_narrow_phase_checks_ = std::max(static_cast<size_t>(1), static_cast<size_t>(total_checks_ / 20));
+    // Allocate memory for polygon areas and centroids by estimating the narrow phase checks to be 1% of total element checks
+    estimated_narrow_phase_checks_ = std::max(static_cast<size_t>(1), static_cast<size_t>(total_checks_ / 100));
+    // Similarly, we estimate the number of polygons to be 1% of the narrow phase checks
+    estimated_polygons_ = std::max(static_cast<size_t>(1), static_cast<size_t>(estimated_narrow_phase_checks_ / 100));
+
+
+    // Resize based on the estimated narrow phase checks
     current_polygon_areas_size_ = estimated_narrow_phase_checks_;
     polygon_areas_ = sycl::malloc_device<double>(current_polygon_areas_size_, q_device_);
     // "3" is for each coordinate
@@ -334,7 +339,7 @@ class SyclProximityEngine::Impl {
     current_narrow_phase_check_indices_size_ = estimated_narrow_phase_checks_;
     narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
     narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
-    q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
+    prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
 
     // Inital fills
     std::vector<sycl::event> fill_events;
@@ -349,11 +354,38 @@ class SyclProximityEngine::Impl {
     fill_events.push_back(q_device_.memcpy(polygon_centroids_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
     fill_events.push_back(q_device_.memcpy(polygon_normals_, zero_centroids.data(), current_polygon_areas_size_ * sizeof(Vector3<double>)));
     fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_)); // All valid at the start
+    fill_events.push_back(q_device_.fill(prefix_sum_narrow_phase_checks_, 0, current_narrow_phase_check_indices_size_));
+
+
+
+
+    // Resize compacted data structures based on the estimated polygon sizes
+    current_polygon_indices_size_= estimated_polygons_;
+    compacted_polygon_areas_ = sycl::malloc_device<double>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_centroids_ = sycl::malloc_device<Vector3<double>>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_normals_ = sycl::malloc_device<Vector3<double>>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_g_M_ = sycl::malloc_device<double>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_g_N_ = sycl::malloc_device<double>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_pressure_W_ = sycl::malloc_device<double>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(current_polygon_indices_size_, q_device_);
+    compacted_polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(current_polygon_indices_size_, q_device_);
+    valid_polygon_indices_ = sycl::malloc_device<size_t>(current_polygon_indices_size_, q_device_);
+
+    fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, current_polygon_indices_size_));
+    std::vector<Vector3<double>> compacted_zero_centroids(current_polygon_indices_size_, Vector3<double>::Zero());
+    fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, compacted_zero_centroids.data(), current_polygon_indices_size_ * sizeof(Vector3<double>)));
+    fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, compacted_zero_centroids.data(), current_polygon_indices_size_ * sizeof(Vector3<double>)));
+    fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, current_polygon_indices_size_));
+    fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, current_polygon_indices_size_));
+    fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, current_polygon_indices_size_));
+    fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), current_polygon_indices_size_));
+    fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), current_polygon_indices_size_));
+    fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, current_polygon_indices_size_));
 
     // Generate collision filter for all checks
     collision_filter_ = sycl::malloc_device<uint8_t>(total_checks_, q_device_);
     // Required in ComputeSYCLHydroelasticSurface
-    prefix_sum_ = sycl::malloc_device<size_t>(total_checks_, q_device_);
+    prefix_sum_total_checks_ = sycl::malloc_device<size_t>(total_checks_, q_device_);
     // memset all to 0 for now (will be filled in when we have AABBs for each
     // element)
     auto collision_filter_memset_event =
@@ -429,12 +461,33 @@ class SyclProximityEngine::Impl {
       sycl::free(geom_collision_filter_check_offsets_, q_device_);
       sycl::free(collision_filter_, q_device_);
       sycl::free(total_checks_per_geometry_, q_device_);
-      sycl::free(prefix_sum_, q_device_);
+      sycl::free(prefix_sum_total_checks_, q_device_);
+
       sycl::free(polygon_areas_, q_device_);
       sycl::free(polygon_centroids_, q_device_);
+      sycl::free(polygon_normals_, q_device_);
+      sycl::free(polygon_g_M_, q_device_);
+      sycl::free(polygon_g_N_, q_device_);
+      sycl::free(polygon_pressure_W_, q_device_);
+      sycl::free(polygon_geom_index_A_, q_device_);
+      sycl::free(polygon_geom_index_B_, q_device_);
+
+
       sycl::free(narrow_phase_check_indices_, q_device_);
       sycl::free(narrow_phase_check_validity_, q_device_);
+      sycl::free(prefix_sum_narrow_phase_checks_, q_device_);
       sycl::free(debug_polygon_vertices_, q_device_);
+
+      sycl::free(compacted_polygon_areas_, q_device_);
+      sycl::free(compacted_polygon_centroids_, q_device_);
+      sycl::free(compacted_polygon_normals_, q_device_);
+      sycl::free(compacted_polygon_g_M_, q_device_);
+      sycl::free(compacted_polygon_g_N_, q_device_);
+      sycl::free(compacted_polygon_pressure_W_, q_device_);
+      sycl::free(compacted_polygon_geom_index_A_, q_device_);
+      sycl::free(compacted_polygon_geom_index_B_, q_device_);
+
+      sycl::free(valid_polygon_indices_, q_device_);
     }
   }
 
@@ -739,7 +792,7 @@ class SyclProximityEngine::Impl {
     // scan
     oneapi::dpl::transform_exclusive_scan(
         policy, collision_filter_, collision_filter_ + total_checks_,
-        prefix_sum_,             // output
+        prefix_sum_total_checks_,             // output
         static_cast<size_t>(0),  // initial value
         sycl::plus<size_t>(),    // binary operation
         [](uint8_t x) {
@@ -750,7 +803,7 @@ class SyclProximityEngine::Impl {
     // Total checks needed for narrow phase
     total_narrow_phase_checks_ = 0;
     q_device_
-        .memcpy(&total_narrow_phase_checks_, prefix_sum_ + total_checks_ - 1,
+        .memcpy(&total_narrow_phase_checks_, prefix_sum_total_checks_ + total_checks_ - 1,
                 sizeof(size_t))
         .wait();
     // Last element check or not?
@@ -779,6 +832,10 @@ class SyclProximityEngine::Impl {
       sycl::free(polygon_geom_index_A_, q_device_);
       sycl::free(polygon_geom_index_B_, q_device_);
 
+      sycl::free(narrow_phase_check_validity_, q_device_);
+      sycl::free(prefix_sum_narrow_phase_checks_, q_device_);
+      sycl::free(narrow_phase_check_indices_, q_device_);
+      
       // Allocate new memory with larger size
       polygon_areas_ = sycl::malloc_device<double>(new_size, q_device_);
       polygon_centroids_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
@@ -788,6 +845,10 @@ class SyclProximityEngine::Impl {
       polygon_pressure_W_ = sycl::malloc_device<double>(new_size, q_device_);
       polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
       polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
+
+      narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(new_size, q_device_);
+      prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(new_size, q_device_);
+      narrow_phase_check_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);
       
       // Fill all with 0.0
       polygon_fill_events.push_back(q_device_.fill(polygon_areas_, 0.0, new_size));
@@ -799,20 +860,28 @@ class SyclProximityEngine::Impl {
       polygon_fill_events.push_back(q_device_.fill(polygon_pressure_W_, 0.0, new_size));
       polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
       polygon_fill_events.push_back(q_device_.fill(polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
+
+      polygon_fill_events.push_back(q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), new_size));
+      polygon_fill_events.push_back(q_device_.fill(prefix_sum_narrow_phase_checks_, static_cast<size_t>(0), new_size));
+      polygon_fill_events.push_back(q_device_.fill(narrow_phase_check_indices_, static_cast<size_t>(0), new_size));
       
       current_polygon_areas_size_ = new_size;
     }
 
     // Resize narrow_phase_check_indices_ if needed
-    if (total_narrow_phase_checks_ > current_narrow_phase_check_indices_size_) {
-      sycl::free(narrow_phase_check_indices_, q_device_);
-      current_narrow_phase_check_indices_size_ = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
-      narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
+    // if (total_narrow_phase_checks_ > current_narrow_phase_check_indices_size_) {
+    //   sycl::free(narrow_phase_check_indices_, q_device_);
+    //   current_narrow_phase_check_indices_size_ = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
+    //   narrow_phase_check_indices_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
 
-      sycl::free(narrow_phase_check_validity_, q_device_);
-      narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
-      q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
-    }
+    //   sycl::free(narrow_phase_check_validity_, q_device_);
+    //   narrow_phase_check_validity_ = sycl::malloc_device<uint8_t>(current_narrow_phase_check_indices_size_, q_device_);
+    //   q_device_.fill(narrow_phase_check_validity_, static_cast<uint8_t>(1), current_narrow_phase_check_indices_size_).wait();
+
+    //   sycl::free(prefix_sum_narrow_phase_checks_, q_device_);
+    //   prefix_sum_narrow_phase_checks_ = sycl::malloc_device<size_t>(current_narrow_phase_check_indices_size_, q_device_);
+    //   q_device_.fill(prefix_sum_narrow_phase_checks_, 0, current_narrow_phase_check_indices_size_).wait();
+    // }
 
     // Resize debug_polygon_vertices_ if needed
     // current_debug_polygon_vertices_size_ = 48 *  total_narrow_phase_checks_;
@@ -825,11 +894,11 @@ class SyclProximityEngine::Impl {
           h.parallel_for(
               sycl::range<1>(total_checks_),
               [=, narrow_phase_check_indices_ = narrow_phase_check_indices_,
-               prefix_sum_ = prefix_sum_,
+               prefix_sum_total_checks_ = prefix_sum_total_checks_,
                collision_filter_ = collision_filter_](sycl::id<1> idx) {
                 const size_t check_index = idx[0];
                 if (collision_filter_[check_index] == 1) {
-                  size_t narrow_check_num = prefix_sum_[check_index];
+                  size_t narrow_check_num = prefix_sum_total_checks_[check_index];
                   narrow_phase_check_indices_[narrow_check_num] = check_index;
                 }
               });
@@ -1522,41 +1591,46 @@ class SyclProximityEngine::Impl {
             if(check_local_item_id == 0) {
                 // Write Polygon Area and Centroid
                 const double polygon_area = slm_polygon[slm_polygon_offset + AREAS_OFFSET + 0] * 0.5;
-                polygon_areas_[narrow_phase_check_index] = polygon_area;
-                const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
-                const double centroid_x = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
-                const double centroid_y = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
-                const double centroid_z = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
-                polygon_centroids_[narrow_phase_check_index][0] = centroid_x;
-                polygon_centroids_[narrow_phase_check_index][1] = centroid_y;
-                polygon_centroids_[narrow_phase_check_index][2] = centroid_z;
+                if(polygon_area > 1e-15) {
+                    polygon_areas_[narrow_phase_check_index] = polygon_area;
+                    const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
+                    const double centroid_x = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 0] * inv_polygon_area_6;
+                    const double centroid_y = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 1] * inv_polygon_area_6;
+                    const double centroid_z = slm[slm_offset + CENTROID_OFFSET + 0 * 3 + 2] * inv_polygon_area_6;
+                    polygon_centroids_[narrow_phase_check_index][0] = centroid_x;
+                    polygon_centroids_[narrow_phase_check_index][1] = centroid_y;
+                    polygon_centroids_[narrow_phase_check_index][2] = centroid_z;
 
 
-                // Write Polygon Normal -> This is already normalized
-                polygon_normals_[narrow_phase_check_index][0] = slm[slm_offset + EQ_PLANE_OFFSET];
-                polygon_normals_[narrow_phase_check_index][1] = slm[slm_offset + EQ_PLANE_OFFSET + 1];
-                polygon_normals_[narrow_phase_check_index][2] = slm[slm_offset + EQ_PLANE_OFFSET + 2];
+                    // Write Polygon Normal -> This is already normalized
+                    polygon_normals_[narrow_phase_check_index][0] = slm[slm_offset + EQ_PLANE_OFFSET];
+                    polygon_normals_[narrow_phase_check_index][1] = slm[slm_offset + EQ_PLANE_OFFSET + 1];
+                    polygon_normals_[narrow_phase_check_index][2] = slm[slm_offset + EQ_PLANE_OFFSET + 2];
 
-                // Write Polygon g_M_
-                polygon_g_M_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 6];
-                // Write Polygon g_N_
-                polygon_g_N_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 7];
+                    // Write Polygon g_M_
+                    polygon_g_M_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 6];
+                    // Write Polygon g_N_
+                    polygon_g_N_[narrow_phase_check_index] = slm[slm_offset + EQ_PLANE_OFFSET + 7];
 
-                // Compute the pressure at the centroid
-                // TODO(Huzaifa): Check this for correctness
-                const double gradP_A_Wo_x =
-                    gradient_W_pressure_at_Wo_[A_element_index][0];
-                const double gradP_A_Wo_y =
-                    gradient_W_pressure_at_Wo_[A_element_index][1];
-                const double gradP_A_Wo_z =
-                    gradient_W_pressure_at_Wo_[A_element_index][2];
-                const double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
-                polygon_pressure_W_[narrow_phase_check_index] = gradP_A_Wo_x * centroid_x + gradP_A_Wo_y * centroid_y + gradP_A_Wo_z * centroid_z + p_A_Wo;
+                    // Compute the pressure at the centroid
+                    // TODO(Huzaifa): Check this for correctness
+                    const double gradP_A_Wo_x =
+                        gradient_W_pressure_at_Wo_[A_element_index][0];
+                    const double gradP_A_Wo_y =
+                        gradient_W_pressure_at_Wo_[A_element_index][1];
+                    const double gradP_A_Wo_z =
+                        gradient_W_pressure_at_Wo_[A_element_index][2];
+                    const double p_A_Wo = gradient_W_pressure_at_Wo_[A_element_index][3];
+                    polygon_pressure_W_[narrow_phase_check_index] = gradP_A_Wo_x * centroid_x + gradP_A_Wo_y * centroid_y + gradP_A_Wo_z * centroid_z + p_A_Wo;
 
-                // Write Geometry Index A
-                polygon_geom_index_A_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_A];
-                // Write Geometry Index B
-                polygon_geom_index_B_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_B];
+                    // Write Geometry Index A
+                    polygon_geom_index_A_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_A];
+                        // Write Geometry Index B
+                    polygon_geom_index_B_[narrow_phase_check_index] = soft_geometry_ids_[geom_index_B];
+                }
+                else{
+                    narrow_phase_check_validity_[narrow_phase_check_index] = 0;
+                }
             }
 
         });
@@ -1564,19 +1638,139 @@ class SyclProximityEngine::Impl {
 
     compute_contact_polygon_event.wait_and_throw();
 
+    // Exclusive scan to compact data into only the valid polygons found by SYCL
+    oneapi::dpl::transform_exclusive_scan(
+        policy, narrow_phase_check_validity_, narrow_phase_check_validity_ + total_narrow_phase_checks_,
+        prefix_sum_narrow_phase_checks_,             // output
+        static_cast<size_t>(0),  // initial value
+        sycl::plus<size_t>(),    // binary operation
+        [](uint8_t x) {
+          return static_cast<size_t>(x);
+        });  // transform uint8_t to size_t
+    q_device_.wait_and_throw();
+
+    total_polygons_ = 0;
+    q_device_
+        .memcpy(&total_polygons_, prefix_sum_narrow_phase_checks_ + total_narrow_phase_checks_ - 1,
+                sizeof(size_t))
+        .wait();
+    // Last element check or not?
+    last_check_flag = 0;
+    q_device_
+        .memcpy(&last_check_flag, narrow_phase_check_validity_ + total_narrow_phase_checks_ - 1,
+                sizeof(uint8_t))
+        .wait();
+    // If last check is 1, then we need to add one more check
+    total_polygons_ += static_cast<size_t>(last_check_flag);
+    
+    if (total_polygons_ > current_polygon_indices_size_) {
+      // Give a 10 % bigger size
+      size_t new_size = static_cast<size_t>(1.1 * total_polygons_);
+      
+      // Free old memory
+      sycl::free(compacted_polygon_areas_, q_device_);
+      sycl::free(compacted_polygon_centroids_, q_device_);
+      sycl::free(compacted_polygon_normals_, q_device_);
+      sycl::free(compacted_polygon_g_M_, q_device_);
+      sycl::free(compacted_polygon_g_N_, q_device_);
+      sycl::free(compacted_polygon_pressure_W_, q_device_);
+      sycl::free(compacted_polygon_geom_index_A_, q_device_);
+      sycl::free(compacted_polygon_geom_index_B_, q_device_);
+      sycl::free(valid_polygon_indices_, q_device_);
+
+      // Allocate new memory with larger size
+      compacted_polygon_areas_ = sycl::malloc_device<double>(new_size, q_device_);
+      compacted_polygon_centroids_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
+      compacted_polygon_normals_ = sycl::malloc_device<Vector3<double>>(new_size, q_device_);
+      compacted_polygon_g_M_ = sycl::malloc_device<double>(new_size, q_device_);
+      compacted_polygon_g_N_ = sycl::malloc_device<double>(new_size, q_device_);
+      compacted_polygon_pressure_W_ = sycl::malloc_device<double>(new_size, q_device_);
+      compacted_polygon_geom_index_A_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
+      compacted_polygon_geom_index_B_ = sycl::malloc_device<GeometryId>(new_size, q_device_);
+      valid_polygon_indices_ = sycl::malloc_device<size_t>(new_size, q_device_);
+      
+      // Fill all with 0.0
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_areas_, 0.0, new_size));
+      std::vector<Vector3<double>> zero_centroids(new_size, Vector3<double>::Zero());
+      polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_centroids_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      polygon_fill_events.push_back(q_device_.memcpy(compacted_polygon_normals_, zero_centroids.data(), new_size * sizeof(Vector3<double>)));
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_M_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_g_N_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_pressure_W_, 0.0, new_size));
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_A_, GeometryId::get_new_id(), new_size));
+      polygon_fill_events.push_back(q_device_.fill(compacted_polygon_geom_index_B_, GeometryId::get_new_id(), new_size));
+      polygon_fill_events.push_back(q_device_.fill(valid_polygon_indices_, 0, new_size));
+
+      
+      current_polygon_indices_size_ = new_size;
+    }
+
+    auto fill_valid_polygon_indices_event =
+        q_device_.submit([&](sycl::handler& h) {
+          h.depends_on(compute_contact_polygon_event);
+          h.parallel_for(
+              sycl::range<1>(total_narrow_phase_checks_),
+              [=, valid_polygon_indices_ = valid_polygon_indices_,
+               prefix_sum_narrow_phase_checks_ = prefix_sum_narrow_phase_checks_,
+               narrow_phase_check_validity_ = narrow_phase_check_validity_](sycl::id<1> idx) {
+                const size_t check_index = idx[0];
+                if (narrow_phase_check_validity_[check_index] == 1) {
+                  size_t valid_polygon_index = prefix_sum_narrow_phase_checks_[check_index];
+                  valid_polygon_indices_[valid_polygon_index] = check_index;
+                }
+              });
+        });
+    fill_valid_polygon_indices_event.wait_and_throw();
+    // Compact all the data to data only with valid polygons
+    auto compact_event = q_device_.submit([&](sycl::handler& h) {
+      h.depends_on(fill_valid_polygon_indices_event);
+      h.parallel_for(
+          sycl::range<1>(total_polygons_),
+          [=, compacted_polygon_areas_ = compacted_polygon_areas_,
+           compacted_polygon_centroids_ = compacted_polygon_centroids_,
+           compacted_polygon_normals_ = compacted_polygon_normals_,
+           compacted_polygon_g_M_ = compacted_polygon_g_M_,
+           compacted_polygon_g_N_ = compacted_polygon_g_N_,
+           compacted_polygon_pressure_W_ = compacted_polygon_pressure_W_,
+           compacted_polygon_geom_index_A_ = compacted_polygon_geom_index_A_,
+           compacted_polygon_geom_index_B_ = compacted_polygon_geom_index_B_,
+           valid_polygon_indices_ = valid_polygon_indices_,
+           polygon_areas_ = polygon_areas_,
+           polygon_centroids_ = polygon_centroids_,
+           polygon_normals_ = polygon_normals_,
+           polygon_g_M_ = polygon_g_M_,
+           polygon_g_N_ = polygon_g_N_,
+           polygon_pressure_W_ = polygon_pressure_W_,
+           polygon_geom_index_A_ = polygon_geom_index_A_,
+           polygon_geom_index_B_ = polygon_geom_index_B_](sycl::id<1> idx) {
+                const size_t valid_polygon_index = idx[0];
+                const size_t check_index = valid_polygon_indices_[valid_polygon_index];
+                compacted_polygon_areas_[valid_polygon_index] = polygon_areas_[check_index];
+                compacted_polygon_centroids_[valid_polygon_index] = polygon_centroids_[check_index];
+                compacted_polygon_normals_[valid_polygon_index] = polygon_normals_[check_index];
+                compacted_polygon_g_M_[valid_polygon_index] = polygon_g_M_[check_index];
+                compacted_polygon_g_N_[valid_polygon_index] = polygon_g_N_[check_index];
+                compacted_polygon_pressure_W_[valid_polygon_index] = polygon_pressure_W_[check_index];
+                compacted_polygon_geom_index_A_[valid_polygon_index] = polygon_geom_index_A_[check_index];
+                compacted_polygon_geom_index_B_[valid_polygon_index] = polygon_geom_index_B_[check_index];
+              });
+    });
+
+    compact_event.wait_and_throw();
+
+
     // Create the SYCL hydro surface containing all the information required by the solver
     return {SYCLHydroelasticSurface::CreateFromDeviceMemory(
         q_device_,
-        polygon_centroids_,
-        polygon_areas_,
-        polygon_pressure_W_,
-        polygon_normals_,
-        polygon_g_M_,
-        polygon_g_N_,
-        polygon_geom_index_A_,
-        polygon_geom_index_B_,
-        narrow_phase_check_validity_,
-        total_narrow_phase_checks_)};
+        compacted_polygon_centroids_,
+        compacted_polygon_areas_,
+        compacted_polygon_pressure_W_,
+        compacted_polygon_normals_,
+        compacted_polygon_g_M_,
+        compacted_polygon_g_N_,
+        compacted_polygon_geom_index_A_,
+        compacted_polygon_geom_index_B_,
+        total_polygons_)};
   }
 
  private:
@@ -1678,15 +1872,28 @@ class SyclProximityEngine::Impl {
   GeometryId* polygon_geom_index_B_ = nullptr;
 
 
+  // All above but compacted to only the valid polygons
+  double* compacted_polygon_areas_ = nullptr;
+  Vector3<double>* compacted_polygon_centroids_ = nullptr;
+  Vector3<double>* compacted_polygon_normals_ = nullptr;
+  double* compacted_polygon_g_M_ = nullptr;
+  double* compacted_polygon_g_N_ = nullptr;
+  double* compacted_polygon_pressure_W_ = nullptr;
+  GeometryId* compacted_polygon_geom_index_A_ = nullptr;
+  GeometryId* compacted_polygon_geom_index_B_ = nullptr;
+
+
 
   size_t current_polygon_areas_size_ = 0; // Current size of polygon_areas_ to prevent constant reallocation
   
   
-  // Pointer to narrow_phase_check_indices_
   // Memory allocated using malloc_device
   size_t* narrow_phase_check_indices_ = nullptr; 
   uint8_t* narrow_phase_check_validity_ = nullptr; // 1 if the check is valid, 0 otherwise
   size_t current_narrow_phase_check_indices_size_ = 0; // Current size of narrow_phase_check_indices_ to prevent constant reallocation
+
+  size_t* valid_polygon_indices_ = nullptr; // Indices of valid polygons    
+  size_t current_polygon_indices_size_ = 0; // Current size of valid_polygon_indices_ to prevent constant reallocation
 
 
   double* debug_polygon_vertices_ = nullptr;
@@ -1714,9 +1921,15 @@ class SyclProximityEngine::Impl {
   size_t estimated_narrow_phase_checks_ = 0; // Estimated number of narrow phase checks (set to be 5% of total element checks and used to size polygon_areas_ and polygon_centroids_)
   size_t total_narrow_phase_checks_ = 0; // Total number of narrow phase checks in the current time step (updated in ComputeSYCLHydroelasticSurface)
 
+  size_t total_polygons_ = 0; // Total number of valid polygons found by SYCL
+  size_t estimated_polygons_ = 0; // Estimated number of polygons (set to be 1% of the narrow phase checks)
+
   // Internal use
-  size_t* prefix_sum_ = nullptr;  // prefix_sum_[i] = prefix sum of the first i
+  size_t* prefix_sum_total_checks_ = nullptr;  // prefix_sum_total_checks_[i] = prefix sum of the first i
                                   // elements of the collision filter
+
+  size_t* prefix_sum_narrow_phase_checks_ = nullptr;  // prefix_sum_narrow_phase_checks_[i] = prefix sum of the first i
+                                                      // elements of the narrow phase check validity
 
   friend class SyclProximityEngineAttorney;
 
@@ -1957,12 +2170,12 @@ std::vector<uint8_t> SyclProximityEngineAttorney::get_collision_filter(
 std::vector<size_t> SyclProximityEngineAttorney::get_prefix_sum(
     SyclProximityEngine::Impl* impl) {
   size_t total_checks = SyclProximityEngineAttorney::get_total_checks(impl);
-  std::vector<size_t> prefix_sum_host(total_checks);
+  std::vector<size_t> prefix_sum_total_checks_host(total_checks);
   auto q = impl->q_device_;
-  auto prefix_sum = impl->prefix_sum_;
-  q.memcpy(prefix_sum_host.data(), prefix_sum, total_checks * sizeof(size_t))
+  auto prefix_sum = impl->prefix_sum_total_checks_;
+  q.memcpy(prefix_sum_total_checks_host.data(), prefix_sum, total_checks * sizeof(size_t))
       .wait();
-  return prefix_sum_host;
+  return prefix_sum_total_checks_host;
 }
 
 std::vector<Vector3<double>> SyclProximityEngineAttorney::get_vertices_M(
@@ -2021,6 +2234,11 @@ size_t SyclProximityEngineAttorney::get_total_narrow_phase_checks(
   return impl->total_narrow_phase_checks_;
 }
 
+size_t SyclProximityEngineAttorney::get_total_polygons(
+    SyclProximityEngine::Impl* impl) {
+  return impl->total_polygons_;
+}
+
 std::vector<size_t> SyclProximityEngineAttorney::get_narrow_phase_check_indices(
     SyclProximityEngine::Impl* impl) {
   size_t total_narrow_phase_checks = SyclProximityEngineAttorney::get_total_narrow_phase_checks(impl);
@@ -2030,6 +2248,17 @@ std::vector<size_t> SyclProximityEngineAttorney::get_narrow_phase_check_indices(
   q.memcpy(narrow_phase_check_indices_host.data(), narrow_phase_check_indices,
            total_narrow_phase_checks * sizeof(size_t)).wait();
   return narrow_phase_check_indices_host;
+}
+
+std::vector<size_t> SyclProximityEngineAttorney::get_valid_polygon_indices(
+    SyclProximityEngine::Impl* impl) {
+  size_t total_polygons = SyclProximityEngineAttorney::get_total_polygons(impl);
+  std::vector<size_t> valid_polygon_indices_host(total_polygons);
+  auto q = impl->q_device_;
+  auto valid_polygon_indices = impl->valid_polygon_indices_;
+  q.memcpy(valid_polygon_indices_host.data(), valid_polygon_indices,
+           total_polygons * sizeof(size_t)).wait();
+  return valid_polygon_indices_host;
 }
 
 std::vector<double> SyclProximityEngineAttorney::get_polygon_areas(

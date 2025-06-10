@@ -432,13 +432,18 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   // Get the narrow phase check indices
   const std::vector<size_t> narrow_phase_check_indices =
       SyclProximityEngineAttorney::get_narrow_phase_check_indices(impl);
+  const size_t total_polygons =
+      SyclProximityEngineAttorney::get_total_polygons(impl);
+  const std::vector<size_t> valid_polygon_indices =
+      SyclProximityEngineAttorney::get_valid_polygon_indices(impl);
 
   // Construct the element id pairs correspinding to each narrow_phase check
   // These id pairs will map to the global index that was used in the
   // collision_filter_ (row and column)
   std::vector<std::pair<int, int>> element_id_pairs;
-  for (size_t i = 0; i < surfaces[0].num_polygons(); ++i) {
-    size_t global_check_index = narrow_phase_check_indices[i];
+  for (size_t i = 0; i < total_polygons; ++i) {
+    size_t global_check_index =
+        narrow_phase_check_indices[valid_polygon_indices[i]];
     int eA = global_check_index / soft_geometryB.mesh().num_elements();
     int eB = global_check_index - eA * soft_geometryB.mesh().num_elements();
     element_id_pairs.emplace_back(eA, eB);
@@ -454,7 +459,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
       soft_geometryA.pressure_field(), bvhSphereA,
       soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
       &contact_pressure);
-  fmt::print("ssize(polygon_areas): {}\n", surfaces[0].num_polygons());
+  fmt::print("ssize(compacted_polygon_areas): {}\n", total_polygons);
   fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
   std::vector<int> polygons_found;
   std::vector<int> bad_area;
@@ -506,10 +511,12 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
              ssize(polygons_found));
   fmt::print("Polygons with area difference beyond rounding error: {}\n",
              ssize(bad_area));
+  EXPECT_EQ(bad_area.size(), 0);
   fmt::print(
       "Polygons with centroid difference beyond rounding error (in any of x, "
       "y, z): {}\n",
       ssize(bad_centroid));
+  EXPECT_EQ(bad_centroid.size(), 0);
 
   std::sort(polygons_found.begin(), polygons_found.end());
   int counter = 0;
@@ -528,6 +535,7 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   }
   fmt::print("Polygons found by SYCL implementation but NOT in Drake: {}\n",
              counter);
+  EXPECT_EQ(counter, 0);
 }
 
 GTEST_TEST(SPETest, ThreeSpheresColliding) {
