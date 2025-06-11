@@ -288,6 +288,10 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
 template void QueryObject<double>::ComputeDeformableContact<double>(
     internal::DeformableContact<double>*) const;
 
+template std::vector<internal::sycl_impl::SYCLHydroelasticSurface>
+    QueryObject<double>::ComputeContactSurfacesWithSycl<double>(
+        HydroelasticContactRepresentation) const;
+
 }  // namespace geometry
 }  // namespace drake
 

@@ -1454,6 +1454,16 @@ ProximityEngine<T>::ComputeContactSurfacesWithFallback(
 
 template <typename T>
 template <typename T1>
+typename std::enable_if_t<std::is_same_v<T1, double>,
+                          std::vector<sycl_impl::SYCLHydroelasticSurface>>
+ProximityEngine<T>::ComputeContactSurfacesWithSycl(
+    HydroelasticContactRepresentation representation,
+    const std::unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
+  return impl_->ComputeContactSurfacesWithSycl(representation, X_WGs);
+}
+
+template <typename T>
+template <typename T1>
 typename std::enable_if_t<std::is_same_v<T1, double>, void>
 ProximityEngine<T>::ComputeDeformableContact(
     DeformableContact<T>* deformable_contact) const {
@@ -1516,6 +1526,11 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(
     DeformableContact<double>*) const;
+
+template std::vector<sycl_impl::SYCLHydroelasticSurface>
+ProximityEngine<double>::ComputeContactSurfacesWithSycl<double>(
+    HydroelasticContactRepresentation,
+    const std::unordered_map<GeometryId, math::RigidTransform<double>>&) const;
 
 }  // namespace internal
 }  // namespace geometry
