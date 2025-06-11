@@ -2921,6 +2921,7 @@ void MultibodyPlant<T>::CalcGeometryContactData(
     }
     case ContactModel::kHydroelastic: {
       if constexpr (scalar_predicate<T>::is_bool) {
+        auto start = std::chrono::high_resolution_clock::now();
         if constexpr (std::is_same_v<T, double>) {
           // Only call SYCL version when T is double AND SYCL is enabled
           if (sycl_for_hydroelastic_contact_) {
@@ -2934,6 +2935,11 @@ void MultibodyPlant<T>::CalcGeometryContactData(
           storage.surfaces = query_object.ComputeContactSurfaces(
               get_contact_surface_representation());
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        fmt::print(
+            "Time taken: {} microseconds\n",
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+                .count());
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -2945,6 +2951,7 @@ void MultibodyPlant<T>::CalcGeometryContactData(
     }
     case ContactModel::kHydroelasticWithFallback: {
       if constexpr (scalar_predicate<T>::is_bool) {
+        auto start = std::chrono::high_resolution_clock::now();
         if constexpr (std::is_same_v<T, double>) {
           // Only call SYCL version when T is double AND SYCL is enabled
           if (sycl_for_hydroelastic_contact_) {
@@ -2960,6 +2967,11 @@ void MultibodyPlant<T>::CalcGeometryContactData(
               get_contact_surface_representation(), &storage.surfaces,
               &storage.point_pairs);
         }
+        auto end = std::chrono::high_resolution_clock::now();
+        fmt::print(
+            "Time taken: {} microseconds\n",
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+                .count());
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support

@@ -855,7 +855,7 @@ class SyclProximityEngine::Impl {
     // most threads waiting most of the time
     constexpr size_t NUM_THREADS_PER_CHECK = 4;
     // Demand that NUM_THREADS_PER_CHECK is factor of 32 and less than 32
-    DRAKE_DEMAND(NUM_THREADS_PER_CHECK < 32);
+    DRAKE_DEMAND(NUM_THREADS_PER_CHECK <= 32);
     DRAKE_DEMAND(32 % NUM_THREADS_PER_CHECK == 0);
 
     // Calculate total threads needed (4 threads per check)
