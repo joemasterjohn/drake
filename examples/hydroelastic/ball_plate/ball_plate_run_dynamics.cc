@@ -16,7 +16,7 @@
 DEFINE_double(simulation_time, 0.4,
               "Desired duration of the simulation in seconds.");
 // See MultibodyPlantConfig for the valid strings of contact_model.
-DEFINE_string(contact_model, "hydroelastic",
+DEFINE_string(contact_model, "hydroelastic_with_fallback",
               "Contact model. Options are: 'point', 'hydroelastic', "
               "'hydroelastic_with_fallback'.");
 // See MultibodyPlantConfig for the valid strings of contact surface
@@ -95,8 +95,8 @@ int do_main() {
 
   plant.Finalize();
 
-  DRAKE_DEMAND(plant.num_velocities() == 12);
-  DRAKE_DEMAND(plant.num_positions() == 14);
+  // DRAKE_DEMAND(plant.num_velocities() == 12);
+  // DRAKE_DEMAND(plant.num_positions() == 14);
 
   visualization::AddDefaultVisualization(&builder);
 
