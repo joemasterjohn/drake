@@ -766,6 +766,10 @@ class SyclProximityEngine::Impl {
     // If last check is 1, then we need to add one more check
     total_narrow_phase_checks_ += static_cast<size_t>(last_check_flag);
 
+    if (total_narrow_phase_checks_ == 0) {
+      return {};
+    }
+
     if (total_narrow_phase_checks_ > current_polygon_areas_size_) {
       // Give a 10 % bigger size
       size_t new_size = static_cast<size_t>(1.1 * total_narrow_phase_checks_);
@@ -1621,6 +1625,10 @@ class SyclProximityEngine::Impl {
         .wait();
     // If last check is 1, then we need to add one more check
     total_polygons_ += static_cast<size_t>(last_check_flag);
+
+    if (total_polygons_ == 0) {
+      return {};
+    }
 
     if (total_polygons_ > current_polygon_indices_size_) {
       // Give a 10 % bigger size

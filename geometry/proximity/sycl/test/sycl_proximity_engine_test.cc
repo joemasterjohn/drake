@@ -422,6 +422,21 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
     expected_filter[i] = 0;
   }
 
+  std::unique_ptr<PolygonSurfaceMesh<double>> contact_surface;
+  std::unique_ptr<PolygonSurfaceMeshFieldLinear<double, double>>
+      contact_pressure;
+  VolumeIntersector<PolyMeshBuilder<double>, Aabb> volume_intersector;
+  volume_intersector.IntersectFields(
+      soft_geometryA.pressure_field(), bvhSphereA,
+      soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
+      &contact_pressure);
+
+  if (surfaces.empty()) {
+    fmt::print("No surfaces found in SYCL implementation\n");
+    EXPECT_EQ(nullptr, contact_surface.get());
+    return;
+  }
+
   std::vector<size_t> prefix_sum =
       SyclProximityEngineAttorney::get_prefix_sum(impl);
   std::vector<size_t> expected_prefix_sum(expected_filter.size());
@@ -450,15 +465,6 @@ GTEST_TEST(SPETest, TwoSpheresColliding) {
   }
   std::vector<double> debug_polygon_vertices =
       SyclProximityEngineAttorney::get_debug_polygon_vertices(impl);
-
-  std::unique_ptr<PolygonSurfaceMesh<double>> contact_surface;
-  std::unique_ptr<PolygonSurfaceMeshFieldLinear<double, double>>
-      contact_pressure;
-  VolumeIntersector<PolyMeshBuilder<double>, Aabb> volume_intersector;
-  volume_intersector.IntersectFields(
-      soft_geometryA.pressure_field(), bvhSphereA,
-      soft_geometryB.pressure_field(), bvhSphereB, X_AB, &contact_surface,
-      &contact_pressure);
 
   fmt::print("ssize(compacted_polygon_areas): {}\n", total_polygons);
   fmt::print("contact surface num_faces: {}\n", contact_surface->num_faces());
