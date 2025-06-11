@@ -23,7 +23,7 @@ drake_cc_library(
 drake_cc_library(
     name = "sycl_proximity_engine",
     srcs = ["sycl_proximity_engine.cc"],
-    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h", "utils/sycl_hydroelastic_surface_creator.h"],
+    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h", "utils/sycl_hydroelastic_surface_creator.h", "utils/sycl_memory_manager.h"],
     visibility = ["//geometry:__pkg__"],
     copts = [
         "-fsycl",
