@@ -2942,8 +2942,6 @@ void MultibodyPlant<T>::CalcGeometryContactData(
       if constexpr (std::is_same_v<T, double>) {
         storage.sycl_surfaces = query_object.ComputeContactSurfacesWithSycl(
             get_contact_surface_representation());
-        fmt::print("Num hydro contacts: {}\n",
-                   storage.sycl_surfaces[0].num_polygons());
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
