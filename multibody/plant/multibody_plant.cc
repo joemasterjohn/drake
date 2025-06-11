@@ -2921,8 +2921,19 @@ void MultibodyPlant<T>::CalcGeometryContactData(
     }
     case ContactModel::kHydroelastic: {
       if constexpr (scalar_predicate<T>::is_bool) {
-        storage.surfaces = query_object.ComputeContactSurfaces(
-            get_contact_surface_representation());
+        if constexpr (std::is_same_v<T, double>) {
+          // Only call SYCL version when T is double AND SYCL is enabled
+          if (sycl_for_hydroelastic_contact_) {
+            storage.sycl_surfaces = query_object.ComputeContactSurfacesWithSycl(
+                get_contact_surface_representation());
+          } else {
+            storage.surfaces = query_object.ComputeContactSurfaces(
+                get_contact_surface_representation());
+          }
+        } else {
+          storage.surfaces = query_object.ComputeContactSurfaces(
+              get_contact_surface_representation());
+        }
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support
@@ -2933,15 +2944,22 @@ void MultibodyPlant<T>::CalcGeometryContactData(
       }
     }
     case ContactModel::kHydroelasticWithFallback: {
-      // if constexpr (scalar_predicate<T>::is_bool) {
-      //   query_object.ComputeContactSurfacesWithFallback(
-      //       get_contact_surface_representation(), &storage.surfaces,
-      //       &storage.point_pairs);
-      //   break;
-      // }
-      if constexpr (std::is_same_v<T, double>) {
-        storage.sycl_surfaces = query_object.ComputeContactSurfacesWithSycl(
-            get_contact_surface_representation());
+      if constexpr (scalar_predicate<T>::is_bool) {
+        if constexpr (std::is_same_v<T, double>) {
+          // Only call SYCL version when T is double AND SYCL is enabled
+          if (sycl_for_hydroelastic_contact_) {
+            storage.sycl_surfaces = query_object.ComputeContactSurfacesWithSycl(
+                get_contact_surface_representation());
+          } else {
+            query_object.ComputeContactSurfacesWithFallback(
+                get_contact_surface_representation(), &storage.surfaces,
+                &storage.point_pairs);
+          }
+        } else {
+          query_object.ComputeContactSurfacesWithFallback(
+              get_contact_surface_representation(), &storage.surfaces,
+              &storage.point_pairs);
+        }
         break;
       } else {
         // TODO(SeanCurtis-TRI): Special case the QueryObject scalar support

@@ -612,17 +612,23 @@ void DiscreteUpdateManager<T>::CalcDiscreteContactPairs(
   DRAKE_DEMAND(result != nullptr);
   result->Clear();
   AppendDiscreteContactPairsForPointContact(context, result);
-  // if constexpr (std::is_same_v<T, symbolic::Expression>) {
-  //   throw std::logic_error("This method doesn't support T = Expression.");
-  // } else {
-  //   AppendDiscreteContactPairsForHydroelasticContact(context, result);
-  // }
-  if constexpr (std::is_same_v<T, symbolic::Expression> ||
-                std::is_same_v<T, AutoDiffXd>) {
+  if constexpr (std::is_same_v<T, symbolic::Expression>) {
     throw std::logic_error(
         "This method doesn't support T = Expression or AutoDiffXd.");
-  } else {
-    AppendDiscreteContactPairsForHydroelasticContactWithSYCL(context, result);
+  } else if constexpr (scalar_predicate<T>::is_bool) {
+    // Handle hydroelastic contact with cleaner conditional logic
+    if constexpr (std::is_same_v<T, double>) {
+      // Only call SYCL version when T is double AND SYCL is enabled
+      if (plant().is_sycl_for_hydroelastic_contact()) {
+        AppendDiscreteContactPairsForHydroelasticContactWithSYCL(context,
+                                                                 result);
+      } else {
+        AppendDiscreteContactPairsForHydroelasticContact(context, result);
+      }
+    } else {
+      // For non-double types, always use regular hydroelastic contact
+      AppendDiscreteContactPairsForHydroelasticContact(context, result);
+    }
   }
   if constexpr (std::is_same_v<T, double>) {
     if (deformable_driver_ != nullptr) {
@@ -1236,6 +1242,7 @@ void DiscreteUpdateManager<T>::
     }
   }
 }
+
 template <typename T>
 const MultibodyForces<T>&
 DiscreteUpdateManager<T>::EvalDiscreteUpdateMultibodyForces(

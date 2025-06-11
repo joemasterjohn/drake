@@ -31,7 +31,7 @@ DEFINE_double(mbp_discrete_update_period, 4.0e-2,
               "If positive, the period (in seconds) of the discrete updates "
               "for the plant modeled as a discrete system."
               "This parameter must be non-negative.");
-DEFINE_string(contact_model, "hydroelastic",
+DEFINE_string(contact_model, "hydroelastic_with_fallback",
               "Contact model. Options are: 'point', 'hydroelastic', "
               "'hydroelastic_with_fallback'.");
 DEFINE_string(contact_surface_representation, "polygon",
@@ -40,6 +40,10 @@ DEFINE_string(contact_surface_representation, "polygon",
 DEFINE_string(contact_approximation, "tamsi",
               "Discrete contact approximation. Options are: 'tamsi', "
               "'sap', 'similar', 'lagged'");
+DEFINE_bool(
+    use_sycl_for_hydroelastic_contact, false,
+    "Use SYCL for hydroelastic contact. This flag is only used when "
+    "the contact model is 'hydroelastic' or 'hydroelastic_with_fallback'.");
 
 // Simulator settings.
 DEFINE_double(realtime_rate, 1,
@@ -210,6 +214,17 @@ int DoMain() {
       math::RollPitchYaw(-0.4, 0.0, 1.57), Eigen::Vector3d(0.35, 0, 0.25));
   const auto& base_link = plant.GetBodyByName("spatula");
   plant.SetFreeBodyPose(&plant_context, base_link, X_WF1);
+  if (FLAGS_use_sycl_for_hydroelastic_contact) {
+    if (FLAGS_contact_model == "hydroelastic" ||
+        FLAGS_contact_model == "hydroelastic_with_fallback") {
+      plant.set_sycl_for_hydroelastic_contact(true);
+    } else {
+      fmt::print(stderr,
+                 "SYCL is not used for hydroelastic contact because "
+                 "the contact model is not 'hydroelastic' or "
+                 "'hydroelastic_with_fallback'.\n");
+    }
+  }
 
   // Set finger joint positions.
   const PrismaticJoint<double>& left_joint =
@@ -229,12 +244,14 @@ int DoMain() {
   //  torques; however, contact surfaces are not recorded properly.
   //  For now, we delete contact surfaces to prevent confusion in the playback.
   //  Remove deletion when 19142 is resovled.
-  meshcat->Delete("/drake/contact_forces/hydroelastic/"
-                 "left_finger_bubble+spatula/"
-                 "contact_surface");
-  meshcat->Delete("/drake/contact_forces/hydroelastic/"
-                  "right_finger_bubble+spatula/"
-                  "contact_surface");
+  meshcat->Delete(
+      "/drake/contact_forces/hydroelastic/"
+      "left_finger_bubble+spatula/"
+      "contact_surface");
+  meshcat->Delete(
+      "/drake/contact_forces/hydroelastic/"
+      "right_finger_bubble+spatula/"
+      "contact_surface");
   meshcat->PublishRecording();
 
   systems::PrintSimulatorStatistics(simulator);
