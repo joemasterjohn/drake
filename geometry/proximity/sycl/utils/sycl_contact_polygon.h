@@ -713,6 +713,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
   // Early return for extra threads
   if (global_id >= TOTAL_THREADS_NEEDED) return;
   size_t local_id = item.get_local_id(0);
+  auto sub_group = item.get_sub_group();
   // In a group we have NUM_CHECKS_IN_WORK_GROUP checks
   // This gives us which check number in [0, NUM_CHECKS_IN_WORK_GROUP)
   // this item is working on
@@ -799,6 +800,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
       narrow_phase_check_validity[narrow_phase_check_index] = 0;
     }
   }
+  item.barrier(sycl::access::fence_space::local_space);
 
   // Return all invalid checks
   if (narrow_phase_check_validity[narrow_phase_check_index] == 0) {
@@ -845,7 +847,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
           std::numeric_limits<double>::max();
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(sub_group);
 
   // =====================================
   // Intersect element A with Eq Plane
@@ -862,6 +864,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
   if (check_local_item_id == 0 && slm_ints[slm_ints_offset] < 3) {
     narrow_phase_check_validity[narrow_phase_check_index] = 0;
   }
+  item.barrier(sycl::access::fence_space::local_space);
   // Return all invalid checks
   if (narrow_phase_check_validity[narrow_phase_check_index] == 0) {
     return;
@@ -879,8 +882,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
           inward_normals_W[B_element_index][llid][i];
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
-
+  sycl::group_barrier(sub_group);
   // Compute the intersection of Polygon Q with the faces of element B
   // We will sequentially loop over the faces but we will use our work
   // items to parallely compute the intersection point over each edge
@@ -935,7 +937,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
           outward_normal[2] * polygon_vertex_coords[2] - displacement;
     }
     // Sync shared memory
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(sub_group);
 
     // Now we will walk the current polygon and construct the clipped
     // polygon
@@ -1027,7 +1029,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
                              vertex_1_index * 3 + 2];
       }
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(sub_group);
 
     // Flip Current and clipped polygon
     const size_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
@@ -1079,7 +1081,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
       // Update polygon size
       slm_ints[slm_ints_offset] = write_index;
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(sub_group);
 
     // Clear out the clipped polygon
     for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
@@ -1091,12 +1093,13 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
       slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + 2] =
           std::numeric_limits<double>::max();
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(sub_group);
   }
 
   if (check_local_item_id == 0 && slm_ints[slm_ints_offset] < 3) {
     narrow_phase_check_validity[narrow_phase_check_index] = 0;
   }
+  item.barrier(sycl::access::fence_space::local_space);
 
   if (narrow_phase_check_validity[narrow_phase_check_index] == 0) {
     return;
@@ -1184,7 +1187,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
         thread_centroid_z;
   }
 
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(sub_group);
 
   for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
     if (check_local_item_id < stride &&
@@ -1203,7 +1206,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
               (check_local_item_id + stride) * 3 + 2];
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(sub_group);
 
   // Now write everything to global memory
   if (check_local_item_id == 0) {
@@ -1425,19 +1428,7 @@ sycl::event LaunchContactPolygonComputation(
         [[sycl::reqd_work_group_size(LOCAL_SIZE)]]
 #endif
         (sycl::nd_item<1> item) {
-          ComputeContactPolygonsNoReturn(
-              item, slm, slm_polygon, slm_ints, TOTAL_THREADS_NEEDED,
-              NUM_THREADS_PER_CHECK, DOUBLES_PER_CHECK, POLYGON_DOUBLES,
-              EQ_PLANE_OFFSET, VERTEX_A_OFFSET, VERTEX_B_OFFSET,
-              INWARD_NORMAL_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_VERTICES,
-              narrow_phase_check_indices, gradient_W_pressure_at_Wo,
-              element_offsets, vertex_offsets, element_mesh_ids, elements,
-              vertices_W, inward_normals_W, geom_collision_filter_num_cols,
-              total_checks_per_geometry, collision_filter_host_body_index,
-              narrow_phase_check_validity, polygon_areas, polygon_centroids,
-              polygon_normals, polygon_g_M, polygon_g_N, polygon_pressure_W,
-              polygon_geom_index_A, polygon_geom_index_B, geometry_ids);
-          //   ComputeContactPolygons(
+          //   ComputeContactPolygonsNoReturn(
           //       item, slm, slm_polygon, slm_ints, TOTAL_THREADS_NEEDED,
           //       NUM_THREADS_PER_CHECK, DOUBLES_PER_CHECK, POLYGON_DOUBLES,
           //       EQ_PLANE_OFFSET, VERTEX_A_OFFSET, VERTEX_B_OFFSET,
@@ -1451,6 +1442,18 @@ sycl::event LaunchContactPolygonComputation(
           //       polygon_centroids, polygon_normals, polygon_g_M, polygon_g_N,
           //       polygon_pressure_W, polygon_geom_index_A,
           //       polygon_geom_index_B, geometry_ids);
+          ComputeContactPolygons(
+              item, slm, slm_polygon, slm_ints, TOTAL_THREADS_NEEDED,
+              NUM_THREADS_PER_CHECK, DOUBLES_PER_CHECK, POLYGON_DOUBLES,
+              EQ_PLANE_OFFSET, VERTEX_A_OFFSET, VERTEX_B_OFFSET,
+              INWARD_NORMAL_OFFSET, RANDOM_SCRATCH_OFFSET, POLYGON_VERTICES,
+              narrow_phase_check_indices, gradient_W_pressure_at_Wo,
+              element_offsets, vertex_offsets, element_mesh_ids, elements,
+              vertices_W, inward_normals_W, geom_collision_filter_num_cols,
+              total_checks_per_geometry, collision_filter_host_body_index,
+              narrow_phase_check_validity, polygon_areas, polygon_centroids,
+              polygon_normals, polygon_g_M, polygon_g_N, polygon_pressure_W,
+              polygon_geom_index_A, polygon_geom_index_B, geometry_ids);
         });
   });
 }

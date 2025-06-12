@@ -128,7 +128,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
         normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z -
         displacement;
   }
-  sycl::group_barrier(item.get_group());
+  sycl::group_barrier(item.get_sub_group());
 
   // Let one thread compute intersection code and store this in the shared
   // memory for other threads
@@ -141,15 +141,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
     }
     slm_ints[slm_ints_offset] = intersection_code;
   }
-  sycl::group_barrier(item.get_group());
-
-  if (kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][0] == -1) {
-    // First thread writes
-    if (check_local_item_id == 0) {
-      slm_ints[slm_ints_offset] = 0;  // No edges to process
-    }
-    return;  // No edges to process, so we can return early
-  }
+  sycl::group_barrier(item.get_sub_group());
 
   // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon
   // vertices
@@ -187,7 +179,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
       }
     }
   }
-  sycl::group_barrier(item.get_group());
+  sycl::group_barrier(item.get_sub_group());
 
   // Compute current polygon size by checking number of max values
   int polygon_size = 0;
@@ -201,7 +193,6 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
     }
     slm_ints[slm_ints_offset] = polygon_size;
   }
-  sycl::group_barrier(item.get_group());
 }
 
 // Same math as above but features the "no return" version where no threads are
