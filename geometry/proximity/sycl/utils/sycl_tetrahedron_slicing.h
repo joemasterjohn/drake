@@ -128,7 +128,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
         normal_x * vertex_A_x + normal_y * vertex_A_y + normal_z * vertex_A_z -
         displacement;
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Let one thread compute intersection code and store this in the shared
   // memory for other threads
@@ -141,7 +141,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
     }
     slm_ints[slm_ints_offset] = intersection_code;
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   if (kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][0] == -1) {
     // First thread writes
@@ -187,7 +187,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
       }
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Compute current polygon size by checking number of max values
   int polygon_size = 0;
@@ -201,7 +201,120 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
     }
     slm_ints[slm_ints_offset] = polygon_size;
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
+}
+
+// Same math as above but features the "no return" version where no threads are
+// returned upon invalid geometry calcs (no surfaces, no areas etc)
+SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
+    sycl::nd_item<1> item, const sycl::local_accessor<double, 1>& slm,
+    const size_t slm_offset, const sycl::local_accessor<double, 1>& slm_polygon,
+    const size_t slm_polygon_offset,
+    const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset,
+    const size_t vertex_offset, const size_t eq_plane_offset,
+    const size_t random_scratch_offset, const size_t polygon_offset,
+    const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK,
+    bool valid_thread) {
+  if (valid_thread) {
+    for (size_t llid = check_local_item_id; llid < 4;
+         llid += NUM_THREADS_PER_CHECK) {
+      // Each thread gets 1 vertex of element A in slm
+      const double vertex_A_x = slm[slm_offset + vertex_offset + llid * 3 + 0];
+      const double vertex_A_y = slm[slm_offset + vertex_offset + llid * 3 + 1];
+      const double vertex_A_z = slm[slm_offset + vertex_offset + llid * 3 + 2];
+      // Each thread accesses the same Eq plane from slm
+      // TODO(huzaifa) - Will we have shMem bank conflict on Nvidia GPUs?
+      // Need to know if SYCL backend compiler propertly recognizes that this is
+      // a broadcast operation Normals
+      const double normal_x = slm[slm_offset + eq_plane_offset];
+      const double normal_y = slm[slm_offset + eq_plane_offset + 1];
+      const double normal_z = slm[slm_offset + eq_plane_offset + 2];
+      // Point on the plane
+      const double point_on_plane_x = slm[slm_offset + eq_plane_offset + 3];
+      const double point_on_plane_y = slm[slm_offset + eq_plane_offset + 4];
+      const double point_on_plane_z = slm[slm_offset + eq_plane_offset + 5];
+      // Compute the dispalcement of the plane from the origin of the frame
+      // (world in this case) as simple dot product
+      const double displacement = normal_x * point_on_plane_x +
+                                  normal_y * point_on_plane_y +
+                                  normal_z * point_on_plane_z;
+
+      // Compute signed distance of this vertex with Eq plane
+      // +ve height indicates point is above the plane
+      // -ve height indicates point is below the plane
+      // Store these in our random scratch space
+      slm[slm_offset + random_scratch_offset + llid] =
+          normal_x * vertex_A_x + normal_y * vertex_A_y +
+          normal_z * vertex_A_z - displacement;
+    }
+  }
+  sycl::group_barrier(item.get_group());
+
+  // Let one thread compute intersection code and store this in the shared
+  // memory for other threads
+  if (check_local_item_id == 0 && valid_thread) {
+    int intersection_code = 0;
+    for (size_t llid = 0; llid < 4; llid++) {
+      if (slm[slm_offset + random_scratch_offset + llid] > 0) {
+        intersection_code |= (1 << llid);
+      }
+    }
+    slm_ints[slm_ints_offset] = intersection_code;
+  }
+  sycl::group_barrier(item.get_group());
+
+  // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon
+  // vertices
+  if (valid_thread) {
+    for (size_t llid = check_local_item_id; llid < 4;
+         llid += NUM_THREADS_PER_CHECK) {
+      const int edge_index =
+          kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
+      // Only proceed if we are not at the end of edge list
+      if (edge_index != -1) {
+        // Get the tet edge
+        const TetrahedronEdge& tet_edge = kTetEdges[edge_index];
+        // Get the heights of these vertices from the scratch space
+        const double height_0 =
+            slm[slm_offset + random_scratch_offset + tet_edge.first];
+        const double height_1 =
+            slm[slm_offset + random_scratch_offset + tet_edge.second];
+
+        // Compute the intersection point
+        const double t = height_0 / (height_0 - height_1);
+
+// Compute polygon vertices
+// Loop is over x,y,z
+#pragma unroll
+        for (size_t i = 0; i < 3; i++) {
+          const double vertex_0 =
+              slm[slm_offset + vertex_offset + tet_edge.first * 3 + i];
+          const double vertex_1 =
+              slm[slm_offset + vertex_offset + tet_edge.second * 3 + i];
+
+          const double intersection = vertex_0 + t * (vertex_1 - vertex_0);
+
+          // Store the intersection point in the polygon
+          slm_polygon[slm_polygon_offset + polygon_offset + llid * 3 + i] =
+              intersection;
+        }
+      }
+    }
+  }
+  sycl::group_barrier(item.get_group());
+
+  if (check_local_item_id == 0 && valid_thread) {
+    // Compute current polygon size by checking number of max values
+    int polygon_size = 0;
+    for (size_t i = 0; i < 4; i++) {
+      // TODO - Is just checking x enough? Should be I think
+      if (slm_polygon[slm_polygon_offset + polygon_offset + i * 3 + 0] !=
+          std::numeric_limits<double>::max()) {
+        polygon_size++;
+      }
+    }
+    slm_ints[slm_ints_offset] = polygon_size;
+  }
 }
 
 }  // namespace sycl_impl
