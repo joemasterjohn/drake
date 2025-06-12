@@ -1302,13 +1302,13 @@ sycl::event LaunchContactPolygonComputation(
   // Check device work group size limits for CPU compatibility
   size_t max_work_group_size =
       q_device.get_device().get_info<sycl::info::device::max_work_group_size>();
-  const size_t LOCAL_SIZE = std::min(
-      {static_cast<size_t>(128), TOTAL_THREADS_NEEDED, max_work_group_size});
-
+  constexpr size_t LOCAL_SIZE = 128;
+  DRAKE_DEMAND(LOCAL_SIZE <= max_work_group_size);
   const size_t NUM_CHECKS_IN_WORK_GROUP = LOCAL_SIZE / NUM_THREADS_PER_CHECK;
   // Number of work groups
   const size_t NUM_GROUPS =
-      (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE;
+      std::max(static_cast<size_t>(1),
+               (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE);
 
   // Calculation of the number of doubles to be stored in shared memory per
   // check Offsets are required to index the local memory Two extra for gM and
@@ -1420,6 +1420,9 @@ sycl::event LaunchContactPolygonComputation(
          POLYGON_VERTICES = POLYGON_VERTICES]
 #ifndef __NVPTX__
         [[sycl::reqd_sub_group_size(SUB_GROUP_SIZE)]]
+#endif
+#ifdef __NVPTX__
+        [[sycl::reqd_work_group_size(LOCAL_SIZE)]]
 #endif
         (sycl::nd_item<1> item) {
           ComputeContactPolygonsNoReturn(
