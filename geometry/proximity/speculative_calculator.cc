@@ -61,7 +61,7 @@ AabbCalculator TruncatedTaylorSeriesAabbCalculator(
   // Start with a truncation of the vertex trajectories to quadratic.
   return [&mesh, p_WG, R_WG, v_WG, w_WG, dt](int e) -> Aabb {
     const VolumeElement& element = mesh.element(e);
-    Vector3d min_corner = mesh.vertex(element.vertex(0));
+    Vector3d min_corner = R_WG * mesh.vertex(element.vertex(0)) + p_WG;
     Vector3d max_corner = min_corner;
 
     for (int i = 0; i < 4; ++i) {
@@ -481,6 +481,92 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   if (ssize(p_WC) == 0) return;
 
   fmt::print("    num constraints: {}\n", ssize(p_WC));
+
+  std::map<int, std::set<SortedTriplet<int>>> vertex0_face1_map;
+  std::map<int, std::set<SortedTriplet<int>>> vertex1_face0_map;
+  std::map<SortedPair<int>, std::set<SortedPair<int>>> edge0_edge1_map;
+  std::map<SortedPair<int>, std::set<SortedPair<int>>> edge1_edge0_map;
+
+  int num_duplicates = 0;
+
+  for (int i = 0; i < ssize(p_WC); ++i) {
+    const ClosestPointResult<T>& result = closest_points[i];
+    const int tet0 = valid_element_pairs[i].first;
+    const int tet1 = valid_element_pairs[i].second;
+    const VolumeElement eA = soft_A.mesh().element(tet0);
+    const VolumeElement eB = soft_B.mesh().element(tet1);
+
+    if (result.closest_A.type == ClosestPointType::Vertex) {
+      const int vA = eA.vertex(result.closest_A.indices[0]);
+      const SortedTriplet<int> fB(eB.vertex(result.closest_B.indices[0]),
+                                  eB.vertex(result.closest_B.indices[1]),
+                                  eB.vertex(result.closest_B.indices[2]));
+      if (vertex0_face1_map.contains(vA)) {
+        std::set<SortedTriplet<int>>& faces = vertex0_face1_map[vA];
+        if (faces.contains(fB)) {
+          ++num_duplicates;
+        } else {
+          faces.insert(fB);
+        }
+      } else {
+        vertex0_face1_map[vA] = {fB};
+      }
+    } else if (result.closest_A.type == ClosestPointType::Face) {
+      const int vB = eB.vertex(result.closest_B.indices[0]);
+      const SortedTriplet<int> fA(eA.vertex(result.closest_A.indices[0]),
+                                  eA.vertex(result.closest_A.indices[1]),
+                                  eA.vertex(result.closest_A.indices[2]));
+      if (vertex1_face0_map.contains(vB)) {
+        std::set<SortedTriplet<int>>& faces = vertex1_face0_map[vB];
+        if (faces.contains(fA)) {
+          ++num_duplicates;
+        } else {
+          faces.insert(fA);
+        }
+      } else {
+        vertex1_face0_map[vB] = {fA};
+      }
+    } else {
+      const SortedPair<int> edgeA(eA.vertex(result.closest_A.indices[0]),
+                                  eA.vertex(result.closest_A.indices[1]));
+      const SortedPair<int> edgeB(eB.vertex(result.closest_B.indices[0]),
+                                  eB.vertex(result.closest_B.indices[1]));
+      bool duplicate = false;
+      if (edge0_edge1_map.contains(edgeA)) {
+        std::set<SortedPair<int>> edges = edge0_edge1_map[edgeA];
+        if (edges.contains(edgeB)) {
+          duplicate = true;
+        } else {
+          edges.insert(edgeB);
+        }
+      } else {
+        edge0_edge1_map[edgeA] = {edgeB};
+      }
+
+      if (edge1_edge0_map.contains(edgeB)) {
+        std::set<SortedPair<int>> edges = edge1_edge0_map[edgeB];
+        if (edges.contains(edgeA)) {
+          duplicate = true;
+        } else {
+          edges.insert(edgeA);
+        }
+      } else {
+        edge1_edge0_map[edgeB] = {edgeA};
+      }
+
+      if(duplicate) {
+        ++num_duplicates;
+      }
+    }
+  }
+
+  fmt::print("    num duplicates: {}\n", num_duplicates);
+  fmt::print("    num unique vA: {}\n", ssize(vertex0_face1_map));
+  fmt::print("    num unique vB: {}\n", ssize(vertex1_face0_map));
+  fmt::print("    num unique eA: {}\n", ssize(edge0_edge1_map));
+  fmt::print("    num unique eB: {}\n", ssize(edge1_edge0_map));
+
+  for(const auto [vA, fB] : vertex0_face1_map)
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W,
