@@ -949,24 +949,24 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     for (const auto& [id_A, id_B] : geometry_pairs) {
       calculator.ComputeSpeculativeContactSurface(id_A, id_B,
                                                   &speculative_surfaces);
-      const Aabb& bvA = this->hydroelastic_geometries()
-                            .soft_geometry(id_A)
-                            .soft_mesh()
-                            .mesh_dynamic_bvh()
-                            .root_node()
-                            .bv();
-      const Aabb& bvB = this->hydroelastic_geometries()
-                            .soft_geometry(id_B)
-                            .soft_mesh()
-                            .mesh_dynamic_bvh()
-                            .root_node()
-                            .bv();
-      fmt::print("BVH({}): [{}] [{}]\n", id_A,
-                 fmt_eigen(bvA.center().transpose()),
-                 fmt_eigen(bvA.half_width().transpose()));
-      fmt::print("BVH({}): [{}] [{}]\n", id_B,
-                 fmt_eigen(bvB.center().transpose()),
-                 fmt_eigen(bvB.half_width().transpose()));
+      // const Aabb& bvA = this->hydroelastic_geometries()
+      //                       .soft_geometry(id_A)
+      //                       .soft_mesh()
+      //                       .mesh_dynamic_bvh()
+      //                       .root_node()
+      //                       .bv();
+      // const Aabb& bvB = this->hydroelastic_geometries()
+      //                       .soft_geometry(id_B)
+      //                       .soft_mesh()
+      //                       .mesh_dynamic_bvh()
+      //                       .root_node()
+      //                       .bv();
+      // fmt::print("BVH({}): [{}] [{}]\n", id_A,
+      //            fmt_eigen(bvA.center().transpose()),
+      //            fmt_eigen(bvA.half_width().transpose()));
+      // fmt::print("BVH({}): [{}] [{}]\n", id_B,
+      //            fmt_eigen(bvB.center().transpose()),
+      //            fmt_eigen(bvB.half_width().transpose()));
     }
 
     return speculative_surfaces;

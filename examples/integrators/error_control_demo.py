@@ -122,9 +122,16 @@ def plate_and_spatula():
     use_hydroelastic = True
     initial_state = np.array([
         1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.012,   # plate pos
-        1.0, 0.0, 0.0, 0.0, -0.15, 0.0, 0.2,  # spatula pos
+        1.0, 0.0, 0.0, 0.0, -0.05, 0.0, 0.2,  # spatula pos
+        1.0, 0.0, 0.0, 0.0, -0.04, 0.0, 0.24,  # spatula pos
+        1.0, 0.0, 0.0, 0.0, -0.03, 0.0, 0.38,  # spatula pos
+        1.0, 0.0, 0.0, 0.0, -0.02, 0.0, 0.42,  # spatula pos
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         # plate vel
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,         # spatula vel
+        0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
+        0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
+        0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
+        0.0, 10.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
+
     ])
     sim_time = 1
     return SimulationExample(
@@ -172,7 +179,8 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
-        sg_config.default_proximity_properties.margin = 0
+        sg_config.default_proximity_properties.margin = 1e-4
+        sg_config.default_proximity_properties.hydroelastic_modulus = 5e7
         scene_graph.set_config(sg_config)
 
     vis_config = VisualizationConfig()

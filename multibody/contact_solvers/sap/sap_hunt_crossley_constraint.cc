@@ -105,7 +105,7 @@ SapHuntCrossleyConstraint<T>::MakeSpeculativeConstraintData(
   // SAP regularization estimate is zero.
   p.epsilon_soft = params.stiction_tolerance;
 
-  if (toc < dt) {
+  if (false && toc < dt) {
     // Method 1:
     // TODO(amcastro-tri): Consider using Method 2 below always.
     p.a = (dt - toc) * abs_cos_theta;

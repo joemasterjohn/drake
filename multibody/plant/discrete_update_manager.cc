@@ -950,24 +950,25 @@ void DiscreteUpdateManager<T>::
     // Use the pairs with the `count` smallest times of contact, number is set
     // in the plant.
 
-    const size_t count =
-        plant().num_speculative() >= 0
-            ? static_cast<const size_t>(plant().num_speculative())
-            : static_cast<const size_t>(s.num_contact_points());
-    std::vector<int> indices(s.num_contact_points());
-    std::iota(indices.begin(), indices.end(), 0);
+    // const size_t count =
+    //     plant().num_speculative() >= 0
+    //         ? static_cast<const size_t>(plant().num_speculative())
+    //         : static_cast<const size_t>(s.num_contact_points());
+    // std::vector<int> indices(s.num_contact_points());
+    // std::iota(indices.begin(), indices.end(), 0);
 
-    if (indices.size() > count) {
-      std::partial_sort(
-          indices.begin(), indices.begin() + std::min(count, indices.size()),
-          indices.end(), [&s](size_t a, size_t b) {
-            return s.time_of_contact()[a] < s.time_of_contact()[b];
-          });
-      indices.resize(count);
-    }
-    print_v(count);
-    for(int face : indices) {
-    // for (int face = 0; face < s.num_contact_points(); ++face) {
+    // if (indices.size() > count) {
+    //   std::partial_sort(
+    //       indices.begin(), indices.begin() + std::min(count, indices.size()),
+    //       indices.end(), [&s](size_t a, size_t b) {
+    //         return s.time_of_contact()[a] < s.time_of_contact()[b];
+    //       });
+    //   indices.resize(count);
+    // }
+    // print_v(count);
+
+    // for(int face : indices) {
+    for (int face = 0; face < s.num_contact_points(); ++face) {
       // From SpeculativeContactSurface's docs: Geometric "normal" from geometry
       // B into A.
       const Vector3<T>& zhat_BA_W = s.zhat_BA_W()[face];

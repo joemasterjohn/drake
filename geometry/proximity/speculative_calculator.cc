@@ -200,11 +200,11 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     const Vector3<T> p_AoAp_W = p_WAp - X_WA.translation();
     const SpatialVelocity<T> V_WAp = V_WA.Shift(p_AoAp_W);
     const Vector3<T> v_WAp = V_WAp.translational();
-    //const Vector3<T> w_WAp = V_WAp.rotational();
+    const Vector3<T> w_WAp = V_WAp.rotational();
     const Vector3<T> p_BoBq_W = p_WBq - X_WB.translation();
     const SpatialVelocity<T> V_WBq = V_WB.Shift(p_BoBq_W);
     const Vector3<T> v_WBq = V_WBq.translational();
-    //const Vector3<T> w_WBq = V_WBq.rotational();
+    const Vector3<T> w_WBq = V_WBq.rotational();
 
     const Vector3<T> p_BqAp_W = p_WAp - p_WBq;
     const T length_BqAp = p_BqAp_W.norm();
@@ -229,7 +229,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // TODO(joemasterjohn): Show that (n_hat_BqAp_W ⋅ (v_WBq - v_WAp) is
     // frame invariant.
 
-    const T v_n = n_hat_BqAp_W.dot(v_WBq - v_WAp);
+    const Vector3<T> v_W_ApBq = v_WBq - v_WAp;
+    const T v_n = n_hat_BqAp_W.dot(v_W_ApBq);
 
     if (abs(v_n) < kEps) {
       closest_points.pop_back();
@@ -238,7 +239,17 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const T tc = length_BqAp / v_n;
 
-    if (tc < 0 || tc > dt) {
+    if (tc < 0 || tc > 1.1*dt) {
+      closest_points.pop_back();
+      continue;
+    }
+
+    // cos(theta) where theta is the angle between n_hat_BqAp_W and v_W_ApBq
+    const T cos_theta = v_n / v_W_ApBq.norm();
+    constexpr double cos_theta_threshold = std::cos(M_PI * 25.0 / 180.0);
+
+    using std::abs;
+    if(cos_theta < cos_theta_threshold) {
       closest_points.pop_back();
       continue;
     }
@@ -256,7 +267,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // const Vector3<T> p_WBq_tc = p_WBq + tc*v_WBq;
     // p_WC.emplace_back(0.5*(p_WAp_tc + p_WBq_tc));
 
-    p_WC.emplace_back(p_WAp + tc * (n_hat_BqAp_W.dot(v_WAp)) * n_hat_BqAp_W);
+    p_WC.emplace_back(p_WBq + tc * (n_hat_BqAp_W.dot(v_WBq)) * n_hat_BqAp_W);
     // p_WC.emplace_back(p_WAp);
     p_AC_W.emplace_back(p_AoAp_W);
     p_BC_W.emplace_back(p_BoBq_W);
@@ -459,11 +470,25 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     // Get the gradient of the pressure field on each tet, and re-express in
     // world.
+    const T wA = w_WAp.norm();
+    const T wB = w_WBq.norm();
+    RotationMatrix<T> R_WA_toc = X_WA.rotation();
+    RotationMatrix<T> R_WB_toc = X_WB.rotation();
+    if (wA > 1e-10) {
+      R_WA_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+                     time_of_contact.back() * wA, w_WAp / wA)) *
+                 R_WA_toc;
+    }
+    if (wB > 1e-10) {
+      R_WB_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+                     time_of_contact.back() * wB, w_WBq / wB)) *
+                 R_WB_toc;
+    }
     grad_eA_W.emplace_back(
-        X_WA.rotation() *
+        R_WA_toc *
         soft_A.pressure_field().EvaluateGradient(tet_A).template cast<T>());
     grad_eB_W.emplace_back(
-        X_WB.rotation() *
+        R_WB_toc *
         soft_B.pressure_field().EvaluateGradient(tet_B).template cast<T>());
     // Calculate the contact normal, defined in the same manner as discrete
     // hydro.
@@ -480,7 +505,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   // Quick exit if no speculative contacts are found.
   if (ssize(p_WC) == 0) return;
 
-  fmt::print("    num constraints: {}\n", ssize(p_WC));
+  fmt::print("    num constraints (with duplicates): {}\n", ssize(p_WC));
 
   std::map<int, std::set<SortedTriplet<int>>> vertex0_face1_map;
   std::map<int, std::set<SortedTriplet<int>>> vertex1_face0_map;
@@ -564,9 +589,55 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   fmt::print("    num unique vA: {}\n", ssize(vertex0_face1_map));
   fmt::print("    num unique vB: {}\n", ssize(vertex1_face0_map));
   fmt::print("    num unique eA: {}\n", ssize(edge0_edge1_map));
-  fmt::print("    num unique eB: {}\n", ssize(edge1_edge0_map));
+  fmt::print("    num unique eB: {}\n\n", ssize(edge1_edge0_map));
 
-  for(const auto [vA, fB] : vertex0_face1_map)
+  {
+    using std::sqrt;
+
+    const int i = std::distance(
+        time_of_contact.begin(),
+        std::min_element(time_of_contact.begin(), time_of_contact.end()));
+
+    const ClosestPointResult<T>& result = closest_points[i];
+
+    // Keep track of the witness point P on A, and witness point Q on B and
+    // their respective velocities.
+    const Vector3<T>& p_WAp = result.closest_A.p;
+    const Vector3<T>& p_WBq = result.closest_B.p;
+    const Vector3<T> p_AoAp_W = p_WAp - X_WA.translation();
+    const SpatialVelocity<T> V_WAp = V_WA.Shift(p_AoAp_W);
+    const Vector3<T> v_WAp = V_WAp.translational();
+    const Vector3<T> w_WAp = V_WAp.rotational();
+    const Vector3<T> p_BoBq_W = p_WBq - X_WB.translation();
+    const SpatialVelocity<T> V_WBq = V_WB.Shift(p_BoBq_W);
+    const Vector3<T> v_WBq = V_WBq.translational();
+    const Vector3<T> w_WBq = V_WBq.rotational();
+
+    const Vector3<T> p_BqAp_W = p_WAp - p_WBq;
+    const T length_BqAp = p_BqAp_W.norm();
+    const Vector3<T> n_hat_BqAp_W = p_BqAp_W / length_BqAp;
+    const T v_n = n_hat_BqAp_W.dot(v_WBq - v_WAp);
+
+    fmt::print("Min toc: {}\n", time_of_contact[i]);
+    fmt::print("  p_WC: {}\n", fmt_eigen(p_WC[i].transpose()));
+    fmt::print("  p_WAp: {}\n", fmt_eigen(p_WAp.transpose()));
+    fmt::print("  p_WBq: {}\n", fmt_eigen(p_WBq.transpose()));
+    fmt::print("  zhat_BA_W: {}\n", fmt_eigen(zhat_BA_W[i].transpose()));
+    fmt::print("  nhat_BA_W: {}\n", fmt_eigen(nhat_BA_W[i].transpose()));
+    fmt::print("  grad_eA_W: {}\n", fmt_eigen(grad_eA_W[i].transpose()));
+    fmt::print("  grad_eB_W: {}\n", fmt_eigen(grad_eB_W[i].transpose()));
+    fmt::print("  distance: {}\n", sqrt(result.squared_dist));
+    fmt::print("  effective_radius: {}\n", effective_radius[i]);
+    fmt::print("  coefficient: {}\n", coefficients[i]);
+
+    fmt::print("  v_WAp: {}\n", fmt_eigen(v_WAp.transpose()));
+    fmt::print("  w_WAp: {}\n", fmt_eigen(w_WAp.transpose()));
+    fmt::print("  v_WBq: {}\n", fmt_eigen(v_WBq.transpose()));
+    fmt::print("  w_WBq: {}\n", fmt_eigen(w_WBq.transpose()));
+
+    fmt::print("  p_BqAp_W: {}\n", fmt_eigen(p_BqAp_W.transpose()));
+    fmt::print("  v_n: {}\n", v_n);
+  }
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W,
