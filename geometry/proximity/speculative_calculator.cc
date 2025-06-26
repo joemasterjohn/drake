@@ -121,8 +121,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   constexpr double kEps = std::numeric_limits<double>::epsilon();
   // Data for each point of the speculative contact surface.
   std::vector<Vector3<T>> p_WC;
-  std::vector<Vector3<T>> p_AC_W;
-  std::vector<Vector3<T>> p_BC_W;
+  std::vector<Vector3<T>> p_AoAp_W_vec;
+  std::vector<Vector3<T>> p_BoBq_W_vec;
   std::vector<T> time_of_contact;
   std::vector<Vector3<T>> zhat_BA_W;
   std::vector<T> coefficients;
@@ -156,8 +156,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
   // Reserve memory for the surface data.
   p_WC.reserve(element_pairs.size());
-  p_AC_W.reserve(element_pairs.size());
-  p_BC_W.reserve(element_pairs.size());
+  p_AoAp_W_vec.reserve(element_pairs.size());
+  p_BoBq_W_vec.reserve(element_pairs.size());
   time_of_contact.reserve(element_pairs.size());
   zhat_BA_W.reserve(element_pairs.size());
   coefficients.reserve(element_pairs.size());
@@ -208,29 +208,29 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const Vector3<T> p_BqAp_W = p_WAp - p_WBq;
     const T length_BqAp = p_BqAp_W.norm();
-    const Vector3<T> n_hat_BqAp_W = p_BqAp_W / length_BqAp;
+    const Vector3<T> zhat_BqAp_W = p_BqAp_W / length_BqAp;
 
     // We define the contact point as the point along the line segment from
     // Bq to Ap such that at the time of contact tc:
     //
-    //   p_WAp + tc ⋅ (n_hat_BqAp_W ⋅ v_WAp) ⋅ n_hat_BqAp_W =
-    //   p_WBq + tc ⋅ (n_hat_BqAp_W ⋅ v_WBq) ⋅ n_hat_BqAp_W
+    //   p_WAp + tc ⋅ (zhat_BqAp_W ⋅ v_WAp) ⋅ zhat_BqAp_W =
+    //   p_WBq + tc ⋅ (zhat_BqAp_W ⋅ v_WBq) ⋅ zhat_BqAp_W
     //
     // Which simplifies to:
     //
     // clang-format off
-    //   => (p_WAp - p_WBq) + tc ⋅ n_hat_BqAp_W ⋅ (v_WAp - v_Bq) ⋅ n_hat_BqAp_W = 0
-    //   => length_BqAp ⋅ n_hat_BqAp_W + tc ⋅ n_hat_BqAp_W ⋅ (v_WAp - v_Bq) ⋅ n_hat_BqAp_W = 0
-    //   => n_hat_BqAp_W ⋅ [length_BqAp + tc ⋅ n_hat_BqAp_W ⋅ (v_WAp - v_Bq)] = 0
-    //   => length_BqAp + tc ⋅ n_hat_BqAp_W ⋅ (v_WAp - v_Bq) = 0
-    //   => tc = length_BqAp / (n_hat_BqAp_W ⋅ (v_WBq - v_WAp))
+    //   => (p_WAp - p_WBq) + tc ⋅ zhat_BqAp_W ⋅ (v_WAp - v_Bq) ⋅ zhat_BqAp_W = 0
+    //   => length_BqAp ⋅ zhat_BqAp_W + tc ⋅ zhat_BqAp_W ⋅ (v_WAp - v_Bq) ⋅ zhat_BqAp_W = 0
+    //   => zhat_BqAp_W ⋅ [length_BqAp + tc ⋅ zhat_BqAp_W ⋅ (v_WAp - v_Bq)] = 0
+    //   => length_BqAp + tc ⋅ zhat_BqAp_W ⋅ (v_WAp - v_Bq) = 0
+    //   => tc = length_BqAp / (zhat_BqAp_W ⋅ (v_WBq - v_WAp))
     // clang-format on
     //
-    // TODO(joemasterjohn): Show that (n_hat_BqAp_W ⋅ (v_WBq - v_WAp) is
+    // TODO(joemasterjohn): Show that (zhat_BqAp_W ⋅ (v_WBq - v_WAp) is
     // frame invariant.
 
     const Vector3<T> v_W_ApBq = v_WBq - v_WAp;
-    const T v_n = n_hat_BqAp_W.dot(v_W_ApBq);
+    const T v_n = zhat_BqAp_W.dot(v_W_ApBq);
 
     if (abs(v_n) < kEps) {
       closest_points.pop_back();
@@ -239,14 +239,14 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const T tc = length_BqAp / v_n;
 
-    if (tc < 0 || tc > 1.1*dt) {
+    if (tc < 0 || tc > 1.1 * dt) {
       closest_points.pop_back();
       continue;
     }
 
-    // cos(theta) where theta is the angle between n_hat_BqAp_W and v_W_ApBq
+    // cos(theta) where theta is the angle between zhat_BqAp_W and v_W_ApBq
     const T cos_theta = v_n / v_W_ApBq.norm();
-    constexpr double cos_theta_threshold = std::cos(M_PI * 25.0 / 180.0);
+    constexpr double cos_theta_threshold = std::cos(M_PI * 90.0 / 180.0);
 
     using std::abs;
     if(cos_theta < cos_theta_threshold) {
@@ -254,7 +254,47 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       continue;
     }
 
+    // Get the gradient of the pressure field on each tet, and re-express in
+    // world.
+    const T wA = w_WAp.norm();
+    const T wB = w_WBq.norm();
+    RotationMatrix<T> R_WA_toc = X_WA.rotation();
+    RotationMatrix<T> R_WB_toc = X_WB.rotation();
+    if (wA > 1e-10) {
+      R_WA_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+                     time_of_contact.back() * wA, w_WAp / wA)) *
+                 R_WA_toc;
+    }
+    if (wB > 1e-10) {
+      R_WB_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+                     time_of_contact.back() * wB, w_WBq / wB)) *
+                 R_WB_toc;
+    }
+    const Vector3<T> gA_W =
+        R_WA_toc *
+        soft_A.pressure_field().EvaluateGradient(tet_A).template cast<T>();
+    const Vector3<T> gB_W =
+        R_WB_toc *
+        soft_B.pressure_field().EvaluateGradient(tet_B).template cast<T>();
+    const Vector3<T> nhat = gA_W - gB_W;
+    const T nhat_norm = nhat.norm();
+
+    if (nhat_norm < 1e-6) {
+      closest_points.pop_back();
+      continue;
+    }
+    constexpr double cos_alpha_threshold = std::cos(M_PI * 45.0 / 180.0);
+    if (abs(zhat_BqAp_W.dot(nhat / nhat_norm)) < cos_alpha_threshold) {
+      closest_points.pop_back();
+      continue;
+    }
+
     time_of_contact.emplace_back(tc);
+    grad_eA_W.emplace_back(gA_W);
+    grad_eB_W.emplace_back(gB_W);
+    // Calculate the contact normal, defined in the same manner as discrete
+    // hydro.
+    nhat_BA_W.emplace_back(nhat / nhat_norm);
 
     // TODO(joemasterjohn): Consider the case ot tc < 0. Or take as argument
     // to this query a range, such that tc ∈ [-k⁻⋅δt, k⁺⋅δt] for valid
@@ -267,10 +307,10 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // const Vector3<T> p_WBq_tc = p_WBq + tc*v_WBq;
     // p_WC.emplace_back(0.5*(p_WAp_tc + p_WBq_tc));
 
-    p_WC.emplace_back(p_WBq + tc * (n_hat_BqAp_W.dot(v_WBq)) * n_hat_BqAp_W);
+    p_WC.emplace_back(p_WBq + tc * (zhat_BqAp_W.dot(v_WBq)) * zhat_BqAp_W);
     // p_WC.emplace_back(p_WAp);
-    p_AC_W.emplace_back(p_AoAp_W);
-    p_BC_W.emplace_back(p_BoBq_W);
+    p_AoAp_W_vec.emplace_back(p_AoAp_W);
+    p_BoBq_W_vec.emplace_back(p_BoBq_W);
 
     // Consider all of the closest point cases.
     // TODO(joemasterjohn): Document or reference written document for the
@@ -438,6 +478,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       }
     }
 
+    zhat_BA_W.pop_back();
+    zhat_BA_W.emplace_back(zhat_BqAp_W);
+
     // Avoid nans in the coefficients. I think this is happening because of
     // co-planar faces in the volume formulation, but need to confirm. For now
     // just ignore the problematic pairs.
@@ -451,10 +494,13 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
-      p_AC_W.pop_back();
-      p_BC_W.pop_back();
+      p_AoAp_W_vec.pop_back();
+      p_BoBq_W_vec.pop_back();
       zhat_BA_W.pop_back();
       coefficients.pop_back();
+      nhat_BA_W.pop_back();
+      grad_eA_W.pop_back();
+      grad_eB_W.pop_back();
       continue;
     }
 
@@ -467,32 +513,6 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // Calculate "effective" radius of the two representative sphere coming into contact.
     const T R = rA*rB / (rA + rB);
     effective_radius.emplace_back(R);
-
-    // Get the gradient of the pressure field on each tet, and re-express in
-    // world.
-    const T wA = w_WAp.norm();
-    const T wB = w_WBq.norm();
-    RotationMatrix<T> R_WA_toc = X_WA.rotation();
-    RotationMatrix<T> R_WB_toc = X_WB.rotation();
-    if (wA > 1e-10) {
-      R_WA_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
-                     time_of_contact.back() * wA, w_WAp / wA)) *
-                 R_WA_toc;
-    }
-    if (wB > 1e-10) {
-      R_WB_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
-                     time_of_contact.back() * wB, w_WBq / wB)) *
-                 R_WB_toc;
-    }
-    grad_eA_W.emplace_back(
-        R_WA_toc *
-        soft_A.pressure_field().EvaluateGradient(tet_A).template cast<T>());
-    grad_eB_W.emplace_back(
-        R_WB_toc *
-        soft_B.pressure_field().EvaluateGradient(tet_B).template cast<T>());
-    // Calculate the contact normal, defined in the same manner as discrete
-    // hydro.
-    nhat_BA_W.emplace_back((grad_eA_W.back() - grad_eB_W.back()).normalized());
 
     // Add the element pair to the valid element pairs.
     valid_element_pairs.emplace_back(std::make_pair(tet_A, tet_B));
@@ -615,8 +635,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const Vector3<T> p_BqAp_W = p_WAp - p_WBq;
     const T length_BqAp = p_BqAp_W.norm();
-    const Vector3<T> n_hat_BqAp_W = p_BqAp_W / length_BqAp;
-    const T v_n = n_hat_BqAp_W.dot(v_WBq - v_WAp);
+    const Vector3<T> zhat_BqAp_W = p_BqAp_W / length_BqAp;
+    const T v_n = zhat_BqAp_W.dot(v_WBq - v_WAp);
 
     fmt::print("Min toc: {}\n", time_of_contact[i]);
     fmt::print("  p_WC: {}\n", fmt_eigen(p_WC[i].transpose()));
@@ -640,7 +660,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   }
 
   speculative_surfaces->emplace_back(
-      id_A, id_B, p_WC, p_AC_W, p_BC_W, time_of_contact, zhat_BA_W,
+      id_A, id_B, p_WC, p_AoAp_W_vec, p_BoBq_W_vec, time_of_contact, zhat_BA_W,
       coefficients, nhat_BA_W, grad_eA_W, grad_eB_W, closest_points,
       valid_element_pairs, effective_radius);
 }

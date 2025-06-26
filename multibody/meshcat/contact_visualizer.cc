@@ -9,6 +9,7 @@
 #include "drake/geometry/meshcat_graphviz.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/multibody/meshcat/hydroelastic_contact_visualizer.h"
+#include "drake/multibody/meshcat/speculative_contact_visualizer.h"
 #include "drake/multibody/meshcat/point_contact_visualizer.h"
 #include "drake/multibody/plant/contact_results.h"
 
@@ -22,6 +23,8 @@ using geometry::Meshcat;
 using geometry::QueryObject;
 using meshcat::internal::HydroelasticContactVisualizer;
 using meshcat::internal::HydroelasticContactVisualizerItem;
+using meshcat::internal::SpeculativeContactVisualizer;
+using meshcat::internal::SpeculativeContactVisualizerItem;
 using meshcat::internal::PointContactVisualizer;
 using meshcat::internal::PointContactVisualizerItem;
 using multibody::internal::GeometryNames;
@@ -55,6 +58,11 @@ ContactVisualizer<T>::ContactVisualizer(std::shared_ptr<Meshcat> meshcat,
   hydroelastic_visualizer_ = std::make_unique<HydroelasticContactVisualizer>(
       meshcat_, std::move(hydro_params));
 
+  ContactVisualizerParams speculative_params = params_;
+  speculative_params.prefix += "/speculative";
+  speculative_visualizer_ = std::make_unique<SpeculativeContactVisualizer>(
+      meshcat_, std::move(speculative_params));
+
   this->DeclarePeriodicPublishEvent(params_.publish_period, 0.0,
                                     &ContactVisualizer::UpdateMeshcat);
   this->DeclareForcedPublishEvent(&ContactVisualizer::UpdateMeshcat);
@@ -87,6 +95,11 @@ ContactVisualizer<T>::ContactVisualizer(std::shared_ptr<Meshcat> meshcat,
       "hydroelastic_contacts", &ContactVisualizer::CalcHydroelasticContacts,
       {contact_results.ticket()});
   hydroelastic_contacts_cache_ = hydroelastic_contacts.cache_index();
+
+  const CacheEntry& speculative_contacts = this->DeclareCacheEntry(
+      "speculative_contacts", &ContactVisualizer::CalcSpeculativeContacts,
+      {contact_results.ticket()});
+  speculative_contacts_cache_ = speculative_contacts.cache_index();
 }
 
 template <typename T>
@@ -101,6 +114,7 @@ template <typename T>
 void ContactVisualizer<T>::Delete() const {
   point_visualizer_->Delete();
   hydroelastic_visualizer_->Delete();
+  speculative_visualizer_->Delete();
   meshcat_->Delete(params_.prefix);
 }
 
@@ -168,6 +182,13 @@ EventStatus ContactVisualizer<T>::UpdateMeshcat(
           .template Eval<std::vector<HydroelasticContactVisualizerItem>>(
               context);
   hydroelastic_visualizer_->Update(time, hydroelastic_contacts);
+
+  const auto& speculative_contacts =
+      this->get_cache_entry(speculative_contacts_cache_)
+          .template Eval<std::vector<SpeculativeContactVisualizerItem>>(
+              context);
+  speculative_visualizer_->Update(time, speculative_contacts);
+
   return EventStatus::Succeeded();
 }
 
@@ -208,8 +229,7 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
   DRAKE_THROW_UNLESS(plant != nullptr);
   const GeometryNames& geometry_names = this->GetGeometryNames(context, plant);
 
-  result->reserve(contact_results.num_hydroelastic_contacts() +
-                  contact_results.num_speculative_contacts());
+  result->reserve(contact_results.num_hydroelastic_contacts());
 
   // Update our output vector of items.
   for (int ci = 0; ci < contact_results.num_hydroelastic_contacts(); ++ci) {
@@ -282,29 +302,57 @@ void ContactVisualizer<T>::CalcHydroelasticContacts(
                            std::move(faces), std::move(pressure));
     }
   }
+}
 
-  // Hack to visualize speculative contact results.
+template <typename T>
+void ContactVisualizer<T>::CalcSpeculativeContacts(
+    const Context<T>& context,
+    std::vector<SpeculativeContactVisualizerItem>* result) const {
+  result->clear();
+
+  // Obtain the list of contacts.
+  const ContactResults<T>& contact_results =
+      contact_results_input_port().template Eval<ContactResults<T>>(context);
+
+  // Freshen the dictionary of contact names for the proximity geometries.
+  const MultibodyPlant<T>* const plant = contact_results.plant();
+  DRAKE_THROW_UNLESS(plant != nullptr);
+  const GeometryNames& geometry_names = this->GetGeometryNames(context, plant);
+
+  std::string current_A = "";
+  std::string current_B = "";
+
+  // Update our output vector of items.
   for (int ci = 0; ci < contact_results.num_speculative_contacts(); ++ci) {
     const SpeculativeContactInfo<T>& info =
         contact_results.speculative_contact_info(ci);
 
-    std::string body_A = fmt::format("body_{}", info.bodyA_index());
-    std::string body_B = fmt::format("body_{}", info.bodyB_index());
+    const SortedPair<GeometryId> sorted_ids(info.geometryA_id(),
+                                            info.geometryB_id());
+    std::string body_A = geometry_names.GetFullName(sorted_ids.first(), ".");
+    std::string body_B = geometry_names.GetFullName(sorted_ids.second(), ".");
 
-    // No polygons.
-    Eigen::Matrix3Xd vertices(3, 0);
-    Eigen::Matrix3Xi faces(3, 0);
-    Eigen::VectorXd pressure(0);
+    // We exploit the knowledge that all of the discrete pairs and thus all of
+    // the speculative contact results come in order from the same bodies, so
+    // when we see a new pair of bodies we'll start constructing a new
+    // visualizer item.
+    if (body_A != current_A || body_B != current_B) {
+      current_A = body_A;
+      current_B = body_B;
+      result->emplace_back(std::move(body_A), std::move(body_B));
+    }
 
     Vector3d p_WAp = ExtractDoubleOrThrow(info.p_WAp());
     Vector3d p_WBq = ExtractDoubleOrThrow(info.p_WBq());
-    Vector3d f_Ap_W = ExtractDoubleOrThrow(info.f_Ap_W());
-    Vector3d f_Bq_W = ExtractDoubleOrThrow(info.f_Bq_W());
+    Vector3d nhat_BA_W = ExtractDoubleOrThrow(info.nhat_BA_W());
+    Vector3d p_WC = ExtractDoubleOrThrow(info.p_WC());
+    Vector3d f_AC_W = ExtractDoubleOrThrow(info.f_AC_W());
 
-    result->emplace_back(std::move(body_A), std::move(body_B), p_WAp, f_Ap_W,
-                         Vector3d::Zero(), vertices, faces, pressure);
-    result->emplace_back(std::move(body_A), std::move(body_B), p_WBq, f_Bq_W,
-                         Vector3d::Zero(), vertices, faces, pressure);
+    result->back().p_WAp.push_back(p_WAp);
+    result->back().p_WBq.push_back(p_WBq);
+    result->back().nhat_BA_W.push_back(nhat_BA_W);
+    result->back().p_WC.push_back(p_WC);
+    result->back().f_AC_W.push_back(f_AC_W);
   }
 }
 

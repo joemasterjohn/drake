@@ -22,6 +22,7 @@ drake_cc_package_library(
         ":contact_visualizer",
         ":contact_visualizer_params",
         ":hydroelastic_contact_visualizer",
+	":speculative_contact_visualizer",
         ":joint_sliders",
         ":point_contact_visualizer",
     ],
@@ -34,6 +35,7 @@ drake_cc_library(
     deps = [
         ":contact_visualizer_params",
         ":hydroelastic_contact_visualizer",
+	":speculative_contact_visualizer",
         ":point_contact_visualizer",
         "//common:essential",
         "//geometry:meshcat",
@@ -135,4 +137,15 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "speculative_contact_visualizer",
+    srcs = ["speculative_contact_visualizer.cc"],
+    hdrs = ["speculative_contact_visualizer.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":contact_visualizer_params",
+        "//geometry:meshcat",
+        "//math:geometric_transform",
+    ],
+)
 add_lint_tests()

@@ -12,7 +12,7 @@ namespace internal {
 template <typename T>
 SpeculativeContactSurface<T>::SpeculativeContactSurface(
     GeometryId id_A, GeometryId id_B, std::vector<Vector3<T>> p_WC,
-    std::vector<Vector3<T>> p_AC_W, std::vector<Vector3<T>> p_BC_W,
+    std::vector<Vector3<T>> p_AoAp_W, std::vector<Vector3<T>> p_BoBq_W,
     std::vector<T> time_of_contact, std::vector<Vector3<T>> zhat_BA_W,
     std::vector<T> coefficient, std::vector<Vector3<T>> nhat_BA_W,
     std::vector<Vector3<T>> grad_eA_W, std::vector<Vector3<T>> grad_eB_W,
@@ -22,8 +22,8 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
     : id_A_(id_A),
       id_B_(id_B),
       p_WC_(std::move(p_WC)),
-      p_AC_W_(std::move(p_AC_W)),
-      p_BC_W_(std::move(p_BC_W)),
+      p_AoAp_W_(std::move(p_AoAp_W)),
+      p_BoBq_W_(std::move(p_BoBq_W)),
       time_of_contact_(std::move(time_of_contact)),
       zhat_BA_W_(std::move(zhat_BA_W)),
       coefficient_(std::move(coefficient)),
@@ -34,8 +34,8 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
       element_pairs_(std::move(element_pairs)),
       effective_radius_(std::move(effective_radius)) {
   const int num_contact_points = ssize(p_WC_);
-  DRAKE_DEMAND(num_contact_points == ssize(p_AC_W_));
-  DRAKE_DEMAND(num_contact_points == ssize(p_BC_W_));
+  DRAKE_DEMAND(num_contact_points == ssize(p_AoAp_W_));
+  DRAKE_DEMAND(num_contact_points == ssize(p_BoBq_W_));
   DRAKE_DEMAND(num_contact_points == ssize(time_of_contact_));
   DRAKE_DEMAND(num_contact_points == ssize(zhat_BA_W_));
   DRAKE_DEMAND(num_contact_points == ssize(coefficient_));

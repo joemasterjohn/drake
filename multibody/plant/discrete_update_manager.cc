@@ -635,30 +635,24 @@ void DiscreteUpdateManager<T>::CalcContactResultsForSpeculativeContact(
       const BodyIndex bodyB_index = FindBodyByGeometryId(geometryB_id);
 
       // TODO(joemasterjohn): report the forces at P and Q when they are not
-      // coincident. const RigidTransform<T>& X_WA =
-      //     plant().EvalBodyPoseInWorld(context, body_A);
-      // const Vector3<T>& p_WA = X_WA.translation();
-      // const RigidTransform<T>& X_WB =
-      //     plant().EvalBodyPoseInWorld(context, body_B);
-      // const Vector3<T>& p_WB = X_WB.translation();
-
-      // const Vector3<T>& p_WAp = p_WA + pair.p_ApC_W;
-      // const Vector3<T>& p_WBq = p_WB + pair.p_BqC_W;
+      // coincident.
+      const Vector3<T>& p_WAp = pair.p_WC - pair.p_ApC_W;
+      const Vector3<T>& p_WBq = pair.p_WC - pair.p_BqC_W;
       const RotationMatrix<T>& R_WC = pair.R_WC;
 
       // Contact forces applied on B at quadrature point Q expressed in the
       // contact frame.
-      const Vector3<T> f_Bq_C(ft(2 * icontact), ft(2 * icontact + 1),
+      const Vector3<T> f_BC_C(ft(2 * icontact), ft(2 * icontact + 1),
                               fn(icontact));
-      const Vector3<T> f_Bq_W = R_WC * f_Bq_C;
-      const Vector3<T> f_Ap_W = -f_Bq_W;
+      const Vector3<T> f_BC_W = R_WC * f_BC_C;
+      const Vector3<T> f_AC_W = -f_BC_W;
 
       print_v(fn(icontact));
-      //fmt::print("\n");
+      // fmt::print("\n");
 
-      // Hack, contact points are coincident, for now.
       contact_results_speculative->emplace_back(
-          bodyA_index, bodyB_index, pair.p_WC, pair.p_WC, f_Ap_W, f_Bq_W);
+          bodyA_index, bodyB_index, geometryA_id, geometryB_id, p_WAp, p_WBq,
+          pair.nhat_BA_W, pair.p_WC, f_AC_W);
     }
   }
 }
@@ -1102,15 +1096,18 @@ void DiscreteUpdateManager<T>::
           kappa, volume_coefficient, cos_theta, distance,
           toc,   effective_radius};
 
-      // Contact point position relative to each body.
+      // Contact point position relative to witness points.
+      const Vector3<T>& p_AoAp_W = s.p_AoAp_W()[face];
+      const Vector3<T>& p_BoBq_W = s.p_BoBq_W()[face];
+
       const RigidTransform<T>& X_WA =
           plant().EvalBodyPoseInWorld(context, body_A);
       const Vector3<T>& p_WA = X_WA.translation();
-      const Vector3<T> p_AC_W = p_WC - p_WA;
+      const Vector3<T> p_ApC_W = p_WC - (p_WA + p_AoAp_W);
       const RigidTransform<T>& X_WB =
           plant().EvalBodyPoseInWorld(context, body_B);
       const Vector3<T>& p_WB = X_WB.translation();
-      const Vector3<T> p_BC_W = p_WC - p_WB;
+      const Vector3<T> p_BqC_W = p_WC - (p_WB + p_BoBq_W);
 
       // Entries not relevant to speculative constraints are filled with NANs.
       DiscreteContactPair<T> contact_pair{
@@ -1121,8 +1118,8 @@ void DiscreteUpdateManager<T>::
           .object_B = body_B_index,
           .R_WC = R_WC,
           .p_WC = p_WC,
-          .p_ApC_W = p_AC_W,
-          .p_BqC_W = p_BC_W,
+          .p_ApC_W = p_ApC_W,
+          .p_BqC_W = p_BqC_W,
           .nhat_BA_W = nhat_BA_W,
           .phi0 = NAN,
           .vn0 = vn0,

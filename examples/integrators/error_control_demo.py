@@ -1,9 +1,8 @@
+import numpy as np
 import argparse
 from pydrake.all import *
 
 import time
-import matplotlib.pyplot as plt
-import numpy as np
 from dataclasses import dataclass
 
 ##
@@ -130,7 +129,7 @@ def plate_and_spatula():
         0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
         0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
         0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
-        0.0, 10.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
+        0.0, 0.0, 0.0, 0.0, 0.0, -0.0,         # spatula vel
 
     ])
     sim_time = 1
@@ -365,18 +364,3 @@ if __name__ == "__main__":
         meshcat=meshcat,
         num_speculative=args.num_speculative
     )
-
-    if args.plot:
-        times = np.cumsum(time_steps)
-        plt.title(
-            (
-                f"{example.name} | {args.integrator} integrator | "
-                f"accuracy = {args.accuracy}"
-            )
-        )
-        plt.plot(times, time_steps, "o")
-        plt.ylim(1e-10, 1e0)
-        plt.yscale("log")
-        plt.xlabel("time (s)")
-        plt.ylabel("step size (s)")
-        plt.show()
