@@ -114,7 +114,7 @@
       </collision>
     </link>
 
-    <link name="spatula2">
+    <!-- <link name="spatula2">
       <pose>0 0 0.01 0 0 0</pose>
       <inertial>
         <pose>0 0 0 0 0 0</pose>
@@ -217,7 +217,7 @@
           </box>
         </geometry>
       </collision>
-    </link>
+    </link> -->
 
   </model>
 </sdf>

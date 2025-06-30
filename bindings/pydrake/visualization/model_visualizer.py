@@ -140,7 +140,14 @@ def _main():
              "of positions in the sdf models.  Note that most models have a "
              "floating-base joint by default (unless the sdf explicitly welds "
              "the base to the world, and so have 7 positions corresponding to "
-             "the quaternion representation of that floating-base position).")
+             "the quaternion representation of that floating-base position)."
+    )
+    args_parser.add_argument(
+        "-v", "--velocity", dest="velocity",
+        type=float, nargs="+", default=[],
+        help="A list of velocities which must be the same length as the number "
+             "of velocities in the sdf models."
+    )
 
     args_parser.add_argument(
         "--loop_once", action='store_true',
@@ -177,7 +184,7 @@ def _main():
         visualizer._publish_contacts = False
         visualizer._reload()
 
-    visualizer.Run(position=args.position, loop_once=args.loop_once)
+    visualizer.Run(position=args.position, loop_once=args.loop_once, velocity=args.velocity)
 
 
 if __name__ == '__main__':

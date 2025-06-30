@@ -11,6 +11,52 @@ using Eigen::Vector3d;
 using math::RotationMatrix;
 using multibody::SpatialVelocity;
 
+namespace {
+class DisjointSet {
+ public:
+  explicit DisjointSet(int n) : parent(n), rank(n, 0) {
+    for (int i = 0; i < n; ++i) parent[i] = i;
+  }
+
+  int find(int u) {
+    if (parent[u] != u) {
+      parent[u] = find(parent[u]);  // Path compression
+    }
+    return parent[u];
+  }
+
+  void unite(int u, int v) {
+    int ru = find(u), rv = find(v);
+    if (ru == rv) return;
+
+    // Union by rank
+    if (rank[ru] < rank[rv])
+      parent[ru] = rv;
+    else if (rank[ru] > rank[rv])
+      parent[rv] = ru;
+    else {
+      parent[rv] = ru;
+      rank[ru]++;
+    }
+  }
+
+  int count_sets() {
+    int c = 0;
+    for(int i = 0; i < ssize(parent); ++i) {
+      if(find(i) == i) {
+        ++c;
+      }
+    }
+    return c;
+  }
+
+ private:
+  std::vector<int> parent;
+  std::vector<int> rank;
+};
+
+}  // namespace
+
 template <typename T>
 AabbCalculator MovingBoundingSphereAabbCalculator(
     const std::vector<PosedSphere<double>>& mesh_bounding_spheres,
@@ -658,6 +704,23 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     fmt::print("  p_BqAp_W: {}\n", fmt_eigen(p_BqAp_W.transpose()));
     fmt::print("  v_n: {}\n", v_n);
   }
+
+  DisjointSet nearly_duplicates(ssize(p_WC));
+
+  for(int i = 0; i < ssize(p_WC); ++i) {
+    const Vector3<T> p_i = p_AoAp_W_vec[i];
+    const Vector3<T> q_i = p_BoBq_W_vec[i];
+    for(int j = i+1; j < ssize(p_WC); ++j) {
+      const Vector3<T> p_j = p_AoAp_W_vec[j];
+      const Vector3<T> q_j = p_BoBq_W_vec[j];
+      const T a = (p_i - p_j).norm();
+      const T b = (q_i - q_j).norm();
+      if(a < 1e-14 && b < 1e-14) {
+        nearly_duplicates.unite(i, j);
+      }
+    }
+  }
+  fmt::print("  nearly duplicate: {}\n\n", nearly_duplicates.count_sets());
 
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, p_AoAp_W_vec, p_BoBq_W_vec, time_of_contact, zhat_BA_W,

@@ -134,7 +134,9 @@ class ModelVisualizer:
 
         # The builder is set to None during Finalize(), though during a Reload
         # it will be temporarily resurrected.
-        self._builder = RobotDiagramBuilder()
+        self._builder = RobotDiagramBuilder(time_step=1e-2)
+        self._builder.plant().set_use_speculative(True)
+        self._builder.plant().set_num_speculative(-1)
         self._builder.parser().SetAutoRenaming(True)
 
         # Adjust the SceneGraph's compliance_type.
@@ -322,7 +324,7 @@ class ModelVisualizer:
             file_contents=file_contents,
         )
 
-    def Finalize(self, position=None):
+    def Finalize(self, position=None, velocity=None):
         """
         Finalizes the object and sets up the visualization using the provided
         options once models have been added.
@@ -331,6 +333,8 @@ class ModelVisualizer:
           position: a list of slider positions for the model(s); must match
             the number of positions in all model(s), including the 7 positions
             corresponding to any model bases that aren't welded to the world.
+          velocity: a list of velocities for the model(s); must match the number
+            of velocities in all model(s).
         """
         self._check_rep(finalized=False)
         if self._builder is None:
@@ -461,6 +465,14 @@ class ModelVisualizer:
                 position)
             self._sliders.SetPositions(position)
 
+        if velocity is not None and len(velocity) > 0:
+            self._raise_if_invalid_velocities(velocity)
+            self._diagram.plant().SetVelocities(
+                self._diagram.plant().GetMyMutableContextFromRoot(
+                    self._context),
+                velocity
+            )
+
         # Use Simulator to dispatch initialization events.
         # TODO(eric.cousineau): Simplify as part of #13776 (was #10015).
         Simulator(self._diagram).Initialize()
@@ -553,7 +565,7 @@ class ModelVisualizer:
             X_PF=X_WC)
         self._diagram.GetOutputPort("preview_image").Eval(self._context)
 
-    def Run(self, position=None, loop_once=False):
+    def Run(self, position=None, loop_once=False, velocity=None):
         """
         Runs the model. If Finalize() hasn't already been explicitly called
         then the object will be finalized first.
@@ -569,7 +581,7 @@ class ModelVisualizer:
           loop_once: a flag that exits the evaluation loop after one pass.
         """
         if self._builder is not None:
-            self.Finalize(position=position)
+            self.Finalize(position=position, velocity=velocity)
         else:
             self._check_rep(finalized=True)
             if position is not None and len(position) > 0:
@@ -579,6 +591,15 @@ class ModelVisualizer:
                         self._context),
                     position)
                 self._sliders.SetPositions(position)
+                self._diagram.ForcedPublish(self._context)
+
+            if velocity is not None and len(velocity) > 0:
+                self._raise_if_invalid_velocities(velocity)
+                self._diagram.plant().SetVelocities(
+                    self._diagram.plant().GetMyMutableContextFromRoot(
+                        self._context),
+                    velocity
+                )
                 self._diagram.ForcedPublish(self._context)
 
         # Everything is finally fully configured. We can open the window now.
@@ -652,6 +673,22 @@ class ModelVisualizer:
         if actual != expected:
             raise ValueError(
                 f"Number of passed positions ({actual}) does not match the "
+                f"number in the model ({expected}).")
+
+    def _raise_if_invalid_velocities(self, velocity):
+        """
+        Validate the velocity argument.
+
+        Raises:
+          ValueError: if the length of the velocity list does not match
+        the number of velocities in the plant.
+        """
+        assert self._diagram is not None
+        actual = len(velocity)
+        expected = self._diagram.plant().num_velocities()
+        if actual != expected:
+            raise ValueError(
+                f"Number of passed velocities ({actual}) does not match the "
                 f"number in the model ({expected}).")
 
     def _get_slider_values(self):
