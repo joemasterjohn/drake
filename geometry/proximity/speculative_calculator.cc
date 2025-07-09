@@ -333,8 +333,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     const Vector3<T> gB_W =
         R_WB_toc *
         soft_B.pressure_field().EvaluateGradient(tet_B).template cast<T>();
-    //const Vector3<T> nhat = gA_W - gB_W;
-    const Vector3<T> nhat = zhat_BqAp_W;
+    const Vector3<T> nhat = gA_W - gB_W;
+    //const Vector3<T> nhat = zhat_BqAp_W;
     const T nhat_norm = nhat.norm();
 
     if (nhat_norm < 1e-6) {
