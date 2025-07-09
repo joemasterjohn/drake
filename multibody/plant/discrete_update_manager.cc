@@ -1076,10 +1076,10 @@ void DiscreteUpdateManager<T>::
       const T& volume_coefficient = s.coefficient()[face];  // V(z) = C * z³.
       const ClosestPointResult<T>& cpr = s.closest_points()[face];
       using std::sqrt;
-      using std::abs;
+      using std::min;
       // N.B. Speculative constraints use abs(cos_theta)), and therefore here we
       // can use nhat_BA_W or nhat_AB_W.
-      const T cos_theta = nhat_BA_W.dot(zhat_BA_W);
+      const T cos_theta = min(nhat_BA_W.dot(zhat_BA_W), 1.0);
       const T distance = sqrt(cpr.squared_dist);
 
       print_v(distance);
