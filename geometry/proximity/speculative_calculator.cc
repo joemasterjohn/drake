@@ -572,8 +572,8 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     //     zhat_BA_W.back().array().isNaN().any() ||
     //     p_WC.back().array().isNaN().any()) {
     unused(is_surface);
-    if (!is_surface || isinf(coefficients.back()) ||
-         isnan(coefficients.back()) || coefficients.back() > 1e12) {
+    if (!is_surface) {// || isinf(coefficients.back()) ||
+         // isnan(coefficients.back()) || coefficients.back() > 1e12) {
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();

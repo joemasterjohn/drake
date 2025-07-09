@@ -1079,7 +1079,7 @@ void DiscreteUpdateManager<T>::
       using std::abs;
       // N.B. Speculative constraints use abs(cos_theta)), and therefore here we
       // can use nhat_BA_W or nhat_AB_W.
-      const T cos_theta = 1.0; //nhat_BA_W.dot(zhat_BA_W);
+      const T cos_theta = nhat_BA_W.dot(zhat_BA_W);
       const T distance = sqrt(cpr.squared_dist);
 
       print_v(distance);
