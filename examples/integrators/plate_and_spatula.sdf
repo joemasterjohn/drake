@@ -1,7 +1,6 @@
 <?xml version="1.0"?>
 <sdf version="1.7" xmlns:drake="http://drake.mit.edu">
   <model name="plate_and_spatula">
-    <!-- The table is fixed to the world -->
     <link name="table">
       <inertial>
         <inertia>
@@ -43,7 +42,6 @@
       <child>table</child>
     </joint>
 
-    <!-- The free-floating plate-->
     <link name="plate_8in">
       <pose>0 0 0 0 0 0</pose>
       <inertial>
@@ -61,24 +59,24 @@
       <visual name="visual">
         <pose>0 0 0 0 0 0</pose>
         <geometry>
-          <mesh>
-            <uri>package://drake_models/dishes/assets/plate_8in.gltf</uri>
-            <scale>1.0 1.0 1.0</scale>
-          </mesh>
+          <box>
+            <size>0.15 0.15 0.003</size>
+          </box>
         </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
       </visual>
       <collision name="collision">
         <pose>0 0 0 0 0 0</pose>
         <geometry>
-          <mesh>
-            <uri>package://drake/examples/integrators/plate.vtk</uri>
-            <scale>1.0 1.0 1.0</scale>
-          </mesh>
+          <box>
+            <size>0.15 0.15 0.003</size>
+          </box>
         </geometry>
       </collision>
     </link>
 
-    <!-- The free-floating spatula above the plate -->
     <link name="spatula">
       <pose>0 0 0.01 0 0 0</pose>
       <inertial>
@@ -114,7 +112,7 @@
       </collision>
     </link>
 
-    <!-- <link name="spatula2">
+    <link name="spatula2">
       <pose>0 0 0.01 0 0 0</pose>
       <inertial>
         <pose>0 0 0 0 0 0</pose>
@@ -217,7 +215,7 @@
           </box>
         </geometry>
       </collision>
-    </link> -->
+    </link>
 
   </model>
 </sdf>

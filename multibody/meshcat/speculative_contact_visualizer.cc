@@ -69,7 +69,7 @@ void SpeculativeContactVisualizer::Update(
         start_P.col(i) = item.p_WAp[i];
         end_Q.col(i) = item.p_WBq[i];
         start_normals.col(i) = item.p_WC[i];
-        end_normals.col(i) = start_normals.col(i) + 0.005 * item.nhat_BA_W[i];
+        end_normals.col(i) = start_normals.col(i) - 0.005 * item.nhat_BA_W[i];
       }
 
       meshcat_->SetLineSegments(path + "/speculative_PQ", start_P, end_Q, 2.0,

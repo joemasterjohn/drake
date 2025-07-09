@@ -55,6 +55,15 @@ class DisjointSet {
   std::vector<int> rank;
 };
 
+/* This table essentially assigns an index to each edge in the tetrahedron.
+ Each edge is represented by its pair of vertex indexes. */
+using TetrahedronEdge = std::pair<int, int>;
+constexpr std::array<std::pair<int, int>, 6> kTetEdges = {
+    // base formed by vertices 0, 1, 2.
+    TetrahedronEdge{0, 1}, TetrahedronEdge{1, 2}, TetrahedronEdge{2, 0},
+    // pyramid with top at node 3.
+    TetrahedronEdge{0, 3}, TetrahedronEdge{1, 3}, TetrahedronEdge{2, 3}};
+
 }  // namespace
 
 template <typename T>
@@ -306,23 +315,26 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     const T wB = w_WBq.norm();
     RotationMatrix<T> R_WA_toc = X_WA.rotation();
     RotationMatrix<T> R_WB_toc = X_WB.rotation();
-    if (wA > 1e-10) {
-      R_WA_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
-                     time_of_contact.back() * wA, w_WAp / wA)) *
-                 R_WA_toc;
-    }
-    if (wB > 1e-10) {
-      R_WB_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
-                     time_of_contact.back() * wB, w_WBq / wB)) *
-                 R_WB_toc;
-    }
+    unused(wA);
+    unused(wB);
+    // if (wA > 1e-10) {
+    //   R_WA_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+    //                  time_of_contact.back() * wA, w_WAp / wA)) *
+    //              R_WA_toc;
+    // }
+    // if (wB > 1e-10) {
+    //   R_WB_toc = RotationMatrix<T>(Eigen::AngleAxis<T>(
+    //                  time_of_contact.back() * wB, w_WBq / wB)) *
+    //              R_WB_toc;
+    // }
     const Vector3<T> gA_W =
         R_WA_toc *
         soft_A.pressure_field().EvaluateGradient(tet_A).template cast<T>();
     const Vector3<T> gB_W =
         R_WB_toc *
         soft_B.pressure_field().EvaluateGradient(tet_B).template cast<T>();
-    const Vector3<T> nhat = gA_W - gB_W;
+    //const Vector3<T> nhat = gA_W - gB_W;
+    const Vector3<T> nhat = zhat_BqAp_W;
     const T nhat_norm = nhat.norm();
 
     if (nhat_norm < 1e-6) {
@@ -358,6 +370,17 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     p_AoAp_W_vec.emplace_back(p_AoAp_W);
     p_BoBq_W_vec.emplace_back(p_BoBq_W);
 
+    const auto is_surface_vertex = [](const SoftMesh& mesh, int e, int v) {
+      const VolumeMeshTopology& top = mesh.mesh_topology();
+      return top.neighbor(e, (v + 1) % 4) || top.neighbor(e, (v + 2) % 4) ||
+             top.neighbor(e, (v + 3) % 4);
+    };
+
+    const auto is_surface_face = [](const SoftMesh& mesh, int e, int f) {
+      return mesh.mesh_topology().neighbor(e, f) == -1;
+    };
+
+    bool is_surface = true;
     // Consider all of the closest point cases.
     // TODO(joemasterjohn): Document or reference written document for the
     // derivations of these coefficients and the algebraic simplifications.
@@ -370,6 +393,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const int face_A_index =
           6 - (result.closest_A.indices[0] + result.closest_A.indices[1] +
                result.closest_A.indices[2]);
+      is_surface =
+          is_surface_vertex(soft_B.soft_mesh(), tet_B, vertex_B_index) &&
+          is_surface_face(soft_A.soft_mesh(), tet_A, face_A_index);
       // Inward normals of the faces adjacent to the vertex of B.
       // The formulation uses the outward normals, but since they only show
       // up as cross products of 2 of these vectors, we can just use compute
@@ -415,6 +441,10 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const int face_B_index =
           6 - (result.closest_B.indices[0] + result.closest_B.indices[1] +
                result.closest_B.indices[2]);
+
+      is_surface =
+          is_surface_vertex(soft_A.soft_mesh(), tet_A, vertex_A_index) &&
+          is_surface_face(soft_B.soft_mesh(), tet_B, face_B_index);
       // Inward normals of the faces adjacent to the vertex of A.
       // The formulation uses the outward normals, but since they only show
       // up as cross products of 2 of these vectors, we can just use compute
@@ -471,6 +501,11 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const int v_B1 = result.closest_B.indices[1];
       const int f_B0 = (v_B0 + 1 + (v_B1 - v_B0) % 2) % 4;
       const int f_B1 = (v_B1 + 1 + (v_B1 - v_B0) % 2) % 4;
+
+      is_surface = (is_surface_face(soft_A.soft_mesh(), tet_A, f_A0) ||
+                   is_surface_face(soft_A.soft_mesh(), tet_A, f_A1)) &&
+                   (is_surface_face(soft_B.soft_mesh(), tet_B, f_B0) ||
+                   is_surface_face(soft_B.soft_mesh(), tet_B, f_B1));
 
       // Outward normals of the faces adjacent to the closest edges,
       // expressed in world.
@@ -536,7 +571,9 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     //     isnan(time_of_contact.back()) ||
     //     zhat_BA_W.back().array().isNaN().any() ||
     //     p_WC.back().array().isNaN().any()) {
-    if (isinf(coefficients.back()) || isnan(coefficients.back()) || coefficients.back() > 1e12) {
+    unused(is_surface);
+    if (!is_surface || isinf(coefficients.back()) ||
+         isnan(coefficients.back()) || coefficients.back() > 1e12) {
       closest_points.pop_back();
       time_of_contact.pop_back();
       p_WC.pop_back();
@@ -715,7 +752,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       const Vector3<T> q_j = p_BoBq_W_vec[j];
       const T a = (p_i - p_j).norm();
       const T b = (q_i - q_j).norm();
-      if(a < 1e-14 && b < 1e-14) {
+      if(a < 1e-6 && b < 1e-6) {
         nearly_duplicates.unite(i, j);
       }
     }

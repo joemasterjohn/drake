@@ -32,7 +32,7 @@ SapHuntCrossleyConstraint<T>::SapHuntCrossleyConstraint(
   if (parameters().speculative) {
     using std::abs;
     const auto& speculative = *parameters().speculative;
-    DRAKE_DEMAND(speculative.volume_factor >= 0.0);
+    //DRAKE_DEMAND(speculative.volume_factor >= 0.0);
     DRAKE_DEMAND(abs(speculative.cos_theta) <= 1.0);
     DRAKE_DEMAND(speculative.distance0 >= 0.0);
     DRAKE_DEMAND(speculative.toc >= 0.0);
@@ -244,10 +244,15 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyImpulse(
   DRAKE_DEMAND(is_speculative());
 
   const T z = data.b - data.a * vn;
-  if (z <= 0.0) return 0.0;
-
+  if (z <= 0.0) {
+    fmt::print("  impulse: z({}) < 0\n    b: {} a: {} vn: {}\n", z, data.b, data.a, vn);
+    return 0.0;
+  }
   const T damping = 1.0 - data.d * vn;
-  if (damping <= 0.0) return 0.0;
+  if (damping <= 0.0) {
+    fmt::print("  impulse: damping < 0\n");
+    return 0.0;
+  }
 
   const T volume = z * z;
   const T gamma = data.c * volume * damping;
