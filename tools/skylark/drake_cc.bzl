@@ -13,11 +13,11 @@ CXX_FLAGS = [
     "-Werror=all",
     "-Werror=attributes",
     "-Werror=cpp",
-    "-Werror=deprecated",
-    "-Werror=deprecated-declarations",
+    #"-Werror=deprecated",
+    #"-Werror=deprecated-declarations",
     "-Werror=ignored-qualifiers",
     "-Werror=missing-declarations",
-    "-Werror=old-style-cast",
+    #"-Werror=old-style-cast",
     "-Werror=overloaded-virtual",
     "-Werror=shadow",
     "-Werror=unused-result",
@@ -46,6 +46,9 @@ CLANG_FLAGS = CXX_FLAGS + [
     "-Wno-missing-template-arg-list-after-template-kw",
     "-Wno-deprecated-declarations",
     "-Wno-shadow",
+    # Intel OneAPI compiler compatibility: don't treat deprecated exception specs as errors
+    # This is needed because Intel's math headers use throw() which is deprecated in C++17+
+    "-Wno-error=deprecated-dynamic-exception-spec",
 ]
 
 # The APPLECLANG_FLAGS will be enabled for all C++ rules in the project when

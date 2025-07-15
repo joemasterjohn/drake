@@ -63,7 +63,7 @@ class SYCLHydroelasticSurface {
   }
 
   // Utility methods
-  size_t num_polygons() const { return area_.size(); }
+  uint32_t num_polygons() const { return area_.size(); }
   bool empty() const { return area_.empty(); }
 
  private:

@@ -41,22 +41,22 @@ class ObjectPlacer {
         layer_height_(layer_height),
         current_z_(initial_height),
         current_x_(-floor_width / 2.0 +
-                   0.15 / 2.0),  // Hard code for sufficient distance of edge
-        current_y_(-floor_depth / 2.0 + 0.15 / 2.0) {}
+                   0.15),  // Hard code for sufficient distance of edge
+        current_y_(-floor_depth / 2.0 + 0.15) {}
 
   Vector3d GetNextPosition() {
     Vector3d position(current_x_, current_y_, current_z_);
 
     // Move to next position in current layer
     current_x_ += object_spacing_;
-    if (current_x_ > floor_width_ / 2.0 - object_spacing_ / 2.0) {
+    if (current_x_ > floor_width_ / 2.0 - 0.15 - object_spacing_ / 2.0) {
       // Move to next row
-      current_x_ = -floor_width_ / 2.0 + object_spacing_ / 2.0;
+      current_x_ = (-floor_width_ / 2.0 + 0.15);
       current_y_ += object_spacing_;
 
-      if (current_y_ > floor_depth_ / 2.0 - object_spacing_ / 2.0) {
+      if (current_y_ > floor_depth_ / 2.0 - 0.15 - object_spacing_ / 2.0) {
         // Move to next layer
-        current_y_ = -floor_depth_ / 2.0 + object_spacing_ / 2.0;
+        current_y_ = (-floor_depth_ / 2.0 + 0.15);
         current_z_ += layer_height_;
       }
     }

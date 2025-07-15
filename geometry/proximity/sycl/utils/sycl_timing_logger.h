@@ -183,7 +183,7 @@ class SyclTimingLogger {
     // Kernel timings
     oss << "  \"kernel_timings\": {\n";
     bool first = true;
-    for (const auto& [kernel_name, _] : kernel_timings_) {
+    for (const auto& [kernel_name, timings] : kernel_timings_) {
       if (!first) oss << ",\n";
       first = false;
       auto stats = GetKernelStats(kernel_name);
@@ -193,6 +193,28 @@ class SyclTimingLogger {
           << "\"max_us\": " << stats.max_time_us << ", "
           << "\"avg_us\": " << stats.avg_time_us << ", "
           << "\"total_us\": " << stats.total_time_us << "}";
+      
+      // Save individual kernel timings to separate txt file
+      if (!path.empty()) {
+        std::string txt_path = path;
+        // Remove .json extension if present and add kernel name
+        if (txt_path.length() > 5 && txt_path.substr(txt_path.length() - 5) == ".json") {
+          txt_path = txt_path.substr(0, txt_path.length() - 5);
+        }
+        txt_path += "_" + kernel_name + ".txt";
+        
+        std::ofstream txt_ofs(txt_path);
+        if (txt_ofs.is_open()) {
+          txt_ofs << "# Kernel: " << kernel_name << std::endl;
+          txt_ofs << "# Format: time_step timing_us" << std::endl;
+          for (size_t i = 0; i < timings.size(); ++i) {
+            txt_ofs << i << " " << timings[i] << std::endl;
+          }
+          txt_ofs.close();
+        } else {
+          std::cerr << "Failed to open file for writing: " << txt_path << std::endl;
+        }
+      }
     }
     oss << "\n  },\n";
     // Event timings

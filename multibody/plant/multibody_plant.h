@@ -5661,6 +5661,11 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   std::vector<std::set<BodyIndex>> FindSubgraphsOfWeldedBodies() const;
 #endif
 
+  void PrintPerformanceStats(const drake::geometry::SceneGraph<T>& scene_graph,
+                             const systems::Context<T>& context,
+                             const std::string& base_json_path,
+                             const double sim_time = 0.0) const;
+
   using internal::MultibodyTreeSystem<T>::is_discrete;
   using internal::MultibodyTreeSystem<T>::EvalPositionKinematics;
   using internal::MultibodyTreeSystem<T>::EvalVelocityKinematics;
@@ -6288,7 +6293,7 @@ class MultibodyPlant : public internal::MultibodyTreeSystem<T> {
   double penetration_allowance_{MultibodyPlantConfig{}.penetration_allowance};
 
   // Switch to use SYCL for hydroelastic contact
-  bool sycl_for_hydroelastic_contact_{false};
+  bool sycl_for_hydroelastic_contact_{true};
 
   // Stribeck model of friction.
   class StribeckModel {

@@ -75,29 +75,18 @@ constexpr std::array<std::array<int, 4>, 16> kMarchingTetsEdgeTable = {
  * Slices a tetrahedron with an equilibrium plane and stores the resulting
  * polygon vertices in shared local memory.
  *
- * @param item SYCL work item for synchronization
- * @param slm Shared local memory accessor for general data
- * @param slm_offset Offset into slm for this work group's data
- * @param slm_polygon Shared local memory accessor for polygon data
- * @param slm_polygon_offset Offset into slm_polygon for this work group's data
- * @param slm_ints Shared local memory accessor for integer data
- * @param slm_ints_offset Offset into slm_ints for this work group's data
- * @param vertex_offset Offset to vertex data in slm
- * @param eq_plane_offset Offset to equilibrium plane data in slm
- * @param random_scratch_offset Offset to scratch space in slm
- * @param polygon_offset Offset to polygon data in slm_polygon
- * @param check_local_item_id Local thread ID within the check
- * @param NUM_THREADS_PER_CHECK Number of threads per collision check
  */
 SYCL_EXTERNAL inline void SliceTetWithEqPlane(
     sycl::nd_item<1> item, const sycl::local_accessor<double, 1>& slm,
-    const size_t slm_offset, const sycl::local_accessor<double, 1>& slm_polygon,
-    const size_t slm_polygon_offset,
-    const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset,
-    const size_t vertex_offset, const size_t eq_plane_offset,
-    const size_t random_scratch_offset, const size_t polygon_offset,
-    const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK) {
-  for (size_t llid = check_local_item_id; llid < 4;
+    const uint32_t slm_offset,
+    const sycl::local_accessor<double, 1>& slm_polygon,
+    const uint32_t slm_polygon_offset,
+    const sycl::local_accessor<int, 1>& slm_ints,
+    const uint32_t slm_ints_offset, const uint32_t vertex_offset,
+    const uint32_t eq_plane_offset, const uint32_t random_scratch_offset,
+    const uint32_t polygon_offset, const uint32_t check_local_item_id,
+    const uint32_t NUM_THREADS_PER_CHECK) {
+  for (uint32_t llid = check_local_item_id; llid < 4;
        llid += NUM_THREADS_PER_CHECK) {
     // Each thread gets 1 vertex of element A in slm
     const double vertex_A_x = slm[slm_offset + vertex_offset + llid * 3 + 0];
@@ -134,7 +123,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
   // memory for other threads
   if (check_local_item_id == 0) {
     int intersection_code = 0;
-    for (size_t llid = 0; llid < 4; llid++) {
+    for (uint32_t llid = 0; llid < 4; llid++) {
       if (slm[slm_offset + random_scratch_offset + llid] > 0) {
         intersection_code |= (1 << llid);
       }
@@ -145,7 +134,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
 
   // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon
   // vertices
-  for (size_t llid = check_local_item_id; llid < 4;
+  for (uint32_t llid = check_local_item_id; llid < 4;
        llid += NUM_THREADS_PER_CHECK) {
     const int edge_index =
         kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
@@ -165,7 +154,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
 // Compute polygon vertices
 // Loop is over x,y,z
 #pragma unroll
-      for (size_t i = 0; i < 3; i++) {
+      for (uint32_t i = 0; i < 3; i++) {
         const double vertex_0 =
             slm[slm_offset + vertex_offset + tet_edge.first * 3 + i];
         const double vertex_1 =
@@ -184,7 +173,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
   // Compute current polygon size by checking number of max values
   int polygon_size = 0;
   if (check_local_item_id == 0) {
-    for (size_t i = 0; i < 4; i++) {
+    for (uint32_t i = 0; i < 4; i++) {
       // TODO - Is just checking x enough? Should be I think
       if (slm_polygon[slm_polygon_offset + polygon_offset + i * 3 + 0] !=
           std::numeric_limits<double>::max()) {
@@ -199,15 +188,16 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlane(
 // returned upon invalid geometry calcs (no surfaces, no areas etc)
 SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
     sycl::nd_item<1> item, const sycl::local_accessor<double, 1>& slm,
-    const size_t slm_offset, const sycl::local_accessor<double, 1>& slm_polygon,
-    const size_t slm_polygon_offset,
-    const sycl::local_accessor<int, 1>& slm_ints, const size_t slm_ints_offset,
-    const size_t vertex_offset, const size_t eq_plane_offset,
-    const size_t random_scratch_offset, const size_t polygon_offset,
-    const size_t check_local_item_id, const size_t NUM_THREADS_PER_CHECK,
-    bool valid_thread) {
+    const uint32_t slm_offset,
+    const sycl::local_accessor<double, 1>& slm_polygon,
+    const uint32_t slm_polygon_offset,
+    const sycl::local_accessor<int, 1>& slm_ints,
+    const uint32_t slm_ints_offset, const uint32_t vertex_offset,
+    const uint32_t eq_plane_offset, const uint32_t random_scratch_offset,
+    const uint32_t polygon_offset, const uint32_t check_local_item_id,
+    const uint32_t NUM_THREADS_PER_CHECK, bool valid_thread) {
   if (valid_thread) {
-    for (size_t llid = check_local_item_id; llid < 4;
+    for (uint32_t llid = check_local_item_id; llid < 4;
          llid += NUM_THREADS_PER_CHECK) {
       // Each thread gets 1 vertex of element A in slm
       const double vertex_A_x = slm[slm_offset + vertex_offset + llid * 3 + 0];
@@ -245,7 +235,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
   // memory for other threads
   if (check_local_item_id == 0 && valid_thread) {
     int intersection_code = 0;
-    for (size_t llid = 0; llid < 4; llid++) {
+    for (uint32_t llid = 0; llid < 4; llid++) {
       if (slm[slm_offset + random_scratch_offset + llid] > 0) {
         intersection_code |= (1 << llid);
       }
@@ -257,7 +247,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
   // Now go back to using NUM_THREADS_PER_CHECK threads to compute the polygon
   // vertices
   if (valid_thread) {
-    for (size_t llid = check_local_item_id; llid < 4;
+    for (uint32_t llid = check_local_item_id; llid < 4;
          llid += NUM_THREADS_PER_CHECK) {
       const int edge_index =
           kMarchingTetsEdgeTable[slm_ints[slm_ints_offset]][llid];
@@ -277,7 +267,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
 // Compute polygon vertices
 // Loop is over x,y,z
 #pragma unroll
-        for (size_t i = 0; i < 3; i++) {
+        for (uint32_t i = 0; i < 3; i++) {
           const double vertex_0 =
               slm[slm_offset + vertex_offset + tet_edge.first * 3 + i];
           const double vertex_1 =
@@ -297,7 +287,7 @@ SYCL_EXTERNAL inline void SliceTetWithEqPlaneNoReturn(
   if (check_local_item_id == 0 && valid_thread) {
     // Compute current polygon size by checking number of max values
     int polygon_size = 0;
-    for (size_t i = 0; i < 4; i++) {
+    for (uint32_t i = 0; i < 4; i++) {
       // TODO - Is just checking x enough? Should be I think
       if (slm_polygon[slm_polygon_offset + polygon_offset + i * 3 + 0] !=
           std::numeric_limits<double>::max()) {

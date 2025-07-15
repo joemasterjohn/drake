@@ -33,6 +33,7 @@ drake_cc_binary(
         "--realtime_rate=0.0",
     ],
     deps = [
+        "//geometry/render:render_engine",
         "//multibody/parsing",
         "//multibody/plant:multibody_plant_config_functions",
         "//systems/analysis:simulator",
@@ -40,8 +41,33 @@ drake_cc_binary(
         "//systems/analysis:simulator_gflags",
         "//systems/analysis:simulator_print_stats",
         "//systems/framework:diagram",
+        "//systems/lcm:lcm_buses",
+        "//systems/lcm:lcm_config_functions",
         "//systems/primitives",
+        "//systems/sensors:camera_config",
+        "//systems/sensors:camera_config_functions",
+        "//systems/sensors:image_writer",
         "//visualization",
+        "@gflags",
+    ],
+)
+
+drake_cc_binary(
+    name = "export_hydroelastic_meshes_to_vtk",
+    srcs = ["export_hydroelastic_meshes_to_vtk.cc"],
+    data = [
+        ":models",
+        "@drake_models//:wsg_50_description",
+    ],
+    deps = [
+        "//common:default_scalars",
+        "//geometry/proximity:mesh_to_vtk",
+        "//geometry/proximity:volume_to_surface_mesh",
+        "//geometry:scene_graph_inspector",
+        "//multibody/parsing",
+        "//multibody/plant:multibody_plant_config_functions",
+        "//systems/analysis:simulator",
+        "//systems/framework",
         "@gflags",
     ],
 )

@@ -7,7 +7,21 @@ load(
 
 package(default_visibility = ["//visibility:private"])
 
-
+drake_cc_library(
+       name = "sycl_memory_manager",
+       srcs = ["utils/sycl_memory_manager.cc"],
+       hdrs = ["utils/sycl_memory_manager.h", "utils/sycl_kernel_utils.h", "utils/sycl_bvh_structs.h"],
+       visibility = ["//geometry:__pkg__"],
+       copts = [
+          "-fsycl",
+          "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
+          "-fno-openmp",
+        ],
+       deps = [
+           "//common:essential",
+           "//geometry:geometry_ids",
+       ],
+)
 drake_cc_library(
     name = "sycl_hydroelastic_surface",
     srcs = ["sycl_hydroelastic_surface.cc"],
@@ -21,13 +35,43 @@ drake_cc_library(
 )
 
 drake_cc_library(
-    name = "sycl_proximity_engine",
-    srcs = ["sycl_proximity_engine.cc"],
-    hdrs = ["sycl_proximity_engine.h", "utils/sycl_tetrahedron_slicing.h", "utils/sycl_equilibrium_plane.h", "utils/sycl_hydroelastic_surface_creator.h", "utils/sycl_memory_manager.h", "utils/sycl_contact_polygon.h", "utils/sycl_device_types.h", "utils/sycl_timing_logger.h", "utils/sycl_naive_broad_phase.h"],
+    name = "sycl_bvh",
+    srcs = ["bvh/sycl_bvh.cc"],
+    hdrs = ["bvh/sycl_bvh.h", "utils/sycl_kernel_utils.h"],
     visibility = ["//geometry:__pkg__"],
     copts = [
         "-fsycl",
         "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
+        "--cuda-gpu-arch=sm_89",
+        "-fno-openmp",
+        #"-gline-tables-only",
+        "-DEIGEN_DONT_VECTORIZE",
+        "-I/opt/intel/oneapi/dpl/2022.8/include",
+        "-Wno-old-style-cast",
+        "-Wno-logical-op-parentheses",
+        "-Wno-unknown-pragmas",
+        "-Wno-deprecated-copy-with-dtor",
+        "-Wno-deprecated-copy-with-user-provided-copy",
+        "-Wno-sign-compare",
+        "-Wno-unused-but-set-variable",
+        "-Wno-c++23-lambda-attributes"
+    ],
+    deps = [
+        "//geometry:geometry_ids",
+        "//common:essential",
+        ":sycl_memory_manager",
+    ]
+)
+
+drake_cc_library(
+    name = "sycl_proximity_engine",
+    srcs = ["sycl_proximity_engine.cc"],
+    hdrs = ["sycl_proximity_engine.h"] + glob(["utils/sycl_*.h"]),
+    visibility = ["//geometry:__pkg__"],
+    copts = [
+        "-fsycl",
+        "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
+        "-fno-openmp",
         #"-Xsycl-target-backend=nvptx64-nvidia-cuda -arch=sm_89",
         "--cuda-gpu-arch=sm_89",
         #"-Xsycl-target-backend=nvptx64-nvidia-cuda",
@@ -43,6 +87,7 @@ drake_cc_library(
         "-Wno-deprecated-copy-with-user-provided-copy",
         "-Wno-sign-compare",
         "-Wno-unused-but-set-variable",
+        "-Wno-c++23-lambda-attributes"
     ],
     linkopts = [
         "-fsycl",
@@ -54,6 +99,8 @@ drake_cc_library(
         "//geometry:geometry_ids",
         "//math:geometric_transform",
         ":sycl_hydroelastic_surface",
+        ":sycl_memory_manager",
+        ":sycl_bvh"
     ]
 )
 
@@ -63,6 +110,7 @@ drake_cc_googletest(
     copts = [
         "-fsycl",
         "-fsycl-targets=spir64,nvptx64-nvidia-cuda",
+        "-fno-openmp",
         "-DEIGEN_DONT_VECTORIZE",
     ],
     linkopts = [

@@ -13,6 +13,7 @@
 #include <fcl/fcl.h>
 #include <fmt/format.h>
 
+#include "drake/common/cpu_timing_logger.h"
 #include "drake/common/default_scalars.h"
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/geometry_ids.h"
@@ -770,8 +771,11 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
   ComputeContactSurfaces(
       HydroelasticContactRepresentation representation,
       const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
-    std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
-
+    std::vector<SortedPair<GeometryId>> candidates;
+    {
+      DRAKE_CPU_SCOPED_TIMER("FCLBroadPhase");
+      candidates = FindCollisionCandidates();
+    }
     vector<ContactSurface<T>> surfaces;
     // All these quantities are aliased in the calculator.
     hydroelastic::ContactCalculator<T> calculator{
@@ -802,10 +806,58 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
       HydroelasticContactRepresentation representation,
       const unordered_map<GeometryId, RigidTransform<T>>& X_WGs) const {
     if (!sycl_engine_) {
-      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
-          hydroelastic_geometries_.SoftGeometries());
-    }
+      std::unordered_map<GeometryId, Vector3<double>> total_lower_map;
+      std::unordered_map<GeometryId, Vector3<double>> total_upper_map;
 
+      for (const auto& [id, soft_geometry] :
+           hydroelastic_geometries_.SoftGeometries()) {
+        CollisionObjectd* object = nullptr;
+        auto dyn_it = dynamic_objects_.find(id);
+        if (dyn_it != dynamic_objects_.end()) {
+          object = dyn_it->second.get();
+        } else {
+          auto anch_it = anchored_objects_.find(id);
+          if (anch_it != anchored_objects_.end()) {
+            object = anch_it->second.get();
+          }
+        }
+        if (object) {
+          total_lower_map[id] = object->getAABB().min_;
+          total_upper_map[id] = object->getAABB().max_;
+        } else {
+          // Something went wrong since the object has to be in either dynamic
+          // or anchored objects
+          throw std::logic_error(
+              fmt::format("Geometry with id {} has a hydroelastic "
+                          "representation but was not found in "
+                          "either dynamic or anchored objects.",
+                          id));
+        }
+      }
+      fmt::print("Num. Rigid geometries {} \n",
+                 hydroelastic_geometries_.RigidGeometries().size());
+      fmt::print("Num. Soft geometries {} \n",
+                 hydroelastic_geometries_.SoftGeometries().size());
+      sycl_engine_ = std::make_unique<sycl_impl::SyclProximityEngine>(
+          hydroelastic_geometries_.SoftGeometries(), total_lower_map,
+          total_upper_map);
+    }
+    std::vector<SortedPair<GeometryId>> candidates;
+    {
+      DRAKE_CPU_SCOPED_TIMER("FCLBroadPhase");
+      candidates = FindCollisionCandidates();
+    }
+    std::vector<SortedPair<GeometryId>> supported_candidates;
+    std::copy_if(
+        candidates.begin(), candidates.end(),
+        std::back_inserter(supported_candidates), [this](const auto& pair) {
+          auto typeA = hydroelastic_geometries_.hydroelastic_type(pair.first());
+          auto typeB =
+              hydroelastic_geometries_.hydroelastic_type(pair.second());
+          return typeA == HydroelasticType::kSoft &&
+                 typeB == HydroelasticType::kSoft;
+        });
+    sycl_engine_->UpdateCollisionCandidates(supported_candidates);
     return sycl_engine_->ComputeSYCLHydroelasticSurface(X_WGs);
   }
 
@@ -836,8 +888,11 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
       std::vector<PenetrationAsPointPair<T>>* point_pairs) const {
     DRAKE_DEMAND(surfaces != nullptr);
     DRAKE_DEMAND(point_pairs != nullptr);
-
-    std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
+    std::vector<SortedPair<GeometryId>> candidates;
+    {
+      DRAKE_CPU_SCOPED_TIMER("FCLBroadPhase");
+      candidates = FindCollisionCandidates();
+    }
 
     // All these quantities are aliased.
     hydroelastic::ContactCalculator<T> calculator{
