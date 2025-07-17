@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <sdf version="1.7" xmlns:drake="http://drake.mit.edu">
   <model name="plate_and_spatula">
-    <link name="table">
+    <!-- <link name="table">
       <inertial>
         <inertia>
           <ixx>0.12003</ixx>
@@ -41,8 +41,9 @@
       <parent>world</parent>
       <child>table</child>
     </joint>
+    -->
 
-    <link name="plate_8in">
+    <link name="plate">
       <pose>0 0 0 0 0 0</pose>
       <inertial>
         <pose>-2.8414e-08 -1.0184e-08 0.0073696 0 0 0</pose>
@@ -60,7 +61,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.15 0.15 0.003</size>
+            <size>0.15 0.02 0.003</size>
           </box>
         </geometry>
         <material>
@@ -71,11 +72,20 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.15 0.15 0.003</size>
+            <size>0.15 0.02 0.003</size>
           </box>
         </geometry>
+        <drake:proximity_properties>
+          <drake:hydroelastic_modulus>1e8</drake:hydroelastic_modulus>
+          <drake:compliant_hydroelastic/>
+        </drake:proximity_properties>
       </collision>
     </link>
+    <joint name="plate_joint" type="fixed">
+      <parent>world</parent>
+      <child>plate</child>
+    </joint>
+
 
     <link name="spatula">
       <pose>0 0 0.01 0 0 0</pose>

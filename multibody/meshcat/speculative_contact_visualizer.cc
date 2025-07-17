@@ -61,21 +61,28 @@ void SpeculativeContactVisualizer::Update(
       Eigen::Matrix3Xd end_Q = Eigen::Matrix3Xd::Zero(3, num_points);
       Eigen::Matrix3Xd start_normals = Eigen::Matrix3Xd::Zero(3, num_points);
       Eigen::Matrix3Xd end_normals = Eigen::Matrix3Xd::Zero(3, num_points);
+      Eigen::Matrix3Xd start_force = Eigen::Matrix3Xd::Zero(3, num_points);
+      Eigen::Matrix3Xd end_force = Eigen::Matrix3Xd::Zero(3, num_points);
 
       Rgba color_PQ(0.3, 0.6, 0.3, 1.0);
       Rgba color_normal(0.6, 0.2, 0.2, 1.0);
+      Rgba color_force(0.2, 0.2, 0.6, 1.0);
 
       for (int i = 0; i < num_points; ++i) {
         start_P.col(i) = item.p_WAp[i];
         end_Q.col(i) = item.p_WBq[i];
         start_normals.col(i) = item.p_WC[i];
         end_normals.col(i) = start_normals.col(i) - 0.005 * item.nhat_BA_W[i];
+        start_force.col(i) = item.p_WC[i];
+        end_force.col(i) = start_force.col(i) - item.f_AC_W[i];
       }
 
       meshcat_->SetLineSegments(path + "/speculative_PQ", start_P, end_Q, 2.0,
                                color_PQ);
       meshcat_->SetLineSegments(path + "/speculative_normals", start_normals,
                                end_normals, 2.0, color_normal);
+      meshcat_->SetLineSegments(path + "/speculative_force", start_force,
+                                end_force, 2.0, color_force);
     } else {
       status.active = false;
     }

@@ -13,8 +13,8 @@ namespace drake {
 namespace multibody {
 namespace internal {
 
-#define print_eigen(X) {} (fmt::print("({}): {}\n", (#X), fmt_eigen((X).transpose())))
-#define print_v(X) {} (fmt::print("({}): {}\n", (#X), (X)))
+#define print_eigen(X) {} //(fmt::print("({}): {}\n", (#X), fmt_eigen((X).transpose())))
+#define print_v(X) {} //(fmt::print("({}): {}\n", (#X), (X)))
 
 using drake::geometry::ContactSurface;
 using drake::geometry::GeometryId;
@@ -647,8 +647,9 @@ void DiscreteUpdateManager<T>::CalcContactResultsForSpeculativeContact(
       const Vector3<T> f_BC_W = R_WC * f_BC_C;
       const Vector3<T> f_AC_W = -f_BC_W;
 
-      print_v(fn(icontact));
-      // fmt::print("\n");
+      fmt::print("fn(icontact): {}\n", fn(icontact));
+      fmt::print("vn(icontact): {}\n", vn(icontact));
+      fmt::print("\n");
 
       contact_results_speculative->emplace_back(
           bodyA_index, bodyB_index, geometryA_id, geometryB_id, p_WAp, p_WBq,
@@ -887,6 +888,11 @@ void DiscreteUpdateManager<T>::
   fmt::print("t: {}\n", context.get_time());
   const std::vector<SpeculativeContactSurface<T>>& speculative_surfaces =
       EvalGeometryContactData(context).get().speculative_surfaces;
+  // if(context.get_time() == 0.19) {
+  //   DRAKE_DEMAND(ssize(speculative_surfaces) == 1);
+  //   speculative_surfaces[0].SaveToFile("surface_0.18.txt");
+  // }
+
 
   int num_hydro_contacts = 0;
   for (const auto& s : speculative_surfaces) {
@@ -1008,7 +1014,7 @@ void DiscreteUpdateManager<T>::
       // The expression below is mathematically equivalent to kappa =
       // kappaA*kappaB/(kappaA+gB) but it has the advantage of also being valid
       // if one of the gradients is infinity.
-      const T kappa = 1.0 / (1.0 / kappaA + 1.0 / kappaB);
+      const T kappa = 1.0e-2 / (1.0 / kappaA + 1.0 / kappaB);
       print_v(kappa);
 
       // Estimate of the (speculative) contact point position at ToC in the
@@ -1077,10 +1083,11 @@ void DiscreteUpdateManager<T>::
       const ClosestPointResult<T>& cpr = s.closest_points()[face];
       using std::sqrt;
       using std::min;
+      using std::abs;
       // N.B. Speculative constraints use abs(cos_theta)), and therefore here we
       // can use nhat_BA_W or nhat_AB_W.
       const T cos_theta = min(nhat_BA_W.dot(zhat_BA_W), 1.0);
-      const T distance = sqrt(cpr.squared_dist);
+      const T distance = sqrt(cpr.squared_dist) * abs(cos_theta);
 
       print_v(distance);
       print_v(cos_theta);

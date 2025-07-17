@@ -18,7 +18,7 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
     std::vector<Vector3<T>> grad_eA_W, std::vector<Vector3<T>> grad_eB_W,
     std::vector<ClosestPointResult<T>> closest_points,
     std::vector<std::pair<int, int>> element_pairs,
-    std::vector<T> effective_radius)
+    std::vector<T> effective_radius, std::vector<Vector3<T>> v_W_ApBq)
     : id_A_(id_A),
       id_B_(id_B),
       p_WC_(std::move(p_WC)),
@@ -32,7 +32,8 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
       grad_eB_W_(std::move(grad_eB_W)),
       closest_points_(std::move(closest_points)),
       element_pairs_(std::move(element_pairs)),
-      effective_radius_(std::move(effective_radius)) {
+      effective_radius_(std::move(effective_radius)),
+      v_W_ApBq_(std::move(v_W_ApBq)) {
   const int num_contact_points = ssize(p_WC_);
   DRAKE_DEMAND(num_contact_points == ssize(p_AoAp_W_));
   DRAKE_DEMAND(num_contact_points == ssize(p_BoBq_W_));
@@ -45,6 +46,7 @@ SpeculativeContactSurface<T>::SpeculativeContactSurface(
   DRAKE_DEMAND(num_contact_points == ssize(closest_points_));
   // DRAKE_DEMAND(num_contact_points == ssize(element_pairs_));
   DRAKE_DEMAND(num_contact_points == ssize(effective_radius_));
+  DRAKE_DEMAND(num_contact_points == ssize(v_W_ApBq_));
 }
 
 template <typename T>
@@ -169,8 +171,10 @@ std::string SpeculativeContactSurface<T>::ToString(int i) const {
                        result.closest_B.indices[1],
                        result.closest_B.indices[2]);
     out << fmt::format("{} ", result.squared_dist);
-    out << fmt::format("{} {}\n", element_pairs()[i].first,
+    out << fmt::format("{} {} ", element_pairs()[i].first,
                        element_pairs()[i].second);
+    out << fmt::format("{} {} {}\n", v_W_ApBq()[i](0), v_W_ApBq()[i](1),
+                       v_W_ApBq()[i](2));
     return out.str();
   }
 }
@@ -235,8 +239,10 @@ void SpeculativeContactSurface<T>::SaveToFile(
                          result.closest_B.indices[1],
                          result.closest_B.indices[2]);
       out << fmt::format("{} ", result.squared_dist);
-      out << fmt::format("{} {}\n", element_pairs()[i].first,
+      out << fmt::format("{} {} ", element_pairs()[i].first,
                          element_pairs()[i].second);
+      out << fmt::format("{} {} {}\n", v_W_ApBq()[i](0), v_W_ApBq()[i](1),
+                         v_W_ApBq()[i](2));
     }
 
     out << "\n";

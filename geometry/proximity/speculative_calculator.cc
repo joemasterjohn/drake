@@ -187,6 +187,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   std::vector<ClosestPointResult<T>> closest_points;
   std::vector<std::pair<int, int>> valid_element_pairs;
   std::vector<T> effective_radius;
+  std::vector<Vector3<T>> v_W_ApBq_array;
 
   auto start = std::chrono::high_resolution_clock::now();
   std::vector<std::pair<int, int>> element_pairs =
@@ -222,6 +223,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   closest_points.reserve(element_pairs.size());
   valid_element_pairs.reserve(element_pairs.size());
   effective_radius.reserve(element_pairs.size());
+  v_W_ApBq_array.reserve(element_pairs.size());
 
   // For each element pair compute the necessary data.
   for (const auto& [tet_A, tet_B] : element_pairs) {
@@ -294,20 +296,22 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     const T tc = length_BqAp / v_n;
 
-    if (tc < 0 || tc > 1.1 * dt) {
+    // FILTERING: Time of Contact
+    if (tc < 0 && tc < 1.1 * dt) {
       closest_points.pop_back();
       continue;
     }
 
-    // cos(theta) where theta is the angle between zhat_BqAp_W and v_W_ApBq
-    const T cos_theta = v_n / v_W_ApBq.norm();
-    constexpr double cos_theta_threshold = std::cos(M_PI * 90.0 / 180.0);
+    // // FILTERING: zhat vs. v
+    // // cos(theta) where theta is the angle between zhat_BqAp_W and v_W_ApBq
+    // const T cos_theta = v_n / v_W_ApBq.norm();
+    // constexpr double cos_theta_threshold = std::cos(M_PI * 90.0 / 180.0);
 
-    using std::abs;
-    if(cos_theta < cos_theta_threshold) {
-      closest_points.pop_back();
-      continue;
-    }
+    // using std::abs;
+    // if(cos_theta < cos_theta_threshold) {
+    //   closest_points.pop_back();
+    //   continue;
+    // }
 
     // Get the gradient of the pressure field on each tet, and re-express in
     // world.
@@ -341,11 +345,24 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
       closest_points.pop_back();
       continue;
     }
-    constexpr double cos_alpha_threshold = std::cos(M_PI * 45.0 / 180.0);
-    if (abs(zhat_BqAp_W.dot(nhat / nhat_norm)) < cos_alpha_threshold) {
-      closest_points.pop_back();
-      continue;
-    }
+
+    // FILTERING: zhat vs. v
+    // cos(theta) where theta is the angle between zhat_BqAp_W and v_W_ApBq
+    // const T cos_theta = (nhat / nhat_norm).dot(v_W_ApBq / v_W_ApBq.norm());
+    // constexpr double cos_theta_threshold = std::cos(M_PI * 30.0 / 180.0);
+
+    // using std::abs;
+    // if(cos_theta < cos_theta_threshold) {
+    //   closest_points.pop_back();
+    //   continue;
+    // }
+
+    // FILTERING: angle between zhat/nhat
+    // constexpr double cos_alpha_threshold = std::cos(M_PI * 10.0 / 180.0);
+    // if (zhat_BqAp_W.dot(nhat / nhat_norm) < cos_alpha_threshold) {
+    //   closest_points.pop_back();
+    //   continue;
+    // }
 
     time_of_contact.emplace_back(tc);
     grad_eA_W.emplace_back(gA_W);
@@ -567,11 +584,15 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
     // just ignore the problematic pairs.
     using std::isinf;
     using std::isnan;
+
+    // FILTERING: too large coefficient (Joe: this probably needs to go away
+    //            because we'll just use the representative spheres.)
     // if (isinf(coefficients.back()) || isnan(coefficients.back()) ||
     //     isnan(time_of_contact.back()) ||
     //     zhat_BA_W.back().array().isNaN().any() ||
     //     p_WC.back().array().isNaN().any()) {
-    unused(is_surface);
+
+    // FILTERING: only surface elements
     if (!is_surface) {// || isinf(coefficients.back()) ||
          // isnan(coefficients.back()) || coefficients.back() > 1e12) {
       closest_points.pop_back();
@@ -599,6 +620,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
 
     // Add the element pair to the valid element pairs.
     valid_element_pairs.emplace_back(std::make_pair(tet_A, tet_B));
+    v_W_ApBq_array.emplace_back(v_W_ApBq);
   }
 
   end = std::chrono::high_resolution_clock::now();
@@ -762,7 +784,7 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
   speculative_surfaces->emplace_back(
       id_A, id_B, p_WC, p_AoAp_W_vec, p_BoBq_W_vec, time_of_contact, zhat_BA_W,
       coefficients, nhat_BA_W, grad_eA_W, grad_eB_W, closest_points,
-      valid_element_pairs, effective_radius);
+      valid_element_pairs, effective_radius, v_W_ApBq_array);
 }
 
 template <typename T>

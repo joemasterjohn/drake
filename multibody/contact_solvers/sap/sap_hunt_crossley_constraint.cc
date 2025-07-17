@@ -245,12 +245,12 @@ T SapHuntCrossleyConstraint<T>::CalcSpeculativeHuntCrossleyImpulse(
 
   const T z = data.b - data.a * vn;
   if (z <= 0.0) {
-    fmt::print("  impulse: z({}) < 0\n    b: {} a: {} vn: {}\n", z, data.b, data.a, vn);
+    //fmt::print("  impulse: z({}) < 0\n    b: {} a: {} vn: {}\n", z, data.b, data.a, vn);
     return 0.0;
   }
   const T damping = 1.0 - data.d * vn;
   if (damping <= 0.0) {
-    fmt::print("  impulse: damping < 0\n");
+    //fmt::print("  impulse: damping < 0\n");
     return 0.0;
   }
 

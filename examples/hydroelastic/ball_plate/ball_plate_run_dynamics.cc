@@ -177,87 +177,11 @@ int do_main() {
     meshcat->StartRecording();
     simulator->Initialize();
     common::MaybePauseForUser();
-
-    double t = 0;
-    while (t <= FLAGS_simulation_time) {
-      if (plant.use_speculative()) {
-        // Visualize the speculative contact data.
-        const GeometryContactData<double>& contact_data =
-            plant.EvalGeometryContactData(plant_context);
-        if (contact_data.get().speculative_surfaces.size() > 0) {
-          const SpeculativeContactSurface<double>& speculative_surface =
-              contact_data.get().speculative_surfaces[0];
-
-          const int num_points = speculative_surface.num_contact_points();
-          int num_VF = 0;
-          int num_EE = 0;
-          for (int i = 0; i < num_points; ++i) {
-            if (speculative_surface.closest_points()[i].closest_A.type ==
-                ClosestPointType::Edge) {
-              ++num_EE;
-            } else {
-              ++num_VF;
-            }
-          }
-
-          if (num_points > 0) {
-            Eigen::Matrix3Xd start_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-            Eigen::Matrix3Xd end_VF = Eigen::Matrix3Xd::Zero(3, num_VF);
-            Eigen::Matrix3Xd start_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-            Eigen::Matrix3Xd end_EE = Eigen::Matrix3Xd::Zero(3, num_EE);
-
-            Eigen::Matrix3Xd start_normals =
-                Eigen::Matrix3Xd::Zero(3, num_points);
-            Eigen::Matrix3Xd end_normals =
-                Eigen::Matrix3Xd::Zero(3, num_points);
-
-            Rgba color_VF(0.3, 0.6, 0.3, 1.0);
-            Rgba color_EE(0.3, 0.3, 0.6, 1.0);
-            Rgba color_normal(0.6, 0.2, 0.2, 1.0);
-            int index_VF = 0;
-            int index_EE = 0;
-
-            for (int i = 0; i < num_points; ++i) {
-              if (speculative_surface.closest_points()[i].closest_A.type ==
-                  ClosestPointType::Edge) {
-                start_EE.col(index_EE) =
-                    speculative_surface.closest_points()[i].closest_A.p;
-                end_EE.col(index_EE) =
-                    speculative_surface.closest_points()[i].closest_B.p;
-                ++index_EE;
-              } else {
-                start_VF.col(index_VF) =
-                    speculative_surface.closest_points()[i].closest_A.p;
-                end_VF.col(index_VF) =
-                    speculative_surface.closest_points()[i].closest_B.p;
-                ++index_VF;
-              }
-              start_normals.col(i) = speculative_surface.p_WC()[i];
-              end_normals.col(i) = start_normals.col(i) +
-                                   0.005 * speculative_surface.nhat_BA_W()[i];
-            }
-
-            meshcat->SetLineSegments("speculative_surface_VF", start_VF, end_VF,
-                                     2.0, color_VF);
-            meshcat->SetLineSegments("speculative_surface_EE", start_EE, end_EE,
-                                     2.0, color_EE);
-            meshcat->SetLineSegments("speculative_normals", start_normals,
-                                     end_normals, 2.0, color_normal);
-          }
-        }
-      }
-
-      simulator->AdvanceTo(t);
-
-      t += FLAGS_dt;
-    }
+    simulator->AdvanceTo(FLAGS_simulation_time);
     meshcat->StopRecording();
     meshcat->PublishRecording();
-
     common::MaybePauseForUser();
-  }
-
-  if (FLAGS_mode == "data") {
+  } else if (FLAGS_mode == "data") {
     simulator->Initialize();
 
     std::ofstream out(FLAGS_data_file);

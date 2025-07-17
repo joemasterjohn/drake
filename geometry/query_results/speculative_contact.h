@@ -50,7 +50,7 @@ class SpeculativeContactSurface {
       std::vector<Vector3<T>> grad_eA_W, std::vector<Vector3<T>> grad_eB_W,
       std::vector<ClosestPointResult<T>> closest_points,
       std::vector<std::pair<int, int>> element_pairs,
-      std::vector<T> effective_radius);
+      std::vector<T> effective_radius, std::vector<Vector3<T>> v_W_ApBq);
 
   ~SpeculativeContactSurface();
 
@@ -107,6 +107,8 @@ class SpeculativeContactSurface {
     return effective_radius_;
   }
 
+  const std::vector<Vector3<T>>& v_W_ApBq() const { return v_W_ApBq_; }
+
   std::string ToString() const;
   std::string ToString(int i) const;
 
@@ -129,6 +131,7 @@ class SpeculativeContactSurface {
   std::vector<ClosestPointResult<T>> closest_points_;
   std::vector<std::pair<int, int>> element_pairs_;
   std::vector<T> effective_radius_;
+  std::vector<Vector3<T>> v_W_ApBq_;
 };
 
 }  // namespace internal

@@ -1,8 +1,7 @@
 <?xml version="1.0"?>
 <sdf version="1.7" xmlns:drake="http://drake.mit.edu">
   <model name="plate_and_spatula">
-    <!-- The table is fixed to the world -->
-    <link name="table">
+    <!-- <link name="table">
       <inertial>
         <inertia>
           <ixx>0.12003</ixx>
@@ -42,8 +41,9 @@
       <parent>world</parent>
       <child>table</child>
     </joint>
+    -->
 
-    <link name="plate_8in">
+    <link name="plate">
       <pose>0 0 0 0 0 0</pose>
       <inertial>
         <pose>-2.8414e-08 -1.0184e-08 0.0073696 0 0 0</pose>
@@ -61,7 +61,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.15 0.15 0.003</size>
+            <size>0.15 0.08 0.003</size>
           </box>
         </geometry>
         <material>
@@ -72,12 +72,17 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.15 0.15 0.003</size>
+            <size>0.15 0.08 0.003</size>
           </box>
         </geometry>
       </collision>
     </link>
-    
+    <joint name="plate_joint" type="fixed">
+      <parent>world</parent>
+      <child>plate</child>
+    </joint>
+
+
     <link name="spatula">
       <pose>0 0 0.01 0 0 0</pose>
       <inertial>
@@ -112,7 +117,7 @@
         </geometry>
       </collision>
     </link>
-
+<!-- 
     <link name="spatula2">
       <pose>0 0 0.01 0 0 0</pose>
       <inertial>
@@ -147,6 +152,76 @@
         </geometry>
       </collision>
     </link>
+
+    <link name="spatula3">
+      <pose>0 0 0.01 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>3.4083e-06</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00018757</iyy>
+          <iyz>0</iyz>
+          <izz>0.00019083</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.15 0.02 0.003</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.15 0.02 0.003</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="spatula4">
+      <pose>0 0 0.01 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>3.4083e-06</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00018757</iyy>
+          <iyz>0</iyz>
+          <izz>0.00019083</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.15 0.02 0.003</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.15 0.02 0.003</size>
+          </box>
+        </geometry>
+      </collision>
+    </link> -->
 
   </model>
 </sdf>

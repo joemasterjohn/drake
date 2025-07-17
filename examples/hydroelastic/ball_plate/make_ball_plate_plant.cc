@@ -144,9 +144,9 @@ void AddRollingBallBodies(double radius, double mass,
   const double lx = 0.5;
   const double ly = 0.5;
   const double lz = 0.2;
-  const int num_tiles_x = 6;
-  const int num_tiles_y = 3;
-  const int num_tiles_z = 2;
+  const int num_tiles_x = 1;
+  const int num_tiles_y = 1;
+  const int num_tiles_z = 1;
   Box box(lx, ly, lz);
   const Vector4<double> grey(0.5, 0.5, 0.7, 0.8);
   const RigidBody<double>& tile = plant->AddRigidBody(
