@@ -197,6 +197,7 @@ class MeshFieldLinear {
         DRAKE_DEMAND(mesh->num_elements() ==
                      static_cast<int>(values_at_Mo_.size()));
       }
+      CalcVertexAndEdgeGradients();
     }
     CalcMinAndMaxValues();
   }
@@ -226,6 +227,7 @@ class MeshFieldLinear {
 
     CalcValueAtMeshOriginForAllElements();
     CalcMinAndMaxValues();
+    CalcVertexAndEdgeGradients();
   }
 
   /** @returns true iff the gradient field could not be computed, and the mesh
@@ -362,6 +364,38 @@ class MeshFieldLinear {
     return gradients_[e];
   }
 
+  Vector3<T> EvaluateVertexGradient(int v) const {
+    if (is_gradient_field_degenerate_) {
+      throw std::runtime_error("Gradient field is degenerate.");
+    }
+    if (vertex_gradients_.size() == 0) {
+      throw std::runtime_error("Gradient vector was not calculated.");
+    }
+    if (v < 0 || v > mesh_->num_vertices()) {
+      throw std::runtime_error(
+          fmt::format("EvaluateVertexGradient: vertex with index {} is out of "
+                      "bounds [0, {}).",
+                      v, mesh_->num_vertices()));
+    }
+    return vertex_gradients_[v];
+  }
+
+  Vector3<T> EvaluateEdgeGradient(int v0, int v1) const {
+    if (is_gradient_field_degenerate_) {
+      throw std::runtime_error("Gradient field is degenerate.");
+    }
+    if (edge_gradients_.size() == 0) {
+      throw std::runtime_error("Gradient vector was not calculated.");
+    }
+    const SortedPair<int> p(v0, v1);
+    if (!edge_gradients_.contains(p)) {
+      throw std::runtime_error(fmt::format(
+          "EvaluateEdgeGradient: edge ({}, {}) does not exist in this mesh.",
+          v0, v1));
+    }
+    return edge_gradients_.at(p);
+  }
+
   /** (Advanced) Transforms this mesh field to be measured and expressed in
    frame N (from its original frame M). See the class documentation for further
    details.
@@ -454,31 +488,104 @@ class MeshFieldLinear {
     }
   }
 
-  void CalcMinAndMaxValues() {
-    min_values_.clear();
-    max_values_.clear();
-    min_values_.reserve(this->mesh().num_elements());
-    max_values_.reserve(this->mesh().num_elements());
-    for (int e = 0; e < this->mesh().num_elements(); ++e) {
-      T min, max;
-      min = max = values_[this->mesh().element(e).vertex(0)];
+  void CalcVertexAndEdgeGradients() {
+    std::vector<T> vertex_neighbor_volume(mesh_->num_vertices(), 0);
+    std::map<SortedPair<int>, T> edge_neighbor_volume;
 
-      for (int i = 1; i < mesh().element(e).num_vertices(); ++i) {
-        min = std::min(min, values_[this->mesh().element(e).vertex(i)]);
-        max = std::max(max, values_[this->mesh().element(e).vertex(i)]);
+    vertex_gradients_.clear();
+    vertex_gradients_.reserve(this->mesh().num_vertices());
+    edge_gradients_.clear();
+
+    const auto calc_volume = [this](int e) {
+      if constexpr (MeshType::kVertexPerElement == 4) {
+        return this->mesh_->CalcTetrahedronVolume(e);
+      } else {
+        return this->mesh_->area(e);
+      }
+    };
+
+    // Accumulate the area/volume weighted gradients for each sub-element.
+    for (int e = 0; e < this->mesh().num_elements(); ++e) {
+      const Vector3<T> grad = gradients_[e];
+      // Area for triangles, volume for tets.
+      const T volume = calc_volume(e);
+      const int num_vertices = mesh_->element(e).num_vertices();
+      for (int i = 0; i < num_vertices; ++i) {
+        const int v = this->mesh().element(e).vertex(i);
+        vertex_gradients_[v] += volume * grad;
+        vertex_neighbor_volume[v] += volume;
       }
 
-      min_values_.emplace_back(min);
-      max_values_.emplace_back(max);
+      if constexpr (MeshType::kVertexPerElement == 4) {
+        for (int i = 0; i < num_vertices; ++i) {
+          const int v0 = this->mesh().element(e).vertex(i);
+          for (int j = i + 1; j < num_vertices; ++j) {
+            const int v1 = this->mesh().element(e).vertex(j);
+            const SortedPair<int> p(v0, v1);
+            if (edge_gradients_.contains(p)) {
+              DRAKE_DEMAND(edge_neighbor_volume.contains(p));
+              edge_gradients_[p] += volume * grad;
+              edge_neighbor_volume[p] += volume;
+            } else {
+              edge_gradients_[p] = volume * grad;
+              edge_neighbor_volume[p] = volume;
+            }
+          }
+        }
+      } else {
+        for (int i = 0; i < num_vertices; ++i) {
+          const int v0 = this->mesh().element(e).vertex(i);
+
+          const int v1 = this->mesh().element(e).vertex((i + 1) % num_vertices);
+          const SortedPair<int> p(v0, v1);
+          if (edge_gradients_.contains(p)) {
+            DRAKE_DEMAND(edge_neighbor_volume.contains(p));
+            edge_gradients_[p] += volume * grad;
+            edge_neighbor_volume[p] += volume;
+          } else {
+            edge_gradients_[p] = volume * grad;
+            edge_neighbor_volume[p] = volume;
+          }
+        }
+      }
+
+      // Normalize the weighted averages.
+      for (int i = 0; i < mesh_->num_vertices(); ++i) {
+        vertex_gradients_[i] /= vertex_neighbor_volume[i];
+      }
+
+      for (const auto& [p, total_volume] : edge_neighbor_volume) {
+        edge_gradients_[p] /= total_volume;
+      }
     }
   }
 
+  void CalcMinAndMaxValues() {
+  min_values_.clear();
+  max_values_.clear();
+  min_values_.reserve(this->mesh().num_elements());
+  max_values_.reserve(this->mesh().num_elements());
+  for (int e = 0; e < this->mesh().num_elements(); ++e) {
+    T min, max;
+    min = max = values_[this->mesh().element(e).vertex(0)];
+
+    for (int i = 1; i < mesh().element(e).num_vertices(); ++i) {
+      min = std::min(min, values_[this->mesh().element(e).vertex(i)]);
+      max = std::max(max, values_[this->mesh().element(e).vertex(i)]);
+    }
+
+    min_values_.emplace_back(min);
+    max_values_.emplace_back(max);
+  }
+}
+
   std::optional<Vector3<T>> MaybeCalcGradientVector(int e) const {
-    // In the case of the PolygonSurfaceMesh, where kVertexPerElement is marked
-    // as "indeterminate" (aka -1), we'll simply use the first three vertices.
-    // If we were to have a PolytopeVolumeMesh (i.e., a volume mesh that is
-    // comprised of non-tetrahedral volume elements) this wouldn't work and we'd
-    // have to devise an alternate rubric, but, for now, this works.
+    // In the case of the PolygonSurfaceMesh, where kVertexPerElement is
+    // marked as "indeterminate" (aka -1), we'll simply use the first three
+    // vertices. If we were to have a PolytopeVolumeMesh (i.e., a volume mesh
+    // that is comprised of non-tetrahedral volume elements) this wouldn't
+    // work and we'd have to devise an alternate rubric, but, for now, this
+    // works.
     constexpr int kVCount = std::max(3, MeshType::kVertexPerElement);
     std::array<T, kVCount> u;
     for (int i = 0; i < kVCount; ++i) {
@@ -523,8 +630,17 @@ class MeshFieldLinear {
   std::vector<Vector3<T>> gradients_;
   // values_at_Mo_[i] is the value of the linear function that represents the
   // piecewise linear field on the mesh elements_[i] at Mo the origin of
-  // frame M of the mesh. Notice that Mo may or may not lie inside elements_[i].
+  // frame M of the mesh. Notice that Mo may or may not lie inside
+  // elements_[i].
   std::vector<T> values_at_Mo_;
+
+  // Gradients defined on each vertex of the mesh using the area/volume
+  // weighted gradients of adjacent elements.
+  std::vector<Vector3<T>> vertex_gradients_;
+
+  // Gradients defined on each edge of the mesh using the area/volume weighted
+  // gradients of adjacent elements.
+  std::map<SortedPair<int>, Vector3<T>> edge_gradients_;
 
   bool is_gradient_field_degenerate_{false};
 };

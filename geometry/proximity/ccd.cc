@@ -13,10 +13,13 @@ constexpr double kEps = std::numeric_limits<double>::epsilon();
 template <typename T>
 void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
                                  const Vector3<T>& b, const Vector3<T>& c,
-                                 Vector3<T>* closest) {
+                                 ClosestPoint<T>* c1, ClosestPoint<T>* c2) {
   // Adapted from:
   //   Ericson, Christer. Real-time collision detection. Crc Press, 2004.
   //   Section 5.1.5
+  (*c1).p = p;
+  (*c1).type = ClosestPointType::Vertex;
+  (*c1).indices = {0};
 
   // Check if p in vertex region outside a.
   const Vector3<T> ab = b - a;
@@ -25,7 +28,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T d1 = ab.dot(ap);
   const T d2 = ac.dot(ap);
   if (d1 <= 0 && d2 <= 0) {
-    *closest = a;
+    (*c2).p = a;
+    (*c2).type = ClosestPointType::Vertex;
+    (*c2).indices = {0};
     return;
   }
 
@@ -34,7 +39,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T d3 = ab.dot(bp);
   const T d4 = ac.dot(bp);
   if (d3 >= 0 && d4 <= d3) {
-    *closest = b;
+    (*c2).p = b;
+    (*c2).type = ClosestPointType::Vertex;
+    (*c2).indices = {1};
     return;
   }
 
@@ -42,7 +49,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T vc = d1 * d4 - d2 * d3;
   if (vc <= 0 && d1 >= 0 && d3 <= 0) {
     const T v = d1 / (d1 - d3);
-    *closest = a + v * ab;
+    (*c2).p = a + v * ab;
+    (*c2).type = ClosestPointType::Edge;
+    (*c2).indices = {0, 1};
     return;
   }
 
@@ -51,7 +60,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T d5 = ab.dot(cp);
   const T d6 = ac.dot(cp);
   if (d6 >= 0 && d5 <= d6) {
-    *closest = c;
+    (*c2).p = c;
+    (*c2).type = ClosestPointType::Vertex;
+    (*c2).indices = {2};
     return;
   }
 
@@ -59,7 +70,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T vb = d2 * d5 - d1 * d6;
   if (vb <= 0 && d2 >= 0 && d6 <= 0) {
     const T w = d2 / (d2 - d6);
-    *closest = a + w * ac;
+    (*c2).p = a + w * ac;
+    (*c2).type = ClosestPointType::Edge;
+    (*c2).indices = {0, 2};
     return;
   }
 
@@ -67,7 +80,9 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T va = d3 * d6 - d4 * d5;
   if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
     const T w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-    *closest = b + w * (c - b);
+    (*c2).p = b + w * (c - b);
+    (*c2).type = ClosestPointType::Edge;
+    (*c2).indices = {1, 2};
     return;
   }
 
@@ -76,14 +91,16 @@ void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
   const T denom = 1 / (va + vb + vc);
   const T v = vb * denom;
   const T w = vc * denom;
-  *closest = a + v * ab + w * ac;
+  (*c2).p = a + v * ab + w * ac;
+  (*c2).type = ClosestPointType::Face;
+  (*c2).indices = {0, 1, 2};
   return;
 }
 
 template <typename T>
 void ClosestPointEdgeToEdge(const Vector3<T>& p1, const Vector3<T>& q1,
                             const Vector3<T>& p2, const Vector3<T>& q2,
-                            Vector3<T>* c1, Vector3<T>* c2) {
+                            ClosestPoint<T>* c1, ClosestPoint<T>* c2) {
   // Adapted from:
   //   Ericson, Christer. Real-time collision detection. Crc Press, 2004.
   //   Section 5.1.9
@@ -102,11 +119,7 @@ void ClosestPointEdgeToEdge(const Vector3<T>& p1, const Vector3<T>& q1,
   // Check if either or both segments degenerate into points.
   if (a < kEps && e < kEps) {
     s = t = 0;
-    *c1 = p1;
-    *c2 = p2;
-  }
-
-  if (a < kEps) {
+  } else if (a < kEps) {
     // First segment degenerates into a point.
     s = 0;
     t = f / e;  // s = 0 => t = (b*s + f) / e = f / e.
@@ -148,17 +161,133 @@ void ClosestPointEdgeToEdge(const Vector3<T>& p1, const Vector3<T>& q1,
     }
   }
 
-  *c1 = p1 + s * d1;
-  *c2 = p2 + t * d2;
+  (*c1).p = p1 + s * d1;
+  (*c2).p = p2 + t * d2;
+
+  if (s == zero) {
+    (*c1).type = ClosestPointType::Vertex;
+    (*c1).indices = {0};
+  } else if (s == one) {
+    (*c1).type = ClosestPointType::Vertex;
+    (*c1).indices = {1};
+  } else {
+    (*c1).type = ClosestPointType::Edge;
+    (*c1).indices = {0, 1};
+  }
+
+  if (t == zero) {
+    (*c2).type = ClosestPointType::Vertex;
+    (*c2).indices = {0};
+  } else if (t == one) {
+    (*c2).type = ClosestPointType::Vertex;
+    (*c2).indices = {1};
+  } else {
+    (*c2).type = ClosestPointType::Edge;
+    (*c2).indices = {0, 1};
+  }
 }
 
-// Triangles with CCW winding facing inwards.
-static const std::array<std::array<int, 3>, 4> triangles = {
-    {{0, 1, 2}, {0, 3, 1}, {0, 2, 3}, {1, 3, 2}}};
-// Edges where e[i] and it's neighbor e[6-i] are an even permutation of
-// {0,1,2,3} (i.e. positive volume).
-static const std::array<std::array<int, 2>, 6> edges = {
-    {{0, 1}, {0, 2}, {0, 3}, {1, 2}, {3, 1}, {2, 3}}};
+static const std::array<std::array<int, 2>, 6> tri_edges = {
+    {{0, 1}, {0, 2}, {1, 2}}};
+
+// Closest point between two non-intersecting triangles A and B.
+template <typename T>
+ClosestPointResult<T> ClosestPointTriangleToTriangle(
+    const std::array<Vector3<T>, 3> p_A, const std::array<Vector3<T>, 3> p_B) {
+  ClosestPointResult<T> current_result;
+  current_result.squared_dist = std::numeric_limits<double>::infinity();
+
+  ClosestPoint<T> current_A, current_B;
+  T squared_dist;
+
+  // Go through all of the vertex of A to B cases.
+  for (int i = 0; i < 3; ++i) {
+    ClosestPointPointToTriangle(p_A[i], p_B[0], p_B[1], p_B[2], &current_A,
+                                &current_B);
+    squared_dist = (p_A[i] - current_B.p).dot(p_A[i] - current_B.p);
+    if (squared_dist < current_result.squared_dist) {
+      current_result.squared_dist = squared_dist;
+      current_result.closest_A.p = p_A[i];
+      current_result.closest_A.type = ClosestPointType::Vertex;
+      current_result.closest_A.indices[0] = i;
+      current_result.closest_B.p = current_B.p;
+      current_result.closest_B.type = current_B.type;
+      current_result.closest_B.indices = current_B.indices;
+    }
+  }
+
+  // Go through all of the vertex of B to A cases.
+  for (int i = 0; i < 3; ++i) {
+    ClosestPointPointToTriangle(p_B[i], p_A[0], p_A[1], p_A[2], &current_B,
+                                &current_A);
+    squared_dist = (p_B[i] - current_A.p).dot(p_B[i] - current_A.p);
+    if (squared_dist < current_result.squared_dist) {
+      current_result.squared_dist = squared_dist;
+      current_result.closest_B.p = p_B[i];
+      current_result.closest_B.type = ClosestPointType::Vertex;
+      current_result.closest_B.indices[0] = i;
+      current_result.closest_A.p = current_A.p;
+      current_result.closest_A.type = current_A.type;
+      current_result.closest_A.indices = current_A.indices;
+    }
+  }
+
+  // Go through all of the edge to edge cases.
+  for (const std::array<int, 2> e_A : tri_edges) {
+    for (const std::array<int, 2> e_B : tri_edges) {
+      ClosestPointEdgeToEdge(p_A[e_A[0]], p_A[e_A[1]], p_B[e_B[0]], p_B[e_B[1]],
+                             &current_A, &current_B);
+      squared_dist = (current_A - current_B).dot(current_A - current_B);
+      if (squared_dist < current_result.squared_dist) {
+        current_result.squared_dist = squared_dist;
+        current_result.closest_A.p = current_A.p;
+        current_result.closest_A.type = current_A.type;
+        switch (current_A.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_A.indices = {e_A[current_A.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_A.indices = {e_A[current_A.indices[0]],
+                                                e_A[current_A.indices[1]]};
+            break;
+          default:
+            DRAKE_UNREACHABLE();
+            break;
+        }
+        current_result.closest_B.p = current_B.p;
+        current_result.closest_B.type = current_B.type;
+        switch (current_B.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_B.indices = {e_B[current_B.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_B.indices = {e_B[current_B.indices[0]],
+                                                e_B[current_B.indices[1]]};
+            break;
+          default:
+            DRAKE_UNREACHABLE();
+            break;
+        }
+      }
+    }
+  }
+
+  return current_result;
+}
+
+// // Triangles with CCW winding facing inwards.
+// static const std::array<std::array<int, 3>, 4> triangles = {
+//     {{0, 1, 2}, {0, 3, 1}, {0, 2, 3}, {1, 3, 2}}};
+// // Edges where e[i] and it's neighbor e[6-i] are an even permutation of
+// // {0,1,2,3} (i.e. positive volume).
+// static const std::array<std::array<int, 2>, 6> edges = {
+//     {{0, 1}, {0, 2}, {0, 3}, {1, 2}, {3, 1}, {2, 3}}};
+
+const std::array<std::array<int, 3>, 4> triangles = {
+    {{0, 1, 2}, {0, 1, 3}, {0, 2, 3}, {1, 2, 3}}};
+const std::array<std::array<int, 2>, 6> edges = {
+    {{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}}};
+
 
 // Closest point between two non-intersecting triangles A and B.
 template <typename T>
@@ -167,23 +296,34 @@ ClosestPointResult<T> ClosestPointTetrahedronToTetrahedron(
   ClosestPointResult<T> current_result;
   current_result.squared_dist = std::numeric_limits<double>::infinity();
 
-  Vector3<T> current_A, current_B;
+  ClosestPoint<T> current_A, current_B;
   T squared_dist;
 
   // Go through all of the vertex of A to face of B cases.
   for (int i = 0; i < 4; ++i) {
     for (const std::array<int, 3> t : triangles) {
       ClosestPointPointToTriangle(p_A[i], p_B[t[0]], p_B[t[1]], p_B[t[2]],
-                                  &current_B);
-      squared_dist = (p_A[i] - current_B).dot(p_A[i] - current_B);
+                                  &current_A, &current_B);
+      squared_dist = (p_A[i] - current_B.p).dot(p_A[i] - current_B.p);
       if (squared_dist < current_result.squared_dist) {
         current_result.squared_dist = squared_dist;
         current_result.closest_A.p = p_A[i];
         current_result.closest_A.type = ClosestPointType::Vertex;
         current_result.closest_A.indices[0] = i;
-        current_result.closest_B.p = current_B;
-        current_result.closest_B.type = ClosestPointType::Face;
-        current_result.closest_B.indices = t;
+        current_result.closest_B.p = current_B.p;
+        current_result.closest_B.type = current_B.type;
+        switch (current_B.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_B.indices = {t[current_B.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_B.indices = {t[current_B.indices[0]],
+                                                t[current_B.indices[1]]};
+            break;
+          default:
+            current_result.closest_B.indices = t;
+            break;
+        }
       }
     }
   }
@@ -192,16 +332,27 @@ ClosestPointResult<T> ClosestPointTetrahedronToTetrahedron(
   for (int i = 0; i < 4; ++i) {
     for (const std::array<int, 3> t : triangles) {
       ClosestPointPointToTriangle(p_B[i], p_A[t[0]], p_A[t[1]], p_A[t[2]],
-                                  &current_A);
-      squared_dist = (p_B[i] - current_A).dot(p_B[i] - current_A);
+                                  &current_B, &current_A);
+      squared_dist = (p_B[i] - current_A.p).dot(p_B[i] - current_A.p);
       if (squared_dist < current_result.squared_dist) {
         current_result.squared_dist = squared_dist;
-        current_result.closest_A.p = current_A;
-        current_result.closest_A.type = ClosestPointType::Face;
-        current_result.closest_A.indices = t;
         current_result.closest_B.p = p_B[i];
         current_result.closest_B.type = ClosestPointType::Vertex;
         current_result.closest_B.indices[0] = i;
+        current_result.closest_A.p = current_A.p;
+        current_result.closest_A.type = current_A.type;
+        switch (current_A.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_A.indices = {t[current_A.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_A.indices = {t[current_A.indices[0]],
+                                                t[current_A.indices[1]]};
+            break;
+          default:
+            current_result.closest_A.indices = t;
+            break;
+        }
       }
     }
   }
@@ -211,17 +362,37 @@ ClosestPointResult<T> ClosestPointTetrahedronToTetrahedron(
     for (const std::array<int, 2> e_B : edges) {
       ClosestPointEdgeToEdge(p_A[e_A[0]], p_A[e_A[1]], p_B[e_B[0]], p_B[e_B[1]],
                              &current_A, &current_B);
-      squared_dist = (current_A - current_B).dot(current_A - current_B);
+      squared_dist = (current_A.p - current_B.p).dot(current_A.p - current_B.p);
       if (squared_dist < current_result.squared_dist) {
         current_result.squared_dist = squared_dist;
-        current_result.closest_A.p = current_A;
-        current_result.closest_A.type = ClosestPointType::Edge;
-        current_result.closest_A.indices[0] = e_A[0];
-        current_result.closest_A.indices[1] = e_A[1];
-        current_result.closest_B.p = current_B;
-        current_result.closest_B.type = ClosestPointType::Edge;
-        current_result.closest_B.indices[0] = e_B[0];
-        current_result.closest_B.indices[1] = e_B[1];
+        current_result.closest_A.p = current_A.p;
+        current_result.closest_A.type = current_A.type;
+        switch (current_A.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_A.indices = {e_A[current_A.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_A.indices = {e_A[current_A.indices[0]],
+                                                e_A[current_A.indices[1]]};
+            break;
+          default:
+            DRAKE_UNREACHABLE();
+            break;
+        }
+        current_result.closest_B.p = current_B.p;
+        current_result.closest_B.type = current_B.type;
+        switch (current_B.type) {
+          case ClosestPointType::Vertex:
+            current_result.closest_B.indices = {e_B[current_B.indices[0]]};
+            break;
+          case ClosestPointType::Edge:
+            current_result.closest_B.indices = {e_B[current_B.indices[0]],
+                                                e_B[current_B.indices[1]]};
+            break;
+          default:
+            DRAKE_UNREACHABLE();
+            break;
+        }
       }
     }
   }

@@ -33,13 +33,18 @@ struct ClosestPointResult {
 template <typename T>
 void ClosestPointPointToTriangle(const Vector3<T>& p, const Vector3<T>& a,
                                  const Vector3<T>& b, const Vector3<T>& c,
-                                 Vector3<T>* closest);
+                                 ClosestPoint<T>* c1, ClosestPoint<T>* c2);
 
 // Distance between two edge segments.
 template <typename T>
 void ClosestPointEdgeToEdge(const Vector3<T>& p1, const Vector3<T>& q1,
                             const Vector3<T>& p2, const Vector3<T>& q2,
-                            Vector3<T>* c1, Vector3<T>* c2);
+                            ClosestPoint<T>* c1, ClosestPoint<T>* c2);
+
+// Distance between two non-intersecting triangles.
+template <typename T>
+ClosestPointResult<T> ClosestPointTriangleToTriangle(
+    const std::array<Vector3<T>, 3> p_A, const std::array<Vector3<T>, 3> p_B);
 
 // Distance between two non-intersedting tetrahedra.
 template <typename T>
