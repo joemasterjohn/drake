@@ -886,9 +886,62 @@ VolumeMesh<T> MakeBoxVolumeMesh(const Box& box, double resolution_hint) {
   return VolumeMesh<T>(std::move(elements), std::move(vertices));
 }
 
+template <typename T>
+VolumeMesh<T> MakeExtrudedBoxVolumeMesh(const Box& box, double epsilon) {
+  DRAKE_DEMAND(epsilon > 0);
+
+  std::vector<Vector3<T>> vertices;
+  vertices.reserve(16);
+
+  const T half_x = box.width() / T(2);
+  const T half_y = box.depth() / T(2);
+  const T half_z = box.height() / T(2);
+
+  // Inner box.
+  for (int i = -1; i <= 1; i += 2) {
+    for (int j = -1; j <= 1; j += 2) {
+      for (int k = -1; k <= 1; k += 2) {
+        vertices.emplace_back(i * half_x, j * half_y, k * half_z);
+      }
+    }
+  }
+  // Outer box.
+  for (int i = -1; i <= 1; i += 2) {
+    for (int j = -1; j <= 1; j += 2) {
+      for (int k = -1; k <= 1; k += 2) {
+        vertices.emplace_back(i * (half_x + epsilon), j * (half_y + epsilon),
+                              k * (half_z + epsilon));
+      }
+    }
+  }
+
+  std::vector<VolumeElement> volume_elements;
+  auto append =
+      [&volume_elements](const std::vector<VolumeElement>& new_elements) {
+        volume_elements.insert(volume_elements.end(), new_elements.begin(),
+                               new_elements.end());
+      };
+
+  // front face (+X)
+  append(SplitToTetrahedra(4, 6, 7, 5, 12, 14, 15, 13));
+  // back face (-X)
+  append(SplitToTetrahedra(0, 1, 3, 2, 8, 9, 11, 10));
+  // right face (+Y)
+  append(SplitToTetrahedra(2, 3, 7, 6, 10, 11, 15, 14));
+  // left face (-Y)
+  append(SplitToTetrahedra(0, 4, 5, 1, 8, 12, 13, 9));
+  // top face (+Z)
+  append(SplitToTetrahedra(1, 5, 7, 3, 9, 13, 15, 11));
+  // bottom face (-Z)
+  append(SplitToTetrahedra(0, 2, 6, 4, 8, 10, 14, 12));
+
+  return VolumeMesh<T>(std::move(volume_elements), std::move(vertices));
+}
+
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&MakeBoxVolumeMesh<T>, &MakeBoxVolumeMeshWithMa<T>,
-     MakeBoxVolumeMeshWithMaAndSymmetricTriangles<T>));
+     &MakeBoxVolumeMeshWithMaAndSymmetricTriangles<T>,
+     &MakeExtrudedBoxVolumeMesh<T>));
 
 }  // namespace internal
 }  // namespace geometry

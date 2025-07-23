@@ -234,6 +234,17 @@ class VolumeIntersector {
                        std::unique_ptr<FieldType>* e_M);
   /* @} */
 
+  /* Returns true if any tet of M has overlap with any tet
+     of . Returns false otherwise.
+     @pre compliant_M.has_collision_mesh() == true
+     @pre compliant_N.has_collision_mesh() == true
+  */
+  bool HasCollision(const VolumeMesh<double>& mesh_M,
+                    const Bvh<BvType, VolumeMesh<double>>& bvh_M,
+                    const VolumeMesh<double>& mesh_N,
+                    const Bvh<BvType, VolumeMesh<double>>& bvh_N,
+                    const math::RigidTransform<T>& X_MN);
+
   /* Returns the index of tetrahedron in the first mesh containing the
    i-th contact polygon.
    @pre IntersectFields() was called already.  */
@@ -318,6 +329,18 @@ class HydroelasticVolumeIntersector {
       const math::RigidTransform<T>& X_WN,
       std::unique_ptr<ContactSurface<T>>* contact_surface_W,
       const bool use_surfaces = true);
+
+  /* Returns true if any tet of the collision mesh of M has overlap with any tet
+     of the collision mesh of N. Returns false otherwise.
+     @pre compliant_M.has_collision_mesh() == true
+     @pre compliant_N.has_collision_mesh() == true
+  */
+  bool HasCompliantHydroCollision(GeometryId id_M,
+                                  const hydroelastic::SoftMesh& compliant_M,
+                                  const math::RigidTransform<T>& X_WM,
+                                  GeometryId id_N,
+                                  const hydroelastic::SoftMesh& compliant_N,
+                                  const math::RigidTransform<T>& X_WN);
 };
 
 /* Computes the contact surface between two compliant hydroelastic geometries
@@ -351,6 +374,19 @@ std::unique_ptr<ContactSurface<T>> ComputeContactSurfaceFromCompliantVolumes(
     const hydroelastic::SoftMesh& compliant_N,
     const math::RigidTransform<T>& X_WN,
     HydroelasticContactRepresentation representation);
+
+/* Returns true if any tet of the collision mesh of M has overlap with any tet
+   of the collision mesh of N. Returns false otherwise.
+   @pre compliant_M.has_collision_mesh() == true
+   @pre compliant_N.has_collision_mesh() == true
+   */
+template <typename T>
+bool HasCompliantHydroCollision(GeometryId id_M,
+                                const hydroelastic::SoftMesh& compliant_M,
+                                const math::RigidTransform<T>& X_WM,
+                                GeometryId id_N,
+                                const hydroelastic::SoftMesh& compliant_N,
+                                const math::RigidTransform<T>& X_WN);
 
 }  // namespace internal
 }  // namespace geometry

@@ -7,6 +7,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/geometry/proximity/make_sphere_mesh.h"
 #include "drake/geometry/proximity/test/pressure_field_invariants.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 namespace drake {
 namespace geometry {
@@ -95,6 +96,18 @@ GTEST_TEST(MakeSphereFieldTest, WithMargin) {
   VerifyInvariantsOfThePressureFieldWithMargin(
       field_no_margin, field_with_margin, kMargin, elastic_foundation_depth,
       kElasticModulus);
+}
+
+GTEST_TEST(MakeExtrudedSphereVolumeMesh, WriteToFile) {
+  const Sphere sphere(1.5);
+  const double edge_length = sphere.radius() / 2;
+  const double epsilon = 0.5;
+  VolumeMesh<double> mesh =
+      MakeExtrudedSphereVolumeMesh<double>(sphere, edge_length, epsilon);
+  const VolumeMeshFieldLinear<double, double> field =
+      MakeExtrudedSpherePressureField<double>(&mesh);
+  WriteVolumeMeshFieldLinearToVtk("extruded_sphere.vtk", "epsilon", field,
+                                  "epsilon");
 }
 
 }  // namespace

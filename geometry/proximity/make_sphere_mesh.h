@@ -619,6 +619,63 @@ TriangleSurfaceMesh<T> MakeSphereSurfaceMesh(const Sphere& sphere,
       sphere, resolution_hint, TessellationStrategy::kSingleInteriorVertex));
 }
 
+/* Creates a volume mesh of the space between a sphere and it's epsilon extruded
+ surface.
+ @param sphere           The sphere for which a volume mesh is created.
+ @param resolution_hint  The positive characteristic edge length for the
+                         sphere (same units of length as `sphere.radius()`).
+                         The coarsest possible mesh (an octahedron) is
+                         guaranteed for any value of `resolution_hint`
+                         greater than or equal to the `sphere`'s diameter.
+ @param epsilon          The extrusion distance, in [m].
+ @returns Volume mesh filling the space between the sphere and the extruded
+ sphere */
+template <typename T>
+VolumeMesh<T> MakeExtrudedSphereVolumeMesh(const Sphere& sphere,
+                                           double resolution_hint,
+                                           double epsilon) {
+  DRAKE_DEMAND(epsilon > 0);
+  const TriangleSurfaceMesh<T> surface_mesh =
+      MakeSphereSurfaceMesh<T>(sphere, resolution_hint);
+
+  // Extrude vertices
+  std::vector<Vector3<T>> vertices = surface_mesh.vertices();
+  const int num_surface_vertices = vertices.size();
+  vertices.reserve(num_surface_vertices * 2);
+  for (int i = 0; i < num_surface_vertices; ++i) {
+    vertices.emplace_back((1.0 + (epsilon / sphere.radius())) * vertices[i]);
+  }
+
+  // Tetrahedralize each prism.
+  std::vector<VolumeElement> volume_elements;
+  for (const auto& tri : surface_mesh.triangles()) {
+    // Grab the triangle indices such that vi is the min index (and (vi, vj, vk)
+    // is still in CCW order).
+    int min_index = 0;
+    if (tri.vertex(1) < tri.vertex(min_index)) min_index = 1;
+    if (tri.vertex(2) < tri.vertex(min_index)) min_index = 2;
+    const int vi = tri.vertex(min_index);
+    const int vj = tri.vertex((min_index + 1) % 3);
+    const int vk = tri.vertex((min_index + 2) % 3);
+    // Indices for the corresponding top triangle's vertices.
+    const int wi = vi + num_surface_vertices;
+    const int wj = vj + num_surface_vertices;
+    const int wk = vk + num_surface_vertices;
+
+    // We choose vi-wj and vi-wk to always be the diagonals.
+    volume_elements.emplace_back(vi, wj, wk, wi);
+    if (vj < vk) {
+      volume_elements.emplace_back(vi, vj, vk, wk);
+      volume_elements.emplace_back(vi, vj, wk, wj);
+    } else {
+      volume_elements.emplace_back(vi, vj, vk, wj);
+      volume_elements.emplace_back(vk, vi, wj, wk);
+    }
+  }
+
+  return VolumeMesh<T>(std::move(volume_elements), std::move(vertices));
+}
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake
