@@ -616,6 +616,12 @@ class GeometryState {
   /** Implementation of QueryObject::HasCollisions().  */
   bool HasCollisions() const { return geometry_engine_->HasCollisions(); }
 
+  /** Implementation of QueryObject::HasHasCompliantHydroCollisionsCollisions().
+   */
+  bool HasCompliantHydroCollisions() const {
+    return geometry_engine_->HasCompliantHydroCollisions(kinematics_data_.X_WGs);
+  }
+
   //@}
 
   /** @name        Collision filtering    */

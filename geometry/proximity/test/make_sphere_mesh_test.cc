@@ -9,6 +9,7 @@
 #include "drake/common/sorted_pair.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/geometry/proximity/tessellation_strategy.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 namespace drake {
 namespace geometry {
@@ -284,6 +285,15 @@ GTEST_TEST(MakeSphereVolumeMesh, ConfirmEdgeLength) {
       test_equator(mesh, edge_length);
     }
   }
+}
+
+GTEST_TEST(MakeExtrudedSphereVolumeMesh, WriteToFile) {
+  const Sphere sphere(1.5);
+  const double edge_length = sphere.radius() / 2;
+  const double epsilon = 0.5;
+  VolumeMesh<double> mesh =
+      MakeExtrudedSphereVolumeMesh<double>(sphere, edge_length, epsilon);
+  WriteVolumeMeshToVtk("extruded_sphere.vtk", mesh, "sphere");
 }
 
 // Confirms that edge length larger than sphere diameter still produces the

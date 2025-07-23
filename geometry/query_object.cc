@@ -152,6 +152,15 @@ bool QueryObject<T>::HasCollisions() const {
 }
 
 template <typename T>
+bool QueryObject<T>::HasCompliantHydroCollisions() const {
+  ThrowIfNotCallable();
+
+  FullPoseAndConfigurationUpdate();
+  const GeometryState<T>& state = geometry_state();
+  return state.HasCompliantHydroCollisions();
+}
+
+template <typename T>
 template <typename T1>
 typename std::enable_if_t<scalar_predicate<T1>::is_bool,
                           std::vector<ContactSurface<T>>>

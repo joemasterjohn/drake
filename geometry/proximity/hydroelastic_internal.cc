@@ -93,10 +93,12 @@ using std::make_unique;
 
 SoftMesh::SoftMesh(
     std::unique_ptr<VolumeMesh<double>> mesh,
-    std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure)
+    std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure,
+    std::unique_ptr<VolumeMesh<double>> collision_mesh)
     : mesh_(std::move(mesh)),
       pressure_(std::move(pressure)),
-      bvh_(std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*mesh_)) {
+      bvh_(std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*mesh_)),
+      collision_mesh_(std::move(collision_mesh)) {
   DRAKE_ASSERT(mesh_.get() == &pressure_->mesh());
   tri_to_tet_ = std::make_unique<std::vector<TetFace>>();
   surface_mesh_ = std::make_unique<TriangleSurfaceMesh<double>>(
@@ -105,6 +107,11 @@ SoftMesh::SoftMesh(
   surface_mesh_bvh_ =
       std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(*surface_mesh_);
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(*mesh_);
+
+  if (collision_mesh_ != nullptr) {
+    collision_bvh_ =
+        std::make_unique<Bvh<Obb, VolumeMesh<double>>>(*collision_mesh_);
+  }
 }
 
 SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
@@ -121,6 +128,11 @@ SoftMesh& SoftMesh::operator=(const SoftMesh& s) {
   surface_mesh_bvh_ = std::make_unique<Bvh<Obb, TriangleSurfaceMesh<double>>>(
       s.surface_mesh_bvh());
   mesh_topology_ = std::make_unique<VolumeMeshTopology>(s.mesh_topology());
+  if (s.has_collision_mesh()) {
+    collision_mesh_ = make_unique<VolumeMesh<double>>(s.collision_mesh());
+    collision_bvh_ =
+        make_unique<Bvh<Obb, VolumeMesh<double>>>(s.collision_bvh());
+  }
   return *this;
 }
 
@@ -412,7 +424,10 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
     const Sphere& sphere, const ProximityProperties& props) {
   const double margin = NonNegativeDouble("Sphere", "soft")
                             .Extract(props, kHydroGroup, kMargin, 0.0);
-  const Sphere inflated_sphere(sphere.radius() + margin);
+
+  // To prototype the epsilon log-barrier region, we will repurpose the margin
+  // parameter to create an offset surface volume mesh for use with the
+  // hydroelastic contact surface query.
 
   PositiveDouble positive_validator("Sphere", "soft");
   // First, create the mesh.
@@ -422,17 +437,17 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   const TessellationStrategy strategy =
       props.GetPropertyOrDefault(kHydroGroup, "tessellation_strategy",
                                  TessellationStrategy::kSingleInteriorVertex);
-  auto inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeSphereVolumeMesh<double>(inflated_sphere, edge_length, strategy));
+  auto collision_mesh = make_unique<VolumeMesh<double>>(
+      MakeSphereVolumeMesh<double>(sphere, edge_length, strategy));
 
-  const double hydroelastic_modulus =
-      positive_validator.Extract(props, kHydroGroup, kElastic);
-
+  // Make the epsilon extruded mesh using margin as the extrusion distance.
+  auto mesh = make_unique<VolumeMesh<double>>(
+      MakeExtrudedSphereVolumeMesh<double>(sphere, edge_length, margin));
   auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
-      MakeSpherePressureField(inflated_sphere, inflated_mesh.get(),
-                              hydroelastic_modulus, margin));
+      MakeExtrudedSpherePressureField(mesh.get()));
 
-  return SoftGeometry(SoftMesh(std::move(inflated_mesh), std::move(pressure)));
+  return SoftGeometry(SoftMesh(std::move(mesh), std::move(pressure),
+                               std::move(collision_mesh)));
 }
 
 std::optional<SoftGeometry> MakeSoftRepresentation(
@@ -440,23 +455,22 @@ std::optional<SoftGeometry> MakeSoftRepresentation(
   const double margin = NonNegativeDouble("Box", "soft")
                             .Extract(props, kHydroGroup, kMargin, 0.0);
 
-  // Define the shape of the "inflated" hydroelastic geometry to include the
-  // margin. We inflate all faces of the box a distance "margin" along the
-  // outward normal.
-  const Box inflated_box(box.size() + Vector3<double>::Constant(2.0 * margin));
+  // To prototype the epsilon log-barrier region, we will repurpose the margin
+  // parameter to create an offset surface volume mesh for use with the
+  // hydroelastic contact surface query.
 
   // First, create an inflated mesh.
-  auto inflated_mesh = make_unique<VolumeMesh<double>>(
-      MakeBoxVolumeMeshWithMaAndSymmetricTriangles<double>(inflated_box));
+  auto collision_mesh = make_unique<VolumeMesh<double>>(
+      MakeBoxVolumeMeshWithMaAndSymmetricTriangles<double>(box));
 
-  const double hydroelastic_modulus =
-      PositiveDouble("Box", "soft").Extract(props, kHydroGroup, kElastic);
+  // Make the epsilon extruded mesh using margin as the extrusion distance.
+  auto mesh = make_unique<VolumeMesh<double>>(
+      MakeExtrudedBoxVolumeMesh<double>(box, margin));
+  auto pressure = make_unique<VolumeMeshFieldLinear<double, double>>(
+      MakeExtrudedBoxPressureField(mesh.get()));
 
-  auto pressure =
-      make_unique<VolumeMeshFieldLinear<double, double>>(MakeBoxPressureField(
-          inflated_box, inflated_mesh.get(), hydroelastic_modulus, margin));
-
-  return SoftGeometry(SoftMesh(std::move(inflated_mesh), std::move(pressure)));
+  return SoftGeometry(SoftMesh(std::move(mesh), std::move(pressure),
+                               std::move(collision_mesh)));
 }
 
 std::optional<SoftGeometry> MakeSoftRepresentation(

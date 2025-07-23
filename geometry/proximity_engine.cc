@@ -812,6 +812,26 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     return data.collisions_exist;
   }
 
+  bool HasCompliantHydroCollisions(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
+      const {
+    std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
+
+    // All these quantities are aliased in the calculator.
+    // N.B. Hydroelastic representation is needed to construct the calculator,
+    // but arbitrary for this particular query.
+    hydroelastic::ContactCalculator<T> calculator{
+        &X_WGs, &hydroelastic_geometries_,
+        HydroelasticContactRepresentation::kPolygon};
+    for (int k = 0; k < ssize(candidates); ++k) {
+      const auto& [id0, id1] = candidates[k];
+      if (calculator.HasCompliantHydroCollision(id0, id1)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   template <typename T1 = T>
   typename std::enable_if_t<scalar_predicate<T1>::is_bool,
                             std::vector<ContactSurface<T>>>
@@ -1466,6 +1486,13 @@ ProximityEngine<T>::ComputeSignedDistanceGeometryToPoint(
 template <typename T>
 bool ProximityEngine<T>::HasCollisions() const {
   return impl_->HasCollisions();
+}
+
+template <typename T>
+bool ProximityEngine<T>::HasCompliantHydroCollisions(
+    const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
+    const {
+  return impl_->HasCompliantHydroCollisions(X_WGs);
 }
 
 template <typename T>

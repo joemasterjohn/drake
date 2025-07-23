@@ -40,7 +40,8 @@ class SoftMesh {
   SoftMesh() = default;
 
   SoftMesh(std::unique_ptr<VolumeMesh<double>> mesh,
-           std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure);
+           std::unique_ptr<VolumeMeshFieldLinear<double, double>> pressure,
+           std::unique_ptr<VolumeMesh<double>> collision_mesh = nullptr);
 
   SoftMesh(const SoftMesh& s) { *this = s; }
   SoftMesh& operator=(const SoftMesh& s);
@@ -88,6 +89,21 @@ class SoftMesh {
     return *mesh_topology_;
   }
 
+  /* Returns whether this SoftMesh has a valid collision mesh. */
+  bool has_collision_mesh() const { return collision_mesh_ != nullptr; }
+
+  /* The collision mesh associated with this SoftMesh. */
+  const VolumeMesh<double>& collision_mesh() const {
+    DRAKE_DEMAND(collision_mesh_ != nullptr);
+    return *collision_mesh_;
+  }
+
+  /* The BVH of the mesh provided by collision_mesh(). */
+  const Bvh<Obb, VolumeMesh<double>>& collision_bvh() const {
+    DRAKE_DEMAND(collision_bvh_ != nullptr);
+    return *collision_bvh_;
+  }
+
  private:
   // TODO(SeanCurtis-TRI): Determine if there is a need for these to all be
   // unique_ptr and remove the indirection if not necessary.
@@ -98,6 +114,9 @@ class SoftMesh {
   std::unique_ptr<Bvh<Obb, TriangleSurfaceMesh<double>>> surface_mesh_bvh_;
   std::unique_ptr<VolumeMeshTopology> mesh_topology_;
   std::unique_ptr<std::vector<TetFace>> tri_to_tet_;
+  std::unique_ptr<VolumeMesh<double>> collision_mesh_;
+  std::unique_ptr<Bvh<Obb, VolumeMesh<double>>> collision_bvh_;
+
 };
 
 /* Defines a soft half space. The half space is defined such that the half

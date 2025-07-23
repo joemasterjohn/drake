@@ -41,6 +41,10 @@ VolumeMeshFieldLinear<T, T> MakeBoxPressureField(const Box& box,
                                                  const T hydroelastic_modulus,
                                                  double margin = 0.0);
 
+template <typename T>
+VolumeMeshFieldLinear<T, T> MakeExtrudedBoxPressureField(
+    const VolumeMesh<T>* mesh);
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

@@ -73,6 +73,17 @@ VolumeMeshFieldLinear<T, T> MakeSpherePressureField(
                                      MeshGradientMode::kOkOrMarkDegenerate);
 }
 
+template <typename T>
+VolumeMeshFieldLinear<T, T> MakeExtrudedSpherePressureField(
+    const VolumeMesh<T>* mesh) {
+  // The inner radius vertices have an epsilon value of 1.0, and the outer 0.0.
+  std::vector<T> pressure(mesh->num_vertices(), T(0.0));
+  std::fill(pressure.begin(), pressure.begin() + (mesh->num_vertices() / 2),
+            T(1.0));
+  return VolumeMeshFieldLinear<T, T>(std::move(pressure), mesh,
+                                     MeshGradientMode::kOkOrMarkDegenerate);
+}
+
 }  // namespace internal
 }  // namespace geometry
 }  // namespace drake

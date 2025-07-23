@@ -144,6 +144,37 @@ ContactCalculator<T>::MaybeMakeContactSurface(GeometryId id_A,
   return {ContactSurfaceResult::kCalculated, std::move(surface)};
 }
 
+template <typename T>
+bool ContactCalculator<T>::HasCompliantHydroCollision(GeometryId id_A,
+                                                      GeometryId id_B) const {
+  // One or two objects have vanished. We can report that we're done
+  // calculating the contact (no contact).
+  if (geometries_.is_vanished(id_A) || geometries_.is_vanished(id_B)) {
+    return false;
+  }
+
+  const HydroelasticType type_A = geometries_.hydroelastic_type(id_A);
+  const HydroelasticType type_B = geometries_.hydroelastic_type(id_B);
+  if (type_A == HydroelasticType::kSoft && type_B == HydroelasticType::kSoft) {
+    // Enforce consistent ordering for reproducibility/repeatability of
+    // simulation since the same pair of geometries (A,B) may be called
+    // either as (A,B) or (B,A).
+    if (id_A.get_value() > id_B.get_value()) {
+      std::swap(id_A, id_B);
+    }
+    const SoftGeometry& soft_A = geometries_.soft_geometry(id_A);
+    const SoftGeometry& soft_B = geometries_.soft_geometry(id_B);
+    if (!soft_A.is_half_space() && !soft_B.is_half_space() &&
+        soft_A.soft_mesh().has_collision_mesh() &&
+        soft_B.soft_mesh().has_collision_mesh()) {
+      return internal::HasCompliantHydroCollision(
+          id_A, soft_A.soft_mesh(), X_WGs_.at(id_A), id_B, soft_B.soft_mesh(),
+          X_WGs_.at(id_B));
+    }
+  }
+  return false;
+}
+
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&CalcRigidCompliant<T>, &CalcCompliantCompliant<T>));
 

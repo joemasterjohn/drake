@@ -483,6 +483,11 @@ class QueryObject {
             *not* computationally efficient or particularly accurate.  */
   bool HasCollisions() const;
 
+  /** Reports true if there are _any_ collisions between unfiltered pairs of
+   compliant hydroelastic geometries that both specify an alternative
+   "collision_mesh" purely for overlap queries. */
+  bool HasCompliantHydroCollisions() const;
+
   //@}
 
   //---------------------------------------------------------------------------
