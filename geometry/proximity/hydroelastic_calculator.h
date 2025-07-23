@@ -114,6 +114,11 @@ class ContactCalculator {
   MaybeMakeContactSurfaceResult MaybeMakeContactSurface(GeometryId id_A,
                                                         GeometryId id_B) const;
 
+  /* If both geometries are compliant hydroelastic *with* a "collision_mesh",
+     this function returns true if any tet of A has overlap with any tet of B.
+     Returns false otherwise. */
+  bool HasCompliantHydroCollision(GeometryId id_A, GeometryId id_B) const;
+
  private:
   /* The T-valued poses of all geometries.  */
   const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs_;

@@ -8,6 +8,7 @@
 #include "drake/common/eigen_types.h"
 #include "drake/common/test_utilities/eigen_matrix_compare.h"
 #include "drake/geometry/proximity/proximity_utilities.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 namespace drake {
 namespace geometry {
@@ -533,6 +534,14 @@ GTEST_TEST(MakeBoxSurfaceMeshWithSymmetricTrianglesTest, GenerateSurface) {
   EXPECT_EQ(expect_num_vertices, surface_mesh.num_vertices());
   const int expect_num_elements = 24;  // Triangles.
   EXPECT_EQ(expect_num_elements, surface_mesh.num_elements());
+}
+
+GTEST_TEST(MakeExtrudedBoxVolumeMesh, WriteToFile) {
+  const Box box(1.0, 2.0, 3.0);
+  const double epsilon = 0.5;
+  VolumeMesh<double> mesh =
+      MakeExtrudedBoxVolumeMesh<double>(box, epsilon);
+  WriteVolumeMeshToVtk("extruded_box.vtk", mesh, "box");
 }
 
 }  // namespace

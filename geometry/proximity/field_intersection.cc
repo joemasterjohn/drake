@@ -215,6 +215,66 @@ bool IsPlaneNormalAlongPressureGradient(
   return cos_theta > kCosAlpha;
 }
 
+namespace {
+
+void ProjectOntoAxis(const std::array<Vector3d, 4>& verts, const Vector3d& axis,
+                     double* out_min, double* out_max) {
+  *out_min = *out_max = axis.dot(verts[0]);
+  for (int i = 1; i < 4; ++i) {
+    const double d = axis.dot(verts[i]);
+    *out_min = std::min(*out_min, d);
+    *out_max = std::max(*out_max, d);
+  }
+}
+
+bool IsSeparatingAxis(const Vector3d& axis_M,
+                      const std::array<Vector3d, 4>& tet_M,
+                      const std::array<Vector3d, 4>& tet_N_M) {
+  double min_M, max_M, min_N, max_N;
+  ProjectOntoAxis(tet_M, axis_M, &min_M, &max_M);
+  ProjectOntoAxis(tet_N_M, axis_M, &min_N, &max_N);
+  return max_M < min_N || max_N < min_M;
+}
+
+bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
+                         const VolumeMesh<double>& mesh_N,
+                         const math::RigidTransform<double>& X_MN) {
+  const auto& element_M = mesh_M.element(tet_M);
+  const auto& element_N = mesh_N.element(tet_N);
+
+  std::array<Vector3d, 4> verts_M, verts_N_M;
+  for (int i = 0; i < 4; ++i) {
+    verts_M[i] = mesh_M.vertex(element_M.vertex(i));
+    verts_N_M[i] = X_MN * mesh_N.vertex(element_N.vertex(i));
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    if (IsSeparatingAxis(mesh_M.inward_normal(tet_M, 0), verts_M, verts_N_M)) {
+      return false;
+    }
+    if (IsSeparatingAxis(X_MN.rotation() * mesh_N.inward_normal(tet_N, 0),
+                         verts_M, verts_N_M)) {
+      return false;
+    }
+  }
+
+  constexpr std::array<std::array<int, 2>, 6> edges = {
+      {{{0, 1}}, {{0, 2}}, {{0, 3}}, {{1, 2}}, {{1, 3}}, {{2, 3}}}};
+
+  for (const auto& e_N : edges) {
+    const Vector3d edge_N_M = verts_N_M[e_N[1]] - verts_N_M[e_N[0]];
+    for (const auto& e_M : edges) {
+      const Vector3d axis_M =
+          mesh_M.edge_vector(tet_M, e_M[0], e_M[1]).cross(edge_N_M);
+      if (IsSeparatingAxis(axis_M, verts_M, verts_N_M)) return false;
+    }
+  }
+
+  return true;
+}
+
+}
+
 template <class MeshBuilder, class BvType>
 void VolumeIntersector<MeshBuilder, BvType>::IntersectFields(
     const VolumeMeshFieldLinear<double, double>& field0_M,
@@ -427,6 +487,29 @@ std::vector<int> VolumeIntersector<MeshBuilder, BvType>::CalcContactPolygon(
   return faces;
 }
 
+template <class MeshBuilder, class BvType>
+bool VolumeIntersector<MeshBuilder, BvType>::HasCollision(
+    const VolumeMesh<double>& mesh_M,
+    const Bvh<BvType, VolumeMesh<double>>& bvh_M,
+    const VolumeMesh<double>& mesh_N,
+    const Bvh<BvType, VolumeMesh<double>>& bvh_N,
+    const math::RigidTransform<T>& X_MN) {
+  const math::RigidTransform<double> X_MNd = convert_to_double(X_MN);
+  bool has_collision = false;
+  auto callback = [&has_collision, &mesh_M, &mesh_N, &X_MNd](
+                      int tet_M, int tet_N) -> BvttCallbackResult {
+    if (TetrahedraIntersect(tet_M, mesh_M, tet_N, mesh_N, X_MNd)) {
+      has_collision = true;
+      return BvttCallbackResult::Terminate;
+    }
+    return BvttCallbackResult::Continue;
+  };
+
+  bvh_M.Collide(bvh_N, X_MNd, callback);
+
+  return has_collision;
+}
+
 template <class MeshBuilder>
 void HydroelasticVolumeIntersector<MeshBuilder>::IntersectCompliantVolumes(
     GeometryId id_M, const hydroelastic::SoftMesh& compliant_M,
@@ -497,6 +580,22 @@ void HydroelasticVolumeIntersector<MeshBuilder>::IntersectCompliantVolumes(
       std::move(grad_field0_W), std::move(grad_field1_W));
 }
 
+template <class MeshBuilder>
+bool HydroelasticVolumeIntersector<MeshBuilder>::HasCompliantHydroCollision(
+    GeometryId, const hydroelastic::SoftMesh& compliant_M,
+    const math::RigidTransform<T>& X_WM, GeometryId,
+    const hydroelastic::SoftMesh& compliant_N,
+    const math::RigidTransform<T>& X_WN) {
+  DRAKE_DEMAND(compliant_M.has_collision_mesh());
+  DRAKE_DEMAND(compliant_N.has_collision_mesh());
+
+  const math::RigidTransform<T> X_MN = X_WM.InvertAndCompose(X_WN);
+  VolumeIntersector<MeshBuilder, Obb> volume_intersector;
+  return volume_intersector.HasCollision(
+      compliant_M.collision_mesh(), compliant_M.collision_bvh(),
+      compliant_N.collision_mesh(), compliant_N.collision_bvh(), X_MN);
+}
+
 template <typename T>
 std::unique_ptr<ContactSurface<T>> ComputeContactSurfaceFromCompliantVolumes(
     GeometryId id_M, const hydroelastic::SoftMesh& compliant_M,
@@ -519,6 +618,20 @@ std::unique_ptr<ContactSurface<T>> ComputeContactSurfaceFromCompliantVolumes(
   return contact_surface_W;
 }
 
+template <typename T>
+bool HasCompliantHydroCollision(GeometryId id_M,
+                                const hydroelastic::SoftMesh& compliant_M,
+                                const math::RigidTransform<T>& X_WM,
+                                GeometryId id_N,
+                                const hydroelastic::SoftMesh& compliant_N,
+                                const math::RigidTransform<T>& X_WN) {
+  DRAKE_DEMAND(compliant_M.has_collision_mesh());
+  DRAKE_DEMAND(compliant_N.has_collision_mesh());
+  return HydroelasticVolumeIntersector<PolyMeshBuilder<T>>()
+      .HasCompliantHydroCollision(id_M, compliant_M, X_WM, id_N, compliant_N,
+                                  X_WN);
+}
+
 //----------------------------------------------------------
 // Template instantiations
 //----------------------------------------------------------
@@ -533,7 +646,8 @@ template class VolumeIntersector<PolyMeshBuilder<double>, Aabb>;
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&CalcEquilibriumPlane<T>, &IntersectTetrahedra<T>,
      &IsPlaneNormalAlongPressureGradient<T>,
-     &ComputeContactSurfaceFromCompliantVolumes<T>));
+     &ComputeContactSurfaceFromCompliantVolumes<T>,
+     &HasCompliantHydroCollision<T>));
 
 }  // namespace internal
 }  // namespace geometry

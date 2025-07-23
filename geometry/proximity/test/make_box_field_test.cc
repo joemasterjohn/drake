@@ -8,6 +8,7 @@
 #include "drake/geometry/proximity/make_box_mesh.h"
 #include "drake/geometry/proximity/test/pressure_field_invariants.h"
 #include "drake/geometry/proximity/volume_to_surface_mesh.h"
+#include "drake/geometry/proximity/mesh_to_vtk.h"
 
 using Eigen::Vector3d;
 
@@ -121,6 +122,16 @@ GTEST_TEST(MakeBoxFieldTest, MakeBoxPressureFieldInMeshWithMedialAxis) {
     }
     EXPECT_FALSE(same_pressure);
   }
+}
+
+GTEST_TEST(MakeExtrudedSphereVolumeMesh, WriteToFile) {
+  const Box box(1.0, 2.0, 3.0);
+  const double epsilon = 0.5;
+  VolumeMesh<double> mesh = MakeExtrudedBoxVolumeMesh<double>(box, epsilon);
+  const VolumeMeshFieldLinear<double, double> field =
+      MakeExtrudedBoxPressureField<double>(&mesh);
+  WriteVolumeMeshFieldLinearToVtk("extruded_box_field.vtk", "epsilon", field,
+                                  "epsilon");
 }
 
 }  // namespace

@@ -1351,6 +1351,7 @@ drake_cc_googletest(
         ":make_box_mesh",
         ":pressure_field_invariants",
         ":volume_to_surface_mesh",
+        ":mesh_to_vtk",
     ],
 )
 
@@ -1360,6 +1361,7 @@ drake_cc_googletest(
         ":make_box_mesh",
         ":proximity_utilities",
         "//common/test_utilities:eigen_matrix_compare",
+        ":mesh_to_vtk",
     ],
 )
 
@@ -1511,6 +1513,7 @@ drake_cc_googletest(
         ":make_sphere_mesh",
         ":pressure_field_invariants",
         ":volume_to_surface_mesh",
+        ":mesh_to_vtk",
     ],
 )
 
@@ -1520,6 +1523,7 @@ drake_cc_googletest(
         ":make_sphere_mesh",
         "//common:sorted_pair",
         "//common/test_utilities:eigen_matrix_compare",
+        ":mesh_to_vtk",
     ],
 )
 

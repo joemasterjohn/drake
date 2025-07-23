@@ -316,6 +316,11 @@ class ProximityEngine {
   /* Implementation of GeometryState::HasCollisions().  */
   bool HasCollisions() const;
 
+  /* Implementation of GeometryState::HasCompliantHydroCollisions().  */
+  bool HasCompliantHydroCollisions(
+      const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
+      const;
+
   //@}
 
   /* The representation of every geometry that was successfully requested for

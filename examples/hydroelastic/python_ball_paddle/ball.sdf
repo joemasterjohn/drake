@@ -21,7 +21,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <sphere>
-            <radius>0.02</radius>
+            <radius>0.2</radius>
           </sphere>
         </geometry>
         <material>
@@ -32,7 +32,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <sphere>
-            <radius>0.02</radius>
+            <radius>0.2</radius>
           </sphere>
         </geometry>
         <drake:proximity_properties>
@@ -49,6 +49,7 @@
           -->
           <drake:mu_dynamic>1.0</drake:mu_dynamic>
           <drake:mu_static>1.0</drake:mu_static>
+          <drake:hydroelastic_margin>0.2</drake:hydroelastic_margin>
         </drake:proximity_properties>
       </collision>
     </link>
