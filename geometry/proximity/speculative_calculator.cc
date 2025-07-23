@@ -165,6 +165,145 @@ AabbCalculator StaticMeshAabbCalculator(const VolumeMesh<double>& mesh,
   };
 }
 
+// Store the filtered pairs and all of the feature type specific information.
+template <typename T>
+struct ClosestFeaturePairs {
+  ClosestPointResult<T> closest_point;
+  std::vector<Vector3<T>> grad_eA_W;
+  std::vector<Vector3<T>> grad_eB_W;
+  std::vector<std::pair<int, int>> element_pairs;
+  std::vector<T> effective_radius;
+};
+
+// Track unique pairs of closest features using global mesh indices
+struct ClosestFeatureSet {
+  // For vertex-vertex pairs
+  std::map<int, std::set<int>> vertex_vertex;
+  std::map<int, std::set<SortedPair<int>>> vertex_edge_A_B;
+  std::map<int, std::set<SortedPair<int>>> vertex_edge_B_A;
+
+  // For vertex-face pairs
+  std::map<int, std::set<SortedTriplet<int>>> vertex_face_A_B;
+  std::map<int, std::set<SortedTriplet<int>>> vertex_face_B_A;
+
+  // For edge-edge pairs
+  std::map < SortedPair<int>, std::set<SortedPair<int>> edge_edge;
+};
+
+template <typename T>
+ClosestFeaturePairs ComputeClosestFeaturePairs(
+    std::vector<std::pair<int, int>> element_pairs, const SoftGeometry& soft_A,
+    const SoftGeometry& soft_B, const math::RigidTransform<T>& X_WA,
+    const math::RigidTransform<T>& X_WB) {
+
+  ClosestFeaturePairs pairs;
+
+  // First collect all closest point pairs between surface triangles
+  for (const auto& [tet_A, tet_B] : element_pairs) {
+    const VolumeElement e_A = soft_A.mesh().element(tet_A);
+    const VolumeElement e_B = soft_B.mesh().element(tet_B);
+
+    // Get mesh topology
+    const VolumeMeshTopology& top_A = soft_A.mesh().mesh_topology();
+    const VolumeMeshTopology& top_B = soft_B.mesh().mesh_topology();
+
+    // Get positions of vertices in world frame
+    std::array<Vector3<T>, 4> p_WA = {
+        X_WA * soft_A.mesh().vertex(face_A_verts[0]).cast<T>(),
+        X_WA * soft_A.mesh().vertex(face_A_verts[1]).cast<T>(),
+        X_WA * soft_A.mesh().vertex(face_A_verts[2]).cast<T>(),
+        X_WA * soft_A.mesh().vertex(face_A_verts[3]).cast<T>(),
+    };
+    std::array<Vector3<T>, 4> p_WB = {
+        X_WB * soft_B.mesh().vertex(face_B_verts[0]).cast<T>(),
+        X_WB * soft_B.mesh().vertex(face_B_verts[1]).cast<T>(),
+        X_WB * soft_B.mesh().vertex(face_B_verts[2]).cast<T>(),
+        X_WB * soft_B.mesh().vertex(face_B_verts[3]).cast<T>()};
+
+    // Ensure the tetrahedra do not intersect before proceeding.
+    // Already intersecting tets will be handled by standard hydro.
+    if (Intersects(p_WA, p_WB)) {
+      continue;
+    }
+
+    // For each face of tet A.
+    for (int f_A = 0; f_A < 4; ++f_A) {
+      // Skip if not a surface face.
+      if (top_A.neighbor(tet_A, f_A) != -1) continue;
+
+      // Get vertices of face A
+      std::array<int, 3> face_A_verts = {e_A.vertex((f_A + 1) % 4),
+                                         e_A.vertex((f_A + 2) % 4),
+                                         e_A.vertex((f_A + 3) % 4)};
+
+      // For each face of tet B
+      for (int f_B = 0; f_B < 4; ++f_B) {
+        // Skip if not a surface face
+        if (top_B.neighbor(tet_B, f_B) != -1) continue;
+
+        // Get vertices of face B
+        std::array<int, 3> face_B_verts = {e_B.vertex((f_B + 1) % 4),
+                                           e_B.vertex((f_B + 2) % 4),
+                                           e_B.vertex((f_B + 3) % 4)};
+
+        // Compute closest points between triangles
+        auto result = ClosestPointTriangleToTriangle(
+            {p_WA[face_A_vertex[0]], p_WA[face_A_vertex[1]],
+             p_WA[face_A_vertex[2]]},
+            {p_WB[face_B_vertex[0]], p_WB[face_B_vertex[1]],
+             p_WB[face_B_vertex[2]]});
+
+        if (result.closest_A.type == ClosestPointType::Vertex) {
+          const int vA = eA.vertex(result.closest_A.indices[0]);
+
+          if (result.closest_B.type == ClosestPointType::Vertex) {
+            const int vB = eB.vertex(result.closest_B.indices[0]);
+            if (!pairs.vertex_vertex.contains(vA)) {
+              pairs.vertex_vertex[vA] = {};
+            }
+            pairs.vertex_vertex[vA][vB] = {tet_A, tet_B, result};
+          } else if (result.closest_B.type == ClosestPointType::Edge) {
+            const SortedPair<int> edge_B(
+                eB.vertex(result.closest_B.indices[0]),
+                eB.vertex(result.closest_B.indices[1]));
+            if (!pairs.vertex_edge_A_B.contains(vA)) {
+              pairs.vertex_edge_A_B[vA] = {};
+            }
+            pairs.vertex_edge_A_B[vA][edge_B] = {tet_A, tet_B, result};
+          } else {  // Face
+            const SortedTriplet<int> face_B(
+                eB.vertex(result.closest_B.indices[0]),
+                eB.vertex(result.closest_B.indices[1]),
+                eB.vertex(result.closest_B.indices[2]));
+            if (!pairs.vertex_face_A_B.contains(vA)) {
+              pairs.vertex_face_A_B[vA] = {};
+            }
+            pairs.vertex_face_A_B[vA][face_B] = {tet_A, tet_B, result};
+          }
+        } else if (result.closest_B.type == ClosestPointType::Vertex) {
+
+
+        } else if (result.closest_A.type == ClosestPointType::Edge &&
+            result.closest_B.type == ClosestPointType::Edge) {
+          const SortedPair<int> edge_A(eA.vertex(result.closest_A.indices[0]),
+                                       eA.vertex(result.closest_A.indices[1]));
+          const SortedPair<int> edge_B(eB.vertex(result.closest_B.indices[0]),
+                                       eB.vertex(result.closest_B.indices[1]));
+          if (!pairs.edge_edge.contains(edge_A)) {
+            pairs.edge_edge[edge_A] = {};
+          }
+          pairs.edge_edge[edge_A][edge_B] = {tet_A, tet_B, result};
+        }
+        else {
+          DRAKE_UNREACHABLE();
+        }
+      }
+    }
+  }
+
+  return pairs;
+
+}
 template <typename T>
 void ComputeSpeculativeContactSurfaceByClosestPoints(
     GeometryId id_A, GeometryId id_B, const SoftGeometry& soft_A,
@@ -239,11 +378,6 @@ void ComputeSpeculativeContactSurfaceByClosestPoints(
         X_WB * soft_B.mesh().vertex(e_B.vertex(1)).cast<T>(),
         X_WB * soft_B.mesh().vertex(e_B.vertex(2)).cast<T>(),
         X_WB * soft_B.mesh().vertex(e_B.vertex(3)).cast<T>()};
-
-    // Ensure the tetrahedra do not intersect before proceeding.
-    if (Intersects(p_WA, p_WB)) {
-      continue;
-    }
 
     // Compute the closest points of the two tetrahedra.
     closest_points.emplace_back(
