@@ -75,6 +75,8 @@ class PooledSapBuilder {
                                           PooledSapModel<T>* model) const;
   void AddPatchConstraintsForHydroelasticContact(
       const systems::Context<T>& context, PooledSapModel<T>* model) const;
+  void AddPatchConstraintsForLogBarrierContact(
+      const systems::Context<T>& context, PooledSapModel<T>* model) const;
   void AddCouplerConstraints(const systems::Context<T>& context,
                              PooledSapModel<T>* model) const;
   void AddLimitConstraints(const systems::Context<T>& context,

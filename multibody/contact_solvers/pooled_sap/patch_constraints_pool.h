@@ -89,6 +89,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
     n0_.resize(num_pairs_capacity);
     epsilon_soft_.resize(num_pairs_capacity);
     net_friction_.resize(num_pairs_capacity);
+    A0_E_star_.resize(num_pairs_capacity);
+    e0_.resize(num_pairs_capacity);
   }
 
   /* Reserve to store patch constraint data. No memory allocation performed if
@@ -117,6 +119,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
     n0_.reserve(num_pairs_capacity);
     epsilon_soft_.reserve(num_pairs_capacity);
     net_friction_.reserve(num_pairs_capacity);
+    A0_E_star_.reserve(num_pairs_capacity);
+    e0_.reserve(num_pairs_capacity);
   }
 
   /* Adds a contact patch between bodies A and B.
@@ -160,7 +164,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
 
    @param[in] normal_W Contact normal, from A into B by convention. */
   void AddPair(const Vector3<T>& p_BoC_W, const Vector3<T>& normal_W,
-               const T& fn0, const T& stiffness) {
+               const T& fn0, const T& stiffness, const T& A0_E_star = T(0.0),
+               const T& e0 = T(0.0)) {
     const int p = num_patches() - 1;
     ++num_pairs_[p];
 
@@ -168,6 +173,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
     normal_W_.PushBack(normal_W);
     fn0_.push_back(fn0);
     stiffness_.push_back(stiffness);
+    A0_E_star_.push_back(A0_E_star);
+    e0_.push_back(e0);
 
     // Pre-computed quantities.
     const int num_cliques = num_cliques_[p];
@@ -251,6 +258,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
     n0_.clear();
     epsilon_soft_.clear();
     net_friction_.clear();
+    A0_E_star_.clear();
+    e0_.clear();
   }
 
   int num_patches() const { return ssize(num_pairs_); }
@@ -318,6 +327,9 @@ class PooledSapModel<T>::PatchConstraintsPool {
   T CalcLaggedHuntCrossleyModel(int p, int k, const Vector3<T>& v_AcBc_W,
                                 Vector3<T>* gamma_Bc_W, Matrix3<T>* G) const;
 
+  T CalcLaggedLogBarrierModel(int p, int k, const Vector3<T>& v_AcBc_W,
+                              Vector3<T>* gamma_Bc_W, Matrix3<T>* G) const;
+
   /* Given the body spatial velocities V_WB, this function computes the relative
    spatial velocity V_AbB_W for each patch. When A is anchored, V_WA = 0 and
    V_AbB_W = V_WB. */
@@ -367,6 +379,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
   std::vector<T> n0_;               // Previous time step impulse.
   std::vector<T> epsilon_soft_;     // Regularized stiction tolerance.
   std::vector<T> net_friction_;     // Regularized stiction tolerance.
+  std::vector<T> A0_E_star_;        // Previous time step polygon area ⋅ E*.
+  std::vector<T> e0_;               // Previous time step epsilon.
 
   // Scratch used during construction to compute Delassus approximation.
   mutable EigenPool<MatrixX<T>> MatrixX_pool_;

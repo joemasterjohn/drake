@@ -153,6 +153,113 @@ T CalcDiscreteHuntCrossleyDerivative(const T& dt, const T& vn, const T& fe0,
 }
 
 template <typename T>
+T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
+                                         const T& k, const T& d, const T& A0_E_star) {
+  using std::min;
+  using std::log;
+
+  // The discrete impulse is modeled as:
+  //   n(v; ε₀) = δt⋅(-A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v))₊⋅(1 - d⋅v)₊.
+  // We see that n(v; fe0) = 0 for v ≥ v̂, with v̂ = min(vx, vd) and:
+  //  vx = ε₀/δt⋅k
+  //  vd = 1/d
+  // Then for v < v̂, n(v; fₑ₀) is positive.
+  //
+  // Defining:
+  //  C = -δt⋅A₀⋅E*
+  //  a = 1 - ε₀
+  //  b = δt⋅k
+  // And re-expressing:
+  //  n(v; ε₀) = C⋅ln(a + b⋅v)⋅(1 - d⋅v)
+  // We can verify that:
+  //
+  //  N⁺(v; ε₀) = ∫ [C⋅ln(a + b⋅v)⋅(1 - d⋅v)] dv
+  //            = C⋅(b⋅v⋅(-2⋅a⋅d + b⋅(-4 + d⋅v)) + 2⋅(a + b⋅v)⋅(a⋅d + b⋅(2 - d⋅v))⋅ln(a + b⋅v))/(4⋅b^2)
+  //
+  // is its antiderivative.
+  // Since n(v; ε₀) = 0 for v ≥ v̂, then N(v; ε₀) must be constant for v ≥ v̂.
+  // Therefore we define it as:
+  //   N(v; ε₀) = N⁺(min(vn, v̂); ε₀)
+
+  // We define the "dissipation" velocity vd at which the dissipation term
+  // vanishes using a small tolerance so that vd goes to a very large number in
+  // the limit to d = 0.
+  const T vd = 1.0 / (d + 1.0e-20);
+
+  // Similarly, we define vx as the velocity at which the elastic term goes
+  // to zero. Using a small tolerance so that it goes to a very large
+  // number in the limit to k = 0 (e.g. from discrete hydroelastic).
+  // TODO(joemasterjohn): In the log-barrier method k = ∇e⋅n̂. which should not
+  // cause any problems given the current safeguards in place. Test if this is
+  // needed.
+  const T vx = e0 / dt / (k + 1.0e-20);
+
+  // With the tolerances above in vd and vx, we can define a v̂ that goes to a
+  // large number in the limit to either d = 0 or k = 0.
+  const T v_hat = min(vx, vd);
+
+  // Clamp vn to v̂.
+  const T vn_clamped = min(vn, v_hat);
+
+  // From the derivation above, N(v; fₑ₀) = N⁺(vn_clamped; fₑ₀).
+  const T& v = vn_clamped;  // Alias to shorten notation.
+
+  const T C = -dt * A0_E_star;
+  const T a = 1 - e0;
+  const T b = dt * k;
+  const T N = C *
+              (b * v * (-2 * a * d + b * (-4 + d * v)) +
+               2 * (a + b * v) * (a * d + b * (2 - d * v)) * log(a + b * v)) /
+              (4 * b * b);
+
+  return N;
+}
+
+template <typename T>
+T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
+                                const T& k, const T& d, const T& A0_E_star) {
+  using std::log;
+
+  // n(v; ε₀) = -δt⋅A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v)⋅(1 - d⋅v)
+
+  const T x = 1 - e0 + dt * k * vn;
+  const T fe = -A0_E_star * log(x);
+  if (fe <= 0.0) return 0.0;
+  const T damping = 1.0 - d * vn;
+  if (damping <= 0.0) return 0.0;
+  const T gn = dt * fe * damping;
+
+  return gn;
+}
+
+template <typename T>
+T CalcDiscreteDiscreteLogBarrierDerivative(const T& dt, const T& vn,
+                                           const T& e0, const T& k, const T& d,
+                                           const T& A0_E_star) {
+  using std::log;
+
+  const T x = 1 - e0 + dt * k * vn;
+  const T fe = -A0_E_star * log(x);
+  // Quick exits.
+  if (fe <= 0.0) return 0.0;
+  const T damping = 1.0 - d * vn;
+  if (damping <= 0.0) return 0.0;
+
+  // n(v; ε₀) = -δt⋅A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v)⋅(1 - d⋅v)
+  //
+  // dn/dv = -δt⋅A₀⋅E*⋅[(δt⋅k)⋅(1 - d⋅v)/(1 - ε₀ + δt⋅k⋅v) - d⋅ln(1 - ε₀ + δt⋅k⋅v)]
+  //       = -δt⋅[(δt⋅k⋅A₀⋅E*⋅damping / x) + d⋅fe]
+  //
+  // Where:
+  //   x       = 1 - ε₀ + δt⋅k⋅v
+  //   fe      = -A₀⋅E*⋅ln(x)
+  //   damping = (1 - d⋅v)
+  const T dn_dvn = -dt * ((dt * k * A0_E_star * damping) / x + (d * fe));
+
+  return dn_dvn;
+}
+
+template <typename T>
 T PooledSapModel<T>::PatchConstraintsPool::CalcRegularizationOfFriction(
     int p, const Vector3<T>& p_BoC_W) const {
   MatrixX_pool_.Clear();
@@ -247,6 +354,58 @@ T PooledSapModel<T>::PatchConstraintsPool::CalcLaggedHuntCrossleyModel(
   // Hessian
   const T dn_dvn =
       CalcDiscreteHuntCrossleyDerivative(time_step_, vn, fe0, stiffness, d);
+
+  // Pn is SPD projection matrix with eigenvalues {1, 0, 0}.
+  const Matrix3<T> Pn = normal_W * normal_W.transpose();
+  // Pt is SPD with eigenvalues {‖t̂‖², 0, 0}. Since ‖t̂‖² < 1, Pt is not a
+  // projection matrix (not important though, just a remark).
+  const Matrix3<T> Pt = t_hat_W * t_hat_W.transpose();
+  // M = Pperp(t) * Pperp(n) is SPD with eigenvalues {1 - ‖t̂‖², 0, 1}, all
+  // positive since ‖t̂‖ < 1.
+  const Matrix3<T> M = Matrix3<T>::Identity() - Pt - Pn;
+
+  *G = mu * n0 / (vt_soft + vs) * M - dn_dvn * Pn;
+
+  return cost;
+}
+
+template <typename T>
+T PooledSapModel<T>::PatchConstraintsPool::CalcLaggedLogBarrierModel(
+    int p, int k, const Vector3<T>& v_AcBc_W, Vector3<T>* gamma_Bc_W,
+    Matrix3<T>* G) const {
+  using std::log;
+  const int pk = patch_pair_index(p, k);
+  const T& vs = epsilon_soft_[pk];
+  const Vector3<T>& normal_W = normal_W_[pk];
+
+  // Normal velocity. Positive when bodies move apart.
+  const T vn = v_AcBc_W.dot(normal_W);
+  const Vector3<T> vt_AcBc_W = v_AcBc_W - vn * normal_W;
+  const T vt_soft = SoftNorm(vt_AcBc_W, vs);
+  const Vector3<T> t_hat_W = vt_AcBc_W / (vt_soft + vs);
+
+  // Data.
+  const T& mu = net_friction_[pk];
+  const T& d = dissipation_[p];
+  const T& stiffness = stiffness_[pk];
+  const T& n0 = n0_[pk];
+  const T& e0 = e0_[pk];
+  const T& A0_E_star = A0_E_star_[pk];
+
+  // Cost
+  const T N = CalcDiscreteLogBarrierAntiderivative(time_step_, vn, e0,
+                                                   stiffness, d, A0_E_star);
+  const T cost = mu * vt_soft * n0 - N;
+
+  // Impulse
+  const T gn = CalcDiscreteLogBarrierImpulse(time_step_, vn, e0, stiffness, d,
+                                             A0_E_star);
+
+  *gamma_Bc_W = -mu * t_hat_W * n0 + gn * normal_W;
+
+  // Hessian
+  const T dn_dvn = CalcDiscreteLogBarrierDerivative(time_step_, vn, e0,
+                                                    stiffness, d, A0_E_star);
 
   // Pn is SPD projection matrix with eigenvalues {1, 0, 0}.
   const Matrix3<T> Pn = normal_W * normal_W.transpose();
@@ -358,8 +517,10 @@ void PooledSapModel<T>::PatchConstraintsPool::CalcPatchQuantities(
 
       Vector3<T> gamma_Bc_W;
       Matrix3<T> Gk;
+      // For now just hard code to Log Barrier patches. Later add a parameter to
+      // the model to switch between hydro and log-barrier.
       cost_pool->at(p) +=
-          CalcLaggedHuntCrossleyModel(p, k, v_AcBc_W, &gamma_Bc_W, &Gk);
+          CalcLaggedLogBarrierModel(p, k, v_AcBc_W, &gamma_Bc_W, &Gk);
 
       // Shift from Ck to B and accumulate.
       const Vector3<T>& p_BC_W = p_BC_W_[pk];
