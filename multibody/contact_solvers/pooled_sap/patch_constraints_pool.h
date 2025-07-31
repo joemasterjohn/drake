@@ -91,6 +91,7 @@ class PooledSapModel<T>::PatchConstraintsPool {
     net_friction_.resize(num_pairs_capacity);
     A0_E_star_.resize(num_pairs_capacity);
     e0_.resize(num_pairs_capacity);
+    linear_regime_coefficients_.Resize(num_pairs_capacity);
   }
 
   /* Reserve to store patch constraint data. No memory allocation performed if
@@ -121,6 +122,7 @@ class PooledSapModel<T>::PatchConstraintsPool {
     net_friction_.reserve(num_pairs_capacity);
     A0_E_star_.reserve(num_pairs_capacity);
     e0_.reserve(num_pairs_capacity);
+    linear_regime_coefficients_.Reserve(num_pairs_capacity);
   }
 
   /* Adds a contact patch between bodies A and B.
@@ -167,6 +169,7 @@ class PooledSapModel<T>::PatchConstraintsPool {
                const T& fn0, const T& stiffness, const T& A0_E_star = T(0.0),
                const T& e0 = T(0.0)) {
     const int p = num_patches() - 1;
+    const int k = num_pairs_[p];
     ++num_pairs_[p];
 
     p_BC_W_.PushBack(p_BoC_W);
@@ -175,6 +178,10 @@ class PooledSapModel<T>::PatchConstraintsPool {
     stiffness_.push_back(stiffness);
     A0_E_star_.push_back(A0_E_star);
     e0_.push_back(e0);
+
+    // Pre-compute linear regime coefficients.
+    linear_regime_coefficients_ = CalcLogBarrierLinearRegimeCoefficients(
+        time_step_, e0, stiffness, dissipation_[p], A0_E_star);
 
     // Pre-computed quantities.
     const int num_cliques = num_cliques_[p];
@@ -260,6 +267,7 @@ class PooledSapModel<T>::PatchConstraintsPool {
     net_friction_.clear();
     A0_E_star_.clear();
     e0_.clear();
+    linear_regime_coefficients_.Clear();
   }
 
   int num_patches() const { return ssize(num_pairs_); }
@@ -330,6 +338,10 @@ class PooledSapModel<T>::PatchConstraintsPool {
   T CalcLaggedLogBarrierModel(int p, int k, const Vector3<T>& v_AcBc_W,
                               Vector3<T>* gamma_Bc_W, Matrix3<T>* G) const;
 
+  Vector3<T> CalcLogBarrierLinearRegimeCoefficients(const T& dt, const T& e0,
+                                                    const T& k, const T& d,
+                                                    const T& A0_E_star) const;
+
   /* Given the body spatial velocities V_WB, this function computes the relative
    spatial velocity V_AbB_W for each patch. When A is anchored, V_WA = 0 and
    V_AbB_W = V_WB. */
@@ -381,6 +393,19 @@ class PooledSapModel<T>::PatchConstraintsPool {
   std::vector<T> net_friction_;     // Regularized stiction tolerance.
   std::vector<T> A0_E_star_;        // Previous time step polygon area ⋅ E*.
   std::vector<T> e0_;               // Previous time step epsilon.
+  EigenPool<Vector3<T>> linear_regime_coefficients_;
+
+  // Log-Barrier linear-regime boundary parameter.
+  // For any v such that 1 - ε₀ + δt⋅k⋅v < δ, the constraint enters a linear
+  // regime:
+  //
+  //   N+_linear(v; ε₀) = 1/2 A⋅ v² + B⋅v + C
+  //   n_linear(v; ε₀) = A⋅v + B
+  //   dn_dv_linear(v; ε₀) = A
+  //
+  // such that their values agree with the log-barrier function at the boudary
+  // v_δ = (δ - 1 + ε₀) / (δt⋅k)
+  static constexpr double delta_ = 1e-2;
 
   // Scratch used during construction to compute Delassus approximation.
   mutable EigenPool<MatrixX<T>> MatrixX_pool_;

@@ -153,7 +153,7 @@ T CalcDiscreteHuntCrossleyDerivative(const T& dt, const T& vn, const T& fe0,
 }
 
 template <typename T>
-T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
+T CalcDiscreteLogBarrierAntiderivativeUnchecked(const T& dt, const T& vn, const T& e0,
                                          const T& k, const T& d, const T& A0_E_star) {
   using std::min;
   using std::log;
@@ -216,7 +216,22 @@ T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
 }
 
 template <typename T>
-T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
+T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
+                                       const T& k, const T& d,
+                                       const T& A0_E_star,
+                                       const Vector3<T> coefficients) {
+  const T x = 1 - e0 + dt * k * vn;
+  if (x < delta_) {
+    return vn * (0.5 * vn * coefficients(0) + coefficients(1)) +
+           coefficients(2);
+  } else {
+    return CalcDiscreteLogBarrierAntiderivativeUnchecked(dt, vn, e0, k, d,
+                                                         A0_E_star);
+  }
+}
+
+template <typename T>
+T CalcDiscreteLogBarrierImpulseUnchecked(const T& dt, const T& vn, const T& e0,
                                 const T& k, const T& d, const T& A0_E_star) {
   using std::log;
 
@@ -233,7 +248,19 @@ T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
 }
 
 template <typename T>
-T CalcDiscreteDiscreteLogBarrierDerivative(const T& dt, const T& vn,
+T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
+                                const T& k, const T& d, const T& A0_E_star,
+                                const Vector3<T> coefficients) {
+  const T x = 1 - e0 + dt * k * vn;
+  if (x < delta_) {
+    return coefficients(0) * vn + coefficients(1);
+  } else {
+    return CalcDiscreteLogBarrierImpulseUnchecked(dt, vn, e0, k, d, A0_E_star);
+  }
+}
+
+template <typename T>
+T CalcDiscreteDiscreteLogBarrierDerivativeUnchecked(const T& dt, const T& vn,
                                            const T& e0, const T& k, const T& d,
                                            const T& A0_E_star) {
   using std::log;
@@ -257,6 +284,48 @@ T CalcDiscreteDiscreteLogBarrierDerivative(const T& dt, const T& vn,
   const T dn_dvn = -dt * ((dt * k * A0_E_star * damping) / x + (d * fe));
 
   return dn_dvn;
+}
+
+template <typename T>
+T CalcDiscreteDiscreteLogBarrierDerivative(const T& dt, const T& vn,
+                                           const T& e0, const T& k, const T& d,
+                                           const T& A0_E_star,
+                                           const Vector3<T> coefficients) {
+  const T x = 1 - e0 + dt * k * vn;
+  if (x < delta_) {
+    return coefficients(0);
+  } else {
+    return CalcDiscreteDiscreteLogBarrierDerivativeUnchecked(dt, vn, e0, k, d,
+                                                             A0_E_star);
+  }
+}
+
+template <typename T>
+Vector3<T> PooledSapModel<T>::CalcLogBarrierLinearRegimeCoefficients(
+    const T& dt, const T& e0, const T& k, const T& d,
+    const T& A0_E_star) const {
+  // For any v such that x = 1 - ε₀ + δt⋅k⋅v < δ, the constraint enters a linear
+  // regime:
+  //
+  //   N_linear(v; ε₀) = 1/2 A⋅ v² + B⋅v + C
+  //   n_linear(v; ε₀) = A⋅v + B
+  //   dn_dv_linear(v; ε₀) = A
+  //
+  // such that their values agree with the log-barrier function at the boudary
+  // v_δ = (δ - 1 + ε₀) / (δt⋅k)
+
+  // Value of v at the linear-regime barrier delta.
+  const T v = (delta_ - 1 - e0) / (dt * k);
+  const T A =
+      CalcDiscreteLogBarrierDerivativeUnchecked(dt, v, e0, k, d, A0_E_star);
+  const T B =
+      CalcDiscreteLogBarrierImpulseUnchecked(dt, v, e0, k, d, A0_E_star) -
+      (A * v);
+  const T C = CalcDiscreteLogBarrierAntiderivativeUnchecked(dt, v, e0, k, d,
+                                                            A0_E_star) -
+              (v * (0.5 * A * v + B));
+
+  return Vector3<T>(A, B, C);
 }
 
 template <typename T>
@@ -392,20 +461,22 @@ T PooledSapModel<T>::PatchConstraintsPool::CalcLaggedLogBarrierModel(
   const T& e0 = e0_[pk];
   const T& A0_E_star = A0_E_star_[pk];
 
+  const Vector3<T>& coefficients = linear_regime_coefficients_[pk];
+
   // Cost
-  const T N = CalcDiscreteLogBarrierAntiderivative(time_step_, vn, e0,
-                                                   stiffness, d, A0_E_star);
+  const T N = CalcDiscreteLogBarrierAntiderivative(
+      time_step_, vn, e0, stiffness, d, A0_E_star, coefficients);
   const T cost = mu * vt_soft * n0 - N;
 
   // Impulse
   const T gn = CalcDiscreteLogBarrierImpulse(time_step_, vn, e0, stiffness, d,
-                                             A0_E_star);
+                                             A0_E_star, coefficients);
 
   *gamma_Bc_W = -mu * t_hat_W * n0 + gn * normal_W;
 
   // Hessian
-  const T dn_dvn = CalcDiscreteLogBarrierDerivative(time_step_, vn, e0,
-                                                    stiffness, d, A0_E_star);
+  const T dn_dvn = CalcDiscreteLogBarrierDerivative(
+      time_step_, vn, e0, stiffness, d, A0_E_star, coefficients);
 
   // Pn is SPD projection matrix with eigenvalues {1, 0, 0}.
   const Matrix3<T> Pn = normal_W * normal_W.transpose();
