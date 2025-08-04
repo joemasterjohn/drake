@@ -293,7 +293,10 @@ GTEST_TEST(MakeExtrudedSphereVolumeMesh, WriteToFile) {
   const double epsilon = 0.5;
   VolumeMesh<double> mesh =
       MakeExtrudedSphereVolumeMesh<double>(sphere, edge_length, epsilon);
+  VolumeMesh<double> mesh_collision = MakeSphereVolumeMesh<double>(
+      sphere, edge_length, TessellationStrategy::kSingleInteriorVertex);
   WriteVolumeMeshToVtk("extruded_sphere.vtk", mesh, "sphere");
+  WriteVolumeMeshToVtk("sphere_collision.vtk", mesh_collision, "sphere");
 }
 
 // Confirms that edge length larger than sphere diameter still produces the

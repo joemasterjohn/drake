@@ -227,13 +227,29 @@ void ProjectOntoAxis(const std::array<Vector3d, 4>& verts, const Vector3d& axis,
   }
 }
 
+static double gmin, gmax;
+
 bool IsSeparatingAxis(const Vector3d& axis_M,
                       const std::array<Vector3d, 4>& tet_M,
                       const std::array<Vector3d, 4>& tet_N_M) {
   double min_M, max_M, min_N, max_N;
   ProjectOntoAxis(tet_M, axis_M, &min_M, &max_M);
   ProjectOntoAxis(tet_N_M, axis_M, &min_N, &max_N);
-  return max_M < min_N || max_N < min_M;
+  double imin = std::max(min_M, min_N);
+  double imax = std::min(max_M, max_N);
+  if (imax < imin) {
+    // The two tetrahedra are separated by the axis.
+    return true;
+  } else {
+    // The two tetrahedra are not separated by the axis.
+    if ((imax - imin) < (gmax - gmin)) {
+      // If the current axis is a better separating axis, update the global
+      // min and max.
+      gmax = imax;
+      gmin = imin;
+    }
+    return false;
+  }
 }
 
 bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
@@ -241,6 +257,9 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
                          const math::RigidTransform<double>& X_MN) {
   const auto& element_M = mesh_M.element(tet_M);
   const auto& element_N = mesh_N.element(tet_N);
+
+  gmin = -std::numeric_limits<double>::max();
+  gmax = std::numeric_limits<double>::max();
 
   std::array<Vector3d, 4> verts_M, verts_N_M;
   for (int i = 0; i < 4; ++i) {
@@ -279,6 +298,8 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
       "  Vertices of tet_N in frame M:\n  {}\n  {}\n  {}\n  {}\n",
       fmt_eigen(verts_N_M[0].transpose()), fmt_eigen(verts_N_M[1].transpose()),
       fmt_eigen(verts_N_M[2].transpose()), fmt_eigen(verts_N_M[3].transpose()));
+
+  fmt::print("  Smallest SA: [{} , {}] length: <{}>\n", gmin, gmax, gmax - gmin);
 
   return true;
 }

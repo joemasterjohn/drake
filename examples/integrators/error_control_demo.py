@@ -169,8 +169,8 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
-        sg_config.default_proximity_properties.hydroelastic_modulus = 1e7
-        sg_config.default_proximity_properties.margin = 1e-3
+        sg_config.default_proximity_properties.hydroelastic_modulus = 1e8
+        sg_config.default_proximity_properties.margin = 5e-4
         scene_graph.set_config(sg_config)
 
     if visualize:
