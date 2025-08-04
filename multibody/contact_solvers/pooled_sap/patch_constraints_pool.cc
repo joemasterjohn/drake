@@ -622,6 +622,15 @@ void PooledSapModel<T>::PatchConstraintsPool::CalcPatchQuantities(
 }
 
 template <typename T>
+void PooledSapModel<T>::PatchConstraintsPool::PrintData(
+    const PatchConstraintsDataPool<T>& patch_data) const {
+  for (int p = 0; p < num_patches(); ++p) {
+    fmt::print("Gamma_Bo_w[{}]: {}\n", p,
+               fmt_eigen(patch_data->Gamma_Bo_W_pool()[p].transpose()));
+  }
+}
+
+template <typename T>
 void PooledSapModel<T>::PatchConstraintsPool::CalcData(
     const EigenPool<Vector6<T>>& V_WB,
     PatchConstraintsDataPool<T>* patch_data) const {

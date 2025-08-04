@@ -309,6 +309,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
                         typename SapData<T>::Scratch* scratch, T* dcost,
                         T* d2cost) const;
 
+  void PrintData(const PatchConstraintsDataPool<T>& patch_data) const;
+
  private:
   using ConstJacobianView =
       typename PooledSapModel<T>::ConstSpatialVelocityJacobianView;

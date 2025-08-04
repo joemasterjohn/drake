@@ -426,6 +426,8 @@ class PooledSapModel {
     return *sparsity_pattern_;
   }
 
+  void PrintPatchData(const SapData<T>& data) const;
+
  private:
   void MultiplyByDynamicsMatrix(const VectorX<T>& v, VectorX<T>* result) const;
   void CalcMomentumTerms(const SapData<T>& data,
