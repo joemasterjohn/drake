@@ -317,7 +317,9 @@ class ProximityEngine {
   bool HasCollisions() const;
 
   /* Implementation of GeometryState::HasCompliantHydroCollisions().  */
-  bool HasCompliantHydroCollisions(
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  HasCompliantHydroCollisions(
       const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
       const;
 

@@ -609,8 +609,11 @@ class GeometryState {
 
   /** Implementation of QueryObject::HasHasCompliantHydroCollisionsCollisions().
    */
-  bool HasCompliantHydroCollisions() const {
-    return geometry_engine_->HasCompliantHydroCollisions(kinematics_data_.X_WGs);
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  HasCompliantHydroCollisions() const {
+    return geometry_engine_->HasCompliantHydroCollisions(
+        kinematics_data_.X_WGs);
   }
 
   //@}

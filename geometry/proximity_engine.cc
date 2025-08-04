@@ -816,7 +816,9 @@ class ProximityEngine<T>::Impl : public ShapeReifier {
     return data.collisions_exist;
   }
 
-  bool HasCompliantHydroCollisions(
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  HasCompliantHydroCollisions(
       const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
       const {
     std::vector<SortedPair<GeometryId>> candidates = FindCollisionCandidates();
@@ -1492,7 +1494,9 @@ bool ProximityEngine<T>::HasCollisions() const {
 }
 
 template <typename T>
-bool ProximityEngine<T>::HasCompliantHydroCollisions(
+template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+ProximityEngine<T>::HasCompliantHydroCollisions(
     const std::unordered_map<GeometryId, math::RigidTransform<T>>& X_WGs)
     const {
   return impl_->HasCompliantHydroCollisions(X_WGs);
@@ -1588,7 +1592,8 @@ DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_SCALARS(
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&ProximityEngine<T>::template ComputeContactSurfaces<T>,
-     &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>));
+     &ProximityEngine<T>::template ComputeContactSurfacesWithFallback<T>,
+     &ProximityEngine<T>::template HasCompliantHydroCollisions<T>));
 
 template void ProximityEngine<double>::ComputeDeformableContact<double>(
     DeformableContact<double>*) const;

@@ -270,6 +270,16 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
     }
   }
 
+  fmt::print("Tetrahedra {} and {} intersect in frame M.", tet_M, tet_N);
+  fmt::print(
+      "  Vertices of tet_M:\n  {}\n  {}\n  {}\n  {}\n",
+      fmt_eigen(verts_M[0].transpose()), fmt_eigen(verts_M[1].transpose()),
+      fmt_eigen(verts_M[2].transpose()), fmt_eigen(verts_M[3].transpose()));
+  fmt::print(
+      "  Vertices of tet_N in frame M:\n  {}\n  {}\n  {}\n  {}\n",
+      fmt_eigen(verts_N_M[0].transpose()), fmt_eigen(verts_N_M[1].transpose()),
+      fmt_eigen(verts_N_M[2].transpose()), fmt_eigen(verts_N_M[3].transpose()));
+
   return true;
 }
 

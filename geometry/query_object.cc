@@ -133,7 +133,9 @@ bool QueryObject<T>::HasCollisions() const {
 }
 
 template <typename T>
-bool QueryObject<T>::HasCompliantHydroCollisions() const {
+template <typename T1>
+typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+QueryObject<T>::HasCompliantHydroCollisions() const {
   ThrowIfNotCallable();
 
   FullPoseAndConfigurationUpdate();
@@ -289,7 +291,8 @@ const GeometryState<T>& QueryObject<T>::geometry_state() const {
 
 DRAKE_DEFINE_FUNCTION_TEMPLATE_INSTANTIATIONS_ON_DEFAULT_NONSYMBOLIC_SCALARS(
     (&QueryObject<T>::template ComputeContactSurfaces<T>,
-     &QueryObject<T>::template ComputeContactSurfacesWithFallback<T>));
+     &QueryObject<T>::template ComputeContactSurfacesWithFallback<T>,
+     &QueryObject<T>::template HasCompliantHydroCollisions<T>));
 
 template void QueryObject<double>::ComputeDeformableContact<double>(
     internal::DeformableContact<double>*) const;

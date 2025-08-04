@@ -466,7 +466,9 @@ class QueryObject {
   /** Reports true if there are _any_ collisions between unfiltered pairs of
    compliant hydroelastic geometries that both specify an alternative
    "collision_mesh" purely for overlap queries. */
-  bool HasCompliantHydroCollisions() const;
+  template <typename T1 = T>
+  typename std::enable_if_t<scalar_predicate<T1>::is_bool, bool>
+  HasCompliantHydroCollisions() const;
 
   //@}
 

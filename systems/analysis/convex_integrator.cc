@@ -85,6 +85,7 @@ void ConvexIntegrator<T>::DoInitialize() {
   x_next_full_ = this->get_system().AllocateTimeDerivatives();
   x_next_half_1_ = this->get_system().AllocateTimeDerivatives();
   x_next_half_2_ = this->get_system().AllocateTimeDerivatives();
+  x_prev_ = this->get_system().AllocateTimeDerivatives();
 
   // Allocate memory for the solver statistics.
   stats_.Reserve(solver_parameters_.max_iterations);
@@ -120,6 +121,7 @@ template <typename T>
 bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
   // TODO(vincekurtz): consider delaying this to encourage cache hits
   Context<T>& context = *this->get_mutable_context();
+  x_prev_->SetFrom(context.get_continuous_state());
   ContinuousState<T>& x_next = context.get_mutable_continuous_state();
   const Context<T>& plant_context = plant().GetMyContextFromRoot(context);
   const T t0 = context.get_time();
@@ -137,8 +139,28 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     // it saves an intermediate Eigen representation.
     x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
     context.SetTime(t0 + h);
+
+    if (!this->IsFeasibleState()) {
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTime(t0);
+      return false;
+    }
   } else {
     // We're using error control, and will compare with two half-sized steps.
+
+    // Set the state to the result of the full step and check feasibility.
+    x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
+    context.SetTimeAndNoteContinuousStateChange(t0 + h);
+
+    if (!this->IsFeasibleState()) {
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      drake::log()->warn(
+          fmt::format("ConvexIntegrator: full step to t + {} is infeasible. "
+                      "Reverting to previous state.",
+                      h));
+      return false;
+    }
 
     // First half-step to (t + h/2) uses the average of v_t and v_{t+1} as the
     // initial guess
@@ -151,6 +173,16 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     x_next.get_mutable_vector().SetFrom(x_next_half_1_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + 0.5 * h);
 
+    // if (!this->IsFeasibleState()) {
+    //   x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+    //   context.SetTimeAndNoteContinuousStateChange(t0);
+    //   drake::log()->warn(fmt::format(
+    //       "ConvexIntegrator: first half-step to t + {} is infeasible. "
+    //       "Reverting to previous state.",
+    //       0.5 * h));
+    //   return false;
+    // }
+
     // Now we can take the second half-step. We'll use the solution of the full
     // step as our initial guess here.
     v_guess = x_next_full_->get_generalized_velocity().CopyToVector();
@@ -160,6 +192,16 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     // accurate than the full step, and we have it anyway).
     x_next.get_mutable_vector().SetFrom(x_next_half_2_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
+
+    // if (!this->IsFeasibleState()) {
+    //   x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+    //   context.SetTimeAndNoteContinuousStateChange(t0);
+    //   drake::log()->warn(fmt::format(
+    //       "ConvexIntegrator: second half-step to t + {} is infeasible. "
+    //       "Reverting to previous state.",
+    //       h));
+    //   return false;
+    // }
 
     // Estimate the error as the difference between the full step and the
     // two half-steps.
@@ -870,6 +912,24 @@ void ConvexIntegrator<T>::LinearizeExternalSystem(const T& h, VectorX<T>* Ku,
 
   (*Ke) = (*Ke).cwiseMax(0);
   (*be) = ge0 + (*Ke).asDiagonal() * v0;
+}
+
+template <typename T>
+bool ConvexIntegrator<T>::IsFeasibleState() const {
+  throw std::logic_error("ConvexIntegrator only supports T = double.");
+}
+
+template <>
+bool ConvexIntegrator<double>::IsFeasibleState() const {
+  // Currently just check if there are any overlap on the interior of any
+  // hydro meshes that use a log-barrier representation.
+  const Context<double>& context = this->get_context();
+  const MultibodyPlant<double>& plant = this->plant();
+  const Context<double>& plant_context = plant.GetMyContextFromRoot(context);
+  auto& query_object =
+      plant.get_geometry_query_input_port()
+          .template Eval<geometry::QueryObject<double>>(plant_context);
+  return !query_object.HasCompliantHydroCollisions();
 }
 
 }  // namespace systems

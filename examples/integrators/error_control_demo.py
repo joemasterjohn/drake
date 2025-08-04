@@ -40,9 +40,9 @@ def ball_on_table():
     """A sphere is dropped on a table with some initial horizontal velocity."""
     name = "Ball on table"
     url = "package://drake/examples/integrators/ball_on_table.xml"
-    use_hydroelastic = False
+    use_hydroelastic = True
     initial_state = np.array(
-        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     )
     sim_time = 1.0
     return SimulationExample(
@@ -169,6 +169,8 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
+        sg_config.default_proximity_properties.hydroelastic_modulus = 1e7
+        sg_config.default_proximity_properties.margin = 1e-3
         scene_graph.set_config(sg_config)
 
     if visualize:
@@ -352,7 +354,7 @@ if __name__ == "__main__":
         args.accuracy,
         max_step_size=args.max_step_size,
         meshcat=meshcat,
-        visualize=False
+        visualize=True
     )
 
     if args.plot:

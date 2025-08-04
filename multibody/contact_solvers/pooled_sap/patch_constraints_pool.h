@@ -169,7 +169,6 @@ class PooledSapModel<T>::PatchConstraintsPool {
                const T& fn0, const T& stiffness, const T& A0_E_star = T(0.0),
                const T& e0 = T(0.0)) {
     const int p = num_patches() - 1;
-    const int k = num_pairs_[p];
     ++num_pairs_[p];
 
     p_BC_W_.PushBack(p_BoC_W);
@@ -180,8 +179,8 @@ class PooledSapModel<T>::PatchConstraintsPool {
     e0_.push_back(e0);
 
     // Pre-compute linear regime coefficients.
-    linear_regime_coefficients_ = CalcLogBarrierLinearRegimeCoefficients(
-        time_step_, e0, stiffness, dissipation_[p], A0_E_star);
+    linear_regime_coefficients_.PushBack(CalcLogBarrierLinearRegimeCoefficients(
+        time_step_, e0, stiffness, dissipation_[p], A0_E_star));
 
     // Pre-computed quantities.
     const int num_cliques = num_cliques_[p];
@@ -394,18 +393,6 @@ class PooledSapModel<T>::PatchConstraintsPool {
   std::vector<T> A0_E_star_;        // Previous time step polygon area ⋅ E*.
   std::vector<T> e0_;               // Previous time step epsilon.
   EigenPool<Vector3<T>> linear_regime_coefficients_;
-
-  // Log-Barrier linear-regime boundary parameter.
-  // For any v such that 1 - ε₀ + δt⋅k⋅v < δ, the constraint enters a linear
-  // regime:
-  //
-  //   N+_linear(v; ε₀) = 1/2 A⋅ v² + B⋅v + C
-  //   n_linear(v; ε₀) = A⋅v + B
-  //   dn_dv_linear(v; ε₀) = A
-  //
-  // such that their values agree with the log-barrier function at the boudary
-  // v_δ = (δ - 1 + ε₀) / (δt⋅k)
-  static constexpr double delta_ = 1e-2;
 
   // Scratch used during construction to compute Delassus approximation.
   mutable EigenPool<MatrixX<T>> MatrixX_pool_;

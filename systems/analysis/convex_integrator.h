@@ -337,6 +337,9 @@ class ConvexIntegrator final : public IntegratorBase<T> {
   void LinearizeExternalSystem(const T& h, VectorX<T>* Ku, VectorX<T>* bu,
                                VectorX<T>* Ke, VectorX<T>* be);
 
+  // Checks whether the current state is feasible.
+  bool IsFeasibleState() const;
+
   // The multibody plant used as the basis of the convex optimization problem.
   MultibodyPlant<T>* plant_{nullptr};
 
@@ -397,6 +400,7 @@ class ConvexIntegrator final : public IntegratorBase<T> {
   std::unique_ptr<ContinuousState<T>> x_next_full_;    // x_{t+h}
   std::unique_ptr<ContinuousState<T>> x_next_half_1_;  // x_{t+h/2}
   std::unique_ptr<ContinuousState<T>> x_next_half_2_;  // x_{t+h/2+h/2}
+  std::unique_ptr<ContinuousState<T>> x_prev_;         // x_{t} for reset.
 };
 
 // Forward-declare specializations to double, prior to DRAKE_DECLARE... below.
@@ -412,6 +416,9 @@ template <>
 void ConvexIntegrator<double>::ComputeSearchDirection(
     const PooledSapModel<double>&, const SapData<double>&, VectorX<double>*,
     bool, bool);
+
+template <>
+bool ConvexIntegrator<double>::IsFeasibleState() const;
 
 }  // namespace systems
 }  // namespace drake
