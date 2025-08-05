@@ -238,8 +238,8 @@ T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
                                        const T& k, const T& d,
                                        const T& A0_E_star,
                                        const Vector3<T> coefficients) {
-  const T x = 1 - e0 + dt * k * vn;
-  if (x < epsilon_linear_) {
+  const T e = e0 - dt*k*vn
+  if ((1 - e) < epsilon_linear_) {
     return vn * (0.5 * vn * coefficients(0) + coefficients(1)) +
            coefficients(2);
   } else {
@@ -254,10 +254,10 @@ T CalcDiscreteLogBarrierImpulseUnchecked(const T& dt, const T& vn, const T& e0,
                                          const T& A0_E_star) {
   using std::log;
 
-  // n(v; ε₀) = -δt⋅A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v)⋅(1 - d⋅v)
+  // n(v; ε₀) = δt⋅A₀⋅E*⋅[(e0 - δt⋅k⋅vn) / (1 - e0 + δt⋅k⋅vn)]⋅(1 - d⋅vn)
 
-  const T x = 1 - e0 + dt * k * vn;
-  const T fe = -A0_E_star * log(x) * log_factor;
+  const T e = e0 - dt*k*vn;
+  const T fe = A0_E_star * (e / (1 - e));
   if (fe <= 0.0) return 0.0;
   const T damping = 1.0 - d * vn;
   if (damping <= 0.0) return 0.0;
@@ -270,8 +270,8 @@ template <typename T>
 T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
                                 const T& k, const T& d, const T& A0_E_star,
                                 const Vector3<T> coefficients) {
-  const T x = 1 - e0 + dt * k * vn;
-  if (x < epsilon_linear_) {
+  const T e = e0 - dt*k*vn
+  if ((1 - e) < epsilon_linear_) {
     return coefficients(0) * vn + coefficients(1);
   } else {
     return CalcDiscreteLogBarrierImpulseUnchecked(dt, vn, e0, k, d, A0_E_star);
@@ -310,8 +310,8 @@ template <typename T>
 T CalcDiscreteLogBarrierDerivative(const T& dt, const T& vn, const T& e0,
                                    const T& k, const T& d, const T& A0_E_star,
                                    const Vector3<T> coefficients) {
-  const T x = 1 - e0 + dt * k * vn;
-  if (x < epsilon_linear_) {
+  const T e = e0 - dt*k*vn;
+  if ((1 - e) < epsilon_linear_) {
     return coefficients(0);
   } else {
     return CalcDiscreteLogBarrierDerivativeUnchecked(dt, vn, e0, k, d,

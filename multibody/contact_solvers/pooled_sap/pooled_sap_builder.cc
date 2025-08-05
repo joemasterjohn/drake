@@ -680,7 +680,8 @@ void PooledSapBuilder<T>::AddPatchConstraintsForLogBarrierContact(
                        : s.poly_e_MN().EvaluateCartesian(face, p_WC);
 
       DRAKE_DEMAND(e0 >= 0 && e0 < 1);
-      const T fn0 = -Ae * E_star * log(1 - e0);
+      // const T fn0 = -Ae * E_star * log(1 - e0);
+      const T fn0 = Ae * E_star * (e0 / (1 - e0));
       // We use "stiffness" to store ∇e⋅n̂.
       patches.AddPair(p_BoC_W, nhat_AB_W, fn0, g, Ae * E_star, e0);
     }
