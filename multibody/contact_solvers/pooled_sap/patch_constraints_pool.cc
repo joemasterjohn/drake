@@ -27,7 +27,8 @@ namespace pooled_sap {
 // v_εₗ = (εₗ - 1 + ε₀) / (δt⋅k)
 static constexpr double epsilon_linear_ = 1e-9;
 
-static const double log_factor = -1. / std::log(0.5);
+// static const double log_factor = -1. / std::log(0.5);
+static const double log_factor = 1.0;
 
 template <typename T>
 T SoftNorm(const Vector3<T>& x, const T& eps) {
@@ -631,9 +632,10 @@ void PooledSapModel<T>::PatchConstraintsPool::CalcPatchQuantities(
 template <typename T>
 void PooledSapModel<T>::PatchConstraintsPool::PrintData(
     const PatchConstraintsDataPool<T>& patch_data) const {
-  for (int p = 0; p < num_patches(); ++p) {
-    fmt::print("Gamma_Bo_w[{}]: {}\n", p,
-               fmt_eigen(patch_data.Gamma_Bo_W_pool()[p].transpose()));
+  if(num_patches() > 0) {
+    fmt::print("{} ", patch_data.Gamma_Bo_W_pool()[0][5]);
+  } else {
+    fmt::print("0.0 ");
   }
 }
 

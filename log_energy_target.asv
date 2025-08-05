@@ -1,0 +1,16 @@
+function y = log_energy_target(x, p)
+
+R = p.R;
+E = p.E;
+delta = p.delta;
+m = p.m;
+g = p.g;
+h = p.h;
+
+Ad = 4*pi*delta*(R+delta);
+
+
+a2 = a*a;
+V = b/(4*a*a)* ((2-2*a2*x.*x).*log(1-a*x)+a*x.*(a*x+2));
+
+y = V - m*g*h;

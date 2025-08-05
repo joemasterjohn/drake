@@ -4,13 +4,8 @@
     <geom name="table_top" type="box" pos="0.0 0.0 0.0" size="0.55 1.1 0.1" rgba="0.9 0.8 0.7 1"/>
     <body>
       <joint type="free"/>
-      <geom name="object" type="sphere" pos="0.0 0.0 0.0" euler="80 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0"/>
-      <!-- <geom name="table_top" type="box" pos="0.0 0.0 0.5" size="0.1 0.1 0.1" rgba="0.9 0.8 0.7 1"/> -->
-    </body>
-    <body>
-      <joint type="free"/>
-      <geom name="object2" type="sphere" pos="0.0 0.0 0.0" euler="80 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0"/>
-      <!-- <geom name="table_top" type="box" pos="0.0 0.0 0.5" size="0.1 0.1 0.1" rgba="0.9 0.8 0.7 1"/> -->
-    </body>
+      <geom name="object" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0"/>
+      <!-- <geom name="table_top" type="box" pos="0.0 0.0 0.5" size="0.001 0.001 0.1" rgba="0.9 0.8 0.7 1"/> -->
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>    </body>
   </worldbody>
 </mujoco>

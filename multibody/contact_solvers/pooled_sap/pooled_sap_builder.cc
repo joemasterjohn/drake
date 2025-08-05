@@ -666,7 +666,7 @@ void PooledSapBuilder<T>::AddPatchConstraintsForLogBarrierContact(
       if (gM < kGradientEpsilon || gN < kGradientEpsilon) {
         continue;
       }
-      // const T g = 1.0 / (1.0 / gM + 1.0 / gN);
+      const T g = 1.0 / (1.0 / gM + 1.0 / gN);
       const Vector3<T>& p_WC = s.centroid(face);
       const Vector3<T> p_BoC_W = p_WC - p_WBo;
 
@@ -682,7 +682,7 @@ void PooledSapBuilder<T>::AddPatchConstraintsForLogBarrierContact(
       DRAKE_DEMAND(e0 >= 0 && e0 < 1);
       const T fn0 = -Ae * E_star * log(1 - e0);
       // We use "stiffness" to store ∇e⋅n̂.
-      patches.AddPair(p_BoC_W, nhat_AB_W, fn0, 2e4, Ae * E_star, e0);
+      patches.AddPair(p_BoC_W, nhat_AB_W, fn0, g, Ae * E_star, e0);
     }
   }
 }

@@ -304,6 +304,8 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
   // fmt::print("  Smallest SA <{}>: [{} , {}] length: <{}>\n",
   //            fmt_eigen(gaxis.transpose()), gmin, gmax, gmax - gmin);
 
+  fmt::print("{}", gmax - gmin);
+
   return true;
 }
 
