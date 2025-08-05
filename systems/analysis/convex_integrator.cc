@@ -172,6 +172,8 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
 
     if (!this->IsFeasibleState()) {
+
+      fmt::print("t: {} Fullstep\n", t0);
       SapData<T>& data = get_data();
       PooledSapModel<T>& model = get_model();
       v_guess = x_next.get_generalized_velocity().CopyToVector();
@@ -199,6 +201,7 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     context.SetTimeAndNoteContinuousStateChange(t0 + 0.5 * h);
 
     if (!this->IsFeasibleState()) {
+      fmt::print("t: {} 1st half-step\n", t0);
       SapData<T>& data = get_data();
       PooledSapModel<T>& model = get_model();
       v_guess = x_next.get_generalized_velocity().CopyToVector();
@@ -225,7 +228,7 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
 
     if (!this->IsFeasibleState()) {
-      // Print out the solve state at failure time.
+      fmt::print("t: {} 2nd half-step\n", t0);
       SapData<T>& data = get_data();
       PooledSapModel<T>& model = get_model();
       v_guess = x_next.get_generalized_velocity().CopyToVector();

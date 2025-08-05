@@ -27,6 +27,8 @@ namespace pooled_sap {
 // v_εₗ = (εₗ - 1 + ε₀) / (δt⋅k)
 static constexpr double epsilon_linear_ = 1e-9;
 
+static const double log_factor = -1. / std::log(0.5);
+
 template <typename T>
 T SoftNorm(const Vector3<T>& x, const T& eps) {
   using std::sqrt;
@@ -219,7 +221,7 @@ T CalcDiscreteLogBarrierAntiderivativeUnchecked(const T& dt, const T& vn,
   // From the derivation above, N(v; fₑ₀) = N⁺(vn_clamped; fₑ₀).
   const T& v = vn_clamped;  // Alias to shorten notation.
 
-  const T C = -dt * A0_E_star;
+  const T C = -dt * A0_E_star * log_factor;
   const T a = 1 - e0;
   const T b = dt * k;
   const T N = C *
@@ -254,7 +256,7 @@ T CalcDiscreteLogBarrierImpulseUnchecked(const T& dt, const T& vn, const T& e0,
   // n(v; ε₀) = -δt⋅A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v)⋅(1 - d⋅v)
 
   const T x = 1 - e0 + dt * k * vn;
-  const T fe = -A0_E_star * log(x);
+  const T fe = -A0_E_star * log(x) * log_factor;
   if (fe <= 0.0) return 0.0;
   const T damping = 1.0 - d * vn;
   if (damping <= 0.0) return 0.0;
@@ -298,7 +300,7 @@ T CalcDiscreteLogBarrierDerivativeUnchecked(const T& dt, const T& vn,
   //   x       = 1 - ε₀ + δt⋅k⋅v
   //   fe      = -A₀⋅E*⋅ln(x)
   //   damping = (1 - d⋅v)
-  const T dn_dvn = -dt * ((dt * k * A0_E_star * damping) / x + (d * fe));
+  const T dn_dvn = -dt * ((dt * k * A0_E_star * damping) / x + (d * fe)) * log_factor;
 
   return dn_dvn;
 }

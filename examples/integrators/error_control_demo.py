@@ -42,9 +42,12 @@ def ball_on_table():
     url = "package://drake/examples/integrators/ball_on_table.xml"
     use_hydroelastic = True
     initial_state = np.array(
-        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 
+         1.0, 0.0, 0.0, 0.0, 0.1, 0.0, 0.5,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     )
-    sim_time = 5.0
+    sim_time = 1.0
     return SimulationExample(
         name, url, use_hydroelastic, initial_state, sim_time
     )
@@ -169,7 +172,7 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
-        sg_config.default_proximity_properties.hydroelastic_modulus = 1e9
+        sg_config.default_proximity_properties.hydroelastic_modulus = 1e7
         sg_config.default_proximity_properties.margin = 1e-4
         scene_graph.set_config(sg_config)
 
