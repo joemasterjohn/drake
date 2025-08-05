@@ -113,7 +113,7 @@ void PooledSapModel<T>::CalcBodySpatialVelocities(
 
 template <typename T>
 void PooledSapModel<T>::PrintPatchData(const SapData<T>& data) const {
-  typename SapData<T>::Cache& cache = data.cache();
+  const typename SapData<T>::Cache& cache = data.cache();
   patch_constraints_pool_.PrintData(cache.patch_constraints_data);
 }
 

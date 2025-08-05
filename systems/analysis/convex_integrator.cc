@@ -130,6 +130,25 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
   // error control is enabled or not.
   VectorX<T>& v_guess = scratch_.v_guess;
   v_guess = plant().GetVelocities(plant_context);
+
+  if (!this->IsFeasibleState()) {
+    // Print out the solve state at failure time.
+    SapData<T>& data = get_data();
+    PooledSapModel<T>& model = get_model();
+    model.CalcData(v_guess, &data);
+    model.PrintPatchData(data);
+
+    drake::log()->warn(
+        fmt::format("Infeasible state: {}\n",
+                    fmt_eigen(x_next.CopyToVector().transpose())));
+
+    x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+    context.SetTimeAndNoteContinuousStateChange(t0);
+    drake::log()->warn(
+        fmt::format("ConvexIntegrator: Infeasible state at t0 = {}\n", t0));
+    return false;
+  }
+
   ComputeNextContinuousState(h, v_guess, x_next_full_.get());
 
   if (this->get_fixed_step_mode()) {
@@ -148,19 +167,25 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
   } else {
     // We're using error control, and will compare with two half-sized steps.
 
-    // // Set the state to the result of the full step and check feasibility.
-    // x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
-    // context.SetTimeAndNoteContinuousStateChange(t0 + h);
+    // Set the state to the result of the full step and check feasibility.
+    x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
+    context.SetTimeAndNoteContinuousStateChange(t0 + h);
 
-    // if (!this->IsFeasibleState()) {
-    //   x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
-    //   context.SetTimeAndNoteContinuousStateChange(t0);
-    //   drake::log()->warn(
-    //       fmt::format("ConvexIntegrator: full step to t + {} is infeasible. "
-    //                   "Reverting to previous state.",
-    //                   h));
-    //   return false;
-    // }
+    if (!this->IsFeasibleState()) {
+      SapData<T>& data = get_data();
+      PooledSapModel<T>& model = get_model();
+      v_guess = x_next.get_generalized_velocity().CopyToVector();
+      model.CalcData(v_guess, &data);
+      model.PrintPatchData(data);
+
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      // drake::log()->warn(
+      //     fmt::format("ConvexIntegrator: full step to t + {} is infeasible. "
+      //                 "Reverting to previous state.",
+      //                 h));
+      return false;
+    }
 
     // First half-step to (t + h/2) uses the average of v_t and v_{t+1} as the
     // initial guess
@@ -173,15 +198,21 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     x_next.get_mutable_vector().SetFrom(x_next_half_1_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + 0.5 * h);
 
-    // if (!this->IsFeasibleState()) {
-    //   x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
-    //   context.SetTimeAndNoteContinuousStateChange(t0);
-    //   drake::log()->warn(fmt::format(
-    //       "ConvexIntegrator: first half-step to t + {} is infeasible. "
-    //       "Reverting to previous state.",
-    //       0.5 * h));
-    //   return false;
-    // }
+    if (!this->IsFeasibleState()) {
+      SapData<T>& data = get_data();
+      PooledSapModel<T>& model = get_model();
+      v_guess = x_next.get_generalized_velocity().CopyToVector();
+      model.CalcData(v_guess, &data);
+      model.PrintPatchData(data);
+
+      x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+      context.SetTimeAndNoteContinuousStateChange(t0);
+      // drake::log()->warn(fmt::format(
+      //     "ConvexIntegrator: first half-step to t + {} is infeasible. "
+      //     "Reverting to previous state.",
+      //     0.5 * h));
+      return false;
+    }
 
     // Now we can take the second half-step. We'll use the solution of the full
     // step as our initial guess here.
@@ -195,21 +226,21 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
 
     if (!this->IsFeasibleState()) {
       // Print out the solve state at failure time.
-      SapData<double>& data = get_data();
+      SapData<T>& data = get_data();
       PooledSapModel<T>& model = get_model();
-      VectorX<T>& v_guess = scratch_.v_guess;
       v_guess = x_next.get_generalized_velocity().CopyToVector();
-      model.CalcData(v, &data);
+      model.CalcData(v_guess, &data);
       model.PrintPatchData(data);
 
-      drake::log()->warn(fmt::format("Infeasible state: {}\n",
-                                     fmt_eigen(x_next.CopyToVector())));
+      // drake::log()->warn(fmt::format("Infeasible state: {}\n",
+      //                                fmt_eigen(x_next.CopyToVector().transpose())));
+
       x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
       context.SetTimeAndNoteContinuousStateChange(t0);
-      drake::log()->warn(fmt::format(
-          "ConvexIntegrator: second half-step to t + {} is infeasible. "
-          "Reverting to previous state.",
-          h));
+      // drake::log()->warn(fmt::format(
+      //     "ConvexIntegrator: second half-step to t + {} is infeasible. "
+      //     "Reverting to previous state.",
+      //     h));
       return false;
     }
 

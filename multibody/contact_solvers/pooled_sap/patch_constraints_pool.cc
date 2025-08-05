@@ -25,7 +25,7 @@ namespace pooled_sap {
 //
 // such that their values agree with the log-barrier function at the boudary
 // v_εₗ = (εₗ - 1 + ε₀) / (δt⋅k)
-static constexpr double epsilon_linear_ = 1e-2;
+static constexpr double epsilon_linear_ = 1e-9;
 
 template <typename T>
 T SoftNorm(const Vector3<T>& x, const T& eps) {
@@ -332,7 +332,12 @@ PooledSapModel<T>::PatchConstraintsPool::CalcLogBarrierLinearRegimeCoefficients(
   // v_εₗ = (εₗ - 1 + ε₀) / (δt⋅k)
 
   // Value of v at the linear-regime barrier epsilon_linear_.
-  const T v = (epsilon_linear_ - 1 - e0) / (dt * k);
+  const T v = (epsilon_linear_ - 1 + e0) / (dt * k);
+
+  // Sanity-check:
+  const T x = 1 - e0 + dt*k*v;
+  DRAKE_DEMAND(x > 0);
+
   const T A =
       CalcDiscreteLogBarrierDerivativeUnchecked(dt, v, e0, k, d, A0_E_star);
   const T B =
@@ -626,7 +631,7 @@ void PooledSapModel<T>::PatchConstraintsPool::PrintData(
     const PatchConstraintsDataPool<T>& patch_data) const {
   for (int p = 0; p < num_patches(); ++p) {
     fmt::print("Gamma_Bo_w[{}]: {}\n", p,
-               fmt_eigen(patch_data->Gamma_Bo_W_pool()[p].transpose()));
+               fmt_eigen(patch_data.Gamma_Bo_W_pool()[p].transpose()));
   }
 }
 

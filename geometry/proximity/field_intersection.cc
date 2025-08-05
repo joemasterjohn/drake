@@ -228,6 +228,7 @@ void ProjectOntoAxis(const std::array<Vector3d, 4>& verts, const Vector3d& axis,
 }
 
 static double gmin, gmax;
+static Vector3d gaxis;
 
 bool IsSeparatingAxis(const Vector3d& axis_M,
                       const std::array<Vector3d, 4>& tet_M,
@@ -247,6 +248,7 @@ bool IsSeparatingAxis(const Vector3d& axis_M,
       // min and max.
       gmax = imax;
       gmin = imin;
+      gaxis = axis_M;
     }
     return false;
   }
@@ -268,10 +270,10 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
   }
 
   for (int i = 0; i < 4; ++i) {
-    if (IsSeparatingAxis(mesh_M.inward_normal(tet_M, 0), verts_M, verts_N_M)) {
+    if (IsSeparatingAxis(mesh_M.inward_normal(tet_M, i), verts_M, verts_N_M)) {
       return false;
     }
-    if (IsSeparatingAxis(X_MN.rotation() * mesh_N.inward_normal(tet_N, 0),
+    if (IsSeparatingAxis(X_MN.rotation() * mesh_N.inward_normal(tet_N, i),
                          verts_M, verts_N_M)) {
       return false;
     }
@@ -289,17 +291,18 @@ bool TetrahedraIntersect(int tet_M, const VolumeMesh<double>& mesh_M, int tet_N,
     }
   }
 
-  fmt::print("Tetrahedra {} and {} intersect in frame M.", tet_M, tet_N);
-  fmt::print(
-      "  Vertices of tet_M:\n  {}\n  {}\n  {}\n  {}\n",
-      fmt_eigen(verts_M[0].transpose()), fmt_eigen(verts_M[1].transpose()),
-      fmt_eigen(verts_M[2].transpose()), fmt_eigen(verts_M[3].transpose()));
-  fmt::print(
-      "  Vertices of tet_N in frame M:\n  {}\n  {}\n  {}\n  {}\n",
-      fmt_eigen(verts_N_M[0].transpose()), fmt_eigen(verts_N_M[1].transpose()),
-      fmt_eigen(verts_N_M[2].transpose()), fmt_eigen(verts_N_M[3].transpose()));
+  // fmt::print("Tetrahedra {} and {} intersect in frame M.", tet_M, tet_N);
+  // fmt::print(
+  //     "  Vertices of tet_M:\n  {}\n  {}\n  {}\n  {}\n",
+  //     fmt_eigen(verts_M[0].transpose()), fmt_eigen(verts_M[1].transpose()),
+  //     fmt_eigen(verts_M[2].transpose()), fmt_eigen(verts_M[3].transpose()));
+  // fmt::print(
+  //     "  Vertices of tet_N in frame M:\n  {}\n  {}\n  {}\n  {}\n",
+  //     fmt_eigen(verts_N_M[0].transpose()), fmt_eigen(verts_N_M[1].transpose()),
+  //     fmt_eigen(verts_N_M[2].transpose()), fmt_eigen(verts_N_M[3].transpose()));
 
-  fmt::print("  Smallest SA: [{} , {}] length: <{}>\n", gmin, gmax, gmax - gmin);
+  // fmt::print("  Smallest SA <{}>: [{} , {}] length: <{}>\n",
+  //            fmt_eigen(gaxis.transpose()), gmin, gmax, gmax - gmin);
 
   return true;
 }
