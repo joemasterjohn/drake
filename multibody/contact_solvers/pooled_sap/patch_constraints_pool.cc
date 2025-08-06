@@ -25,10 +25,7 @@ namespace pooled_sap {
 //
 // such that their values agree with the log-barrier function at the boudary
 // v_εₗ = (εₗ - 1 + ε₀) / (δt⋅k)
-static constexpr double epsilon_linear_ = 1e-9;
-
-// static const double log_factor = -1. / std::log(0.5);
-static const double log_factor = 1.0;
+static constexpr double epsilon_linear_ = 5e-2;
 
 template <typename T>
 T SoftNorm(const Vector3<T>& x, const T& eps) {
@@ -183,16 +180,14 @@ T CalcDiscreteLogBarrierAntiderivativeUnchecked(const T& dt, const T& vn,
   // Then for v < v̂, n(v; fₑ₀) is positive.
   //
   // Defining:
-  //  C = -δt⋅A₀⋅E*
-  //  a = 1 - ε₀
-  //  b = δt⋅k
+  //  C = δt⋅A₀⋅E*
+  //  e = ε₀ - δt⋅k⋅v
   // And re-expressing:
-  //  n(v; ε₀) = C⋅ln(a + b⋅v)⋅(1 - d⋅v)
+  //  n(v; ε₀) = C⋅e⋅(1 - d⋅v)/(1 - e)
   // We can verify that:
   //
-  //  N⁺(v; ε₀) = ∫ [C⋅ln(a + b⋅v)⋅(1 - d⋅v)] dv
-  //            = C⋅(b⋅v⋅(-2⋅a⋅d + b⋅(-4 + d⋅v)) + 2⋅(a + b⋅v)⋅(a⋅d + b⋅(2 -
-  //            d⋅v))⋅ln(a + b⋅v))/(4⋅b^2)
+  //  N⁺(v; ε₀) = ∫ [C⋅e⋅(1 - d⋅v)/(1 - e)] dv
+  //            = ????
   //
   // is its antiderivative.
   // Since n(v; ε₀) = 0 for v ≥ v̂, then N(v; ε₀) must be constant for v ≥ v̂.
@@ -222,30 +217,15 @@ T CalcDiscreteLogBarrierAntiderivativeUnchecked(const T& dt, const T& vn,
   // From the derivation above, N(v; fₑ₀) = N⁺(vn_clamped; fₑ₀).
   const T& v = vn_clamped;  // Alias to shorten notation.
 
-  const T C = -dt * A0_E_star * log_factor;
-  const T a = 1 - e0;
-  const T b = dt * k;
-  const T N = C *
-              (b * v * (-2 * a * d + b * (-4 + d * v)) +
-               2 * (a + b * v) * (a * d + b * (2 - d * v)) * log(a + b * v)) /
-              (4 * b * b);
+
+  const T C = dt * A0_E_star;
+  const T a = e0;
+  const T b = -dt * k;
+  // Wolfram alpha says:
+  // N⁺(v; ε₀) = C*( b*v*(b*(d*v - 2) + 2*d) - 2*((a-1)*d + b)*log(1 - a - b*v) / (2*b*b)
+  const T N = C * (b*v*(b*(d*v - 2) + 2*d) - 2*((a-1)*d + b)*log(1 - a - b*v)) / (2*b*b);
 
   return N;
-}
-
-template <typename T>
-T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
-                                       const T& k, const T& d,
-                                       const T& A0_E_star,
-                                       const Vector3<T> coefficients) {
-  const T e = e0 - dt*k*vn
-  if ((1 - e) < epsilon_linear_) {
-    return vn * (0.5 * vn * coefficients(0) + coefficients(1)) +
-           coefficients(2);
-  } else {
-    return CalcDiscreteLogBarrierAntiderivativeUnchecked(dt, vn, e0, k, d,
-                                                         A0_E_star);
-  }
 }
 
 template <typename T>
@@ -267,11 +247,54 @@ T CalcDiscreteLogBarrierImpulseUnchecked(const T& dt, const T& vn, const T& e0,
 }
 
 template <typename T>
+T CalcDiscreteLogBarrierDerivativeUnchecked(const T& dt, const T& vn,
+                                            const T& e0, const T& k, const T& d,
+                                            const T& A0_E_star) {
+  const T e = e0 - dt*k*vn;
+  const T fe = A0_E_star * (e / (1 - e));
+  // Quick exits.
+  if (fe <= 0.0) return 0.0;
+  const T damping = 1.0 - d * vn;
+  if (damping <= 0.0) return 0.0;
+
+  // n(v; ε₀) = δt⋅A₀⋅E*⋅[(e0 - δt⋅k⋅vn) / (1 - e0 + δt⋅k⋅vn)]⋅(1 - d⋅vn)
+  //          = C⋅[(e(v) / (1 - e(v))]⋅d(v)
+  // Where:
+  //   e(v) = e0 - δt⋅k⋅vn
+  //   d(v) = 1 - d⋅vn
+  //   C    = δt⋅A₀⋅E*
+  // dn/dv = C⋅(d(v)⋅e'(v) - (e(v) - 1)⋅e(v)⋅d'(v))/(1 - e(v))^2
+  
+  const T edot = -dt*k;
+  const T ddot = -d;
+  const T e_min1 = e - 1;
+
+  const T dn_dvn = dt * A0_E_star * (damping*edot - e_min1*e*ddot) / (e_min1*e_min1);
+
+  return dn_dvn;
+}
+
+template <typename T>
+T CalcDiscreteLogBarrierAntiderivative(const T& dt, const T& vn, const T& e0,
+                                       const T& k, const T& d,
+                                       const T& A0_E_star,
+                                       const Vector3<T> coefficients) {
+  const T e = e0 - dt*k*vn;
+  if (e >= 1 - epsilon_linear_) {
+    return vn * (0.5 * vn * coefficients(0) + coefficients(1)) +
+           coefficients(2);
+  } else {
+    return CalcDiscreteLogBarrierAntiderivativeUnchecked(dt, vn, e0, k, d,
+                                                         A0_E_star);
+  }
+}
+
+template <typename T>
 T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
                                 const T& k, const T& d, const T& A0_E_star,
                                 const Vector3<T> coefficients) {
-  const T e = e0 - dt*k*vn
-  if ((1 - e) < epsilon_linear_) {
+  const T e = e0 - dt*k*vn;
+  if (e >= 1 - epsilon_linear_) {
     return coefficients(0) * vn + coefficients(1);
   } else {
     return CalcDiscreteLogBarrierImpulseUnchecked(dt, vn, e0, k, d, A0_E_star);
@@ -279,39 +302,11 @@ T CalcDiscreteLogBarrierImpulse(const T& dt, const T& vn, const T& e0,
 }
 
 template <typename T>
-T CalcDiscreteLogBarrierDerivativeUnchecked(const T& dt, const T& vn,
-                                            const T& e0, const T& k, const T& d,
-                                            const T& A0_E_star) {
-  using std::log;
-
-  const T x = 1 - e0 + dt * k * vn;
-  const T fe = -A0_E_star * log(x);
-  // Quick exits.
-  if (fe <= 0.0) return 0.0;
-  const T damping = 1.0 - d * vn;
-  if (damping <= 0.0) return 0.0;
-
-  // n(v; ε₀) = -δt⋅A₀⋅E*⋅ln(1 - ε₀ + δt⋅k⋅v)⋅(1 - d⋅v)
-  //
-  // dn/dv = -δt⋅A₀⋅E*⋅[(δt⋅k)⋅(1 - d⋅v)/(1 - ε₀ + δt⋅k⋅v) - d⋅ln(1 - ε₀ +
-  // δt⋅k⋅v)]
-  //       = -δt⋅[(δt⋅k⋅A₀⋅E*⋅damping / x) + d⋅fe]
-  //
-  // Where:
-  //   x       = 1 - ε₀ + δt⋅k⋅v
-  //   fe      = -A₀⋅E*⋅ln(x)
-  //   damping = (1 - d⋅v)
-  const T dn_dvn = -dt * ((dt * k * A0_E_star * damping) / x + (d * fe)) * log_factor;
-
-  return dn_dvn;
-}
-
-template <typename T>
 T CalcDiscreteLogBarrierDerivative(const T& dt, const T& vn, const T& e0,
                                    const T& k, const T& d, const T& A0_E_star,
                                    const Vector3<T> coefficients) {
   const T e = e0 - dt*k*vn;
-  if ((1 - e) < epsilon_linear_) {
+  if (e >= 1 - epsilon_linear_) {
     return coefficients(0);
   } else {
     return CalcDiscreteLogBarrierDerivativeUnchecked(dt, vn, e0, k, d,
