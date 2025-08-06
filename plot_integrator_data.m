@@ -24,19 +24,19 @@ z0 = z(type0_idx) - 0.2;
 zdot0 = zdot(type0_idx);
 f0 = gamma(type0_idx) ./ h0;
 phi0 = phi(type0_idx);
-over_idx = (phi0>=0);
-z_over = z0(over_idx);
+over_idx = (phi>=0);
+z_over = z(over_idx);
 
 % Plot t vs h for type 0
 figure;
-plot(t0, h0, 'o-', t0(over_idx), h0(over_idx),'o-');
+semilogy(t0, h0, 'o-', t(over_idx), h(over_idx),'x-');
 xlabel('t');
 ylabel('h');
 title('t vs h for type = 0');
 grid on;
 
 figure;
-plot(t0, z0, 'o-', t0(over_idx), z_over,'o--');
+plot(t0, z0, 'o-', t(over_idx), z_over,'x--');
 xlabel('t');
 ylabel('z');
 title('t vs z for type = 0');

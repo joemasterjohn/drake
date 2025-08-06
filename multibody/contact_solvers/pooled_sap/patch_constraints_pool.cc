@@ -627,6 +627,7 @@ void PooledSapModel<T>::PatchConstraintsPool::CalcPatchQuantities(
 template <typename T>
 void PooledSapModel<T>::PatchConstraintsPool::PrintData(
     const PatchConstraintsDataPool<T>& patch_data) const {
+  unused(patch_data);
   if(num_patches() > 0) {
     fmt::print("{} ", patch_data.Gamma_Bo_W_pool()[0][5]);
   } else {

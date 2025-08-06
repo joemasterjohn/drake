@@ -41,11 +41,23 @@ def ball_on_table():
     name = "Ball on table"
     url = "package://drake/examples/integrators/ball_on_table.xml"
     use_hydroelastic = True
+    # initial_state = np.array(
+    #     [1.0, 0.0, 0.0, 0.0, 0.05, 0.0,  0.5,
+    #      1.0, 0.0, 0.0, 0.0, 0.0, 0.05,  1.0,
+    #      1.0, 0.0, 0.0, 0.0, 0.05, 0.05, 1.5,
+    #      1.0, 0.0, 0.0, 0.0, -0.05, 0.0, 2.0,
+    #      1.0, 0.0, 0.0, 0.0, 0.0, -0.05, 2.5,
+    #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+    # )
     initial_state = np.array(
-        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3,
-         0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0,  0.3,
+         0.0, 0.0, 0.0, 3, 0.0, 0.0]
     )
-    sim_time = 3.0
+    sim_time = 2
     return SimulationExample(
         name, url, use_hydroelastic, initial_state, sim_time
     )
