@@ -264,7 +264,7 @@ T CalcDiscreteLogBarrierDerivativeUnchecked(const T& dt, const T& vn,
   //   d(v) = 1 - d⋅vn
   //   C    = δt⋅A₀⋅E*
   // dn/dv = C⋅(d(v)⋅e'(v) - (e(v) - 1)⋅e(v)⋅d'(v))/(1 - e(v))^2
-  
+
   const T edot = -dt*k;
   const T ddot = -d;
   const T e_min1 = e - 1;
@@ -629,7 +629,7 @@ void PooledSapModel<T>::PatchConstraintsPool::PrintData(
     const PatchConstraintsDataPool<T>& patch_data) const {
   unused(patch_data);
   if(num_patches() > 0) {
-    fmt::print("{} ", patch_data.Gamma_Bo_W_pool()[0][5]);
+    fmt::print("{} ", patch_data.Gamma_Bo_W_pool()[0][5] / time_step_);
   } else {
     fmt::print("0.0 ");
   }

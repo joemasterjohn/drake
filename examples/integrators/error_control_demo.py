@@ -54,10 +54,10 @@ def ball_on_table():
     #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
     # )
     initial_state = np.array(
-        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0,  0.3,
-         0.0, 0.0, 0.0, 3, 0.0, 0.0]
+        [1.0, 0.0, 0.0, 0.0, 0.3, 0.0,  2,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     )
-    sim_time = 2
+    sim_time = 5
     return SimulationExample(
         name, url, use_hydroelastic, initial_state, sim_time
     )
@@ -182,9 +182,10 @@ def create_scene(
     if hydroelastic:
         sg_config = SceneGraphConfig()
         sg_config.default_proximity_properties.compliance_type = "compliant"
-        sg_config.default_proximity_properties.hydroelastic_modulus = 1e9
+        sg_config.default_proximity_properties.hydroelastic_modulus = 1e8
         sg_config.default_proximity_properties.margin = 1e-4
-        sg_config.default_proximity_properties.hunt_crossley_dissipation = 50
+        sg_config.default_proximity_properties.hunt_crossley_dissipation = 0
+        sg_config.default_proximity_properties.resolution_hint = 0.005
         scene_graph.set_config(sg_config)
 
     if visualize:

@@ -651,6 +651,9 @@ void PooledSapBuilder<T>::AddPatchConstraintsForLogBarrierContact(
     const Vector3<T>& p_WBo = X_WB.translation();
     const Vector3<T> p_AB_W = p_WBo - p_WAo;
 
+    fmt::print("\n[hydro surface: {}, d: {}, mu: {}]\n", surface_index, d,
+               mu.static_friction());
+
     patches.AddPatch(bodyA->index(), bodyB->index(), d, mu.static_friction(),
                      mu.dynamic_friction(), p_AB_W);
 
@@ -682,10 +685,15 @@ void PooledSapBuilder<T>::AddPatchConstraintsForLogBarrierContact(
       DRAKE_DEMAND(e0 >= 0 && e0 < 1);
       // const T fn0 = -Ae * E_star * log(1 - e0);
       const T fn0 = Ae * E_star * (e0 / (1 - e0));
+
+      fmt::print(
+          "[p: {:>3}, k: {:>3}] e0: {:>10}, Ae: {:>10}, E*: {:>10}, g: {:>10}, fn0: {:>10}, nhat: {:>8}\n",
+          surface_index, face, e0, Ae, E_star, g, fn0, fmt_eigen(nhat_AB_W.transpose()));
       // We use "stiffness" to store ∇e⋅n̂.
       patches.AddPair(p_BoC_W, nhat_AB_W, fn0, g, Ae * E_star, e0);
     }
   }
+  fmt::print("\n");
 }
 
 template <typename T>

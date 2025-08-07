@@ -131,26 +131,17 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
   VectorX<T>& v_guess = scratch_.v_guess;
   v_guess = plant().GetVelocities(plant_context);
 
-  // Right now assume that the simulation is always in a feasible state at t0.
-  // if (!this->IsFeasibleState()) {
-  //   // Print out the solve state at failure time.
-  //   SapData<T>& data = get_data();
-  //   PooledSapModel<T>& model = get_model();
-  //   model.CalcData(v_guess, &data);
-  //   model.PrintPatchData(data);
-
-  //   drake::log()->warn(
-  //       fmt::format("Infeasible state: {}\n",
-  //                   fmt_eigen(x_next.CopyToVector().transpose())));
-
-  //   x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
-  //   context.SetTimeAndNoteContinuousStateChange(t0);
-  //   drake::log()->warn(
-  //       fmt::format("ConvexIntegrator: Infeasible state at t0 = {}\n", t0));
-  //   return false;
-  // }
+  // <type> t h z0 zdot0 z zdot_t+1 gamma_z overlap
+  fmt::print("0 {} {} {} {} ", t0, h, x_next.get_vector()[6],
+             x_next.get_vector()[12]);
 
   ComputeNextContinuousState(h, v_guess, x_next_full_.get());
+
+  fmt::print("{} {} ", x_next_full_->get_vector()[6],
+             x_next_full_->get_vector()[12]);
+  SapData<T>& data = get_data();
+  PooledSapModel<T>& model = get_model();
+  model.PrintPatchData(data);
 
   if (this->get_fixed_step_mode()) {
     // We're using fixed step mode, so we can just set the state to x_{t+h} and
@@ -168,30 +159,36 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
   } else {
     // We're using error control, and will compare with two half-sized steps.
 
-    // Set the state to the result of the full step and check feasibility.
+    // Set the state to the result of the full step to check feasibility.
     x_next.get_mutable_vector().SetFrom(x_next_full_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
 
-    // <type> t h z zdot gamma_z overlap
-    fmt::print("0 {} {} {} {} ", t0, h, x_next.get_vector()[6], x_next.get_vector()[12]);
-    SapData<T>& data = get_data();
-    PooledSapModel<T>& model = get_model();
-    v_guess = x_next.get_generalized_velocity().CopyToVector();
-    model.CalcData(v_guess, &data);
-    model.PrintPatchData(data);
     if (!this->IsFeasibleState()) {
-      fmt::print("\n");
+      fmt::print("\n\n");
       x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
       context.SetTimeAndNoteContinuousStateChange(t0);
       return false;
     }
     fmt::print("-1\n");
 
+    // Set the state back to x(t0) for the half stepping.
+    x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
+    context.SetTimeAndNoteContinuousStateChange(t0);
+
     // First half-step to (t + h/2) uses the average of v_t and v_{t+1} as the
     // initial guess
     v_guess += x_next_full_->get_generalized_velocity().CopyToVector();
     v_guess /= 2.0;
+
+    // <type> t h z0 zdot0 z zdot_t+1 gamma_z overlap
+    fmt::print("1 {} {} {} {} ", t0, 0.5 * h, x_next.get_vector()[6],
+               x_next.get_vector()[12]);
+
     ComputeNextContinuousState(0.5 * h, v_guess, x_next_half_1_.get(), true);
+
+    fmt::print("{} {} ", x_next_half_1_->get_vector()[6],
+               x_next_half_1_->get_vector()[12]);
+    model.PrintPatchData(data);
 
     // For the second half-step to (t + h), we need to start from (t + h/2).
     // So we'll first set the system state to the result of the first
@@ -199,13 +196,8 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     x_next.get_mutable_vector().SetFrom(x_next_half_1_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + 0.5 * h);
 
-    // <type> t h z zdot gamma_z overlap
-    fmt::print("1 {} {} {} {} ", t0, h, x_next.get_vector()[6], x_next.get_vector()[12]);
-    v_guess = x_next.get_generalized_velocity().CopyToVector();
-    model.CalcData(v_guess, &data);
-    model.PrintPatchData(data);
     if (!this->IsFeasibleState()) {
-      fmt::print("\n");
+      fmt::print("\n\n");
       x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
       context.SetTimeAndNoteContinuousStateChange(t0);
       return false;
@@ -215,25 +207,28 @@ bool ConvexIntegrator<T>::StepWithHalfSteppingErrorEstimate(const T& h) {
     // Now we can take the second half-step. We'll use the solution of the full
     // step as our initial guess here.
     v_guess = x_next_full_->get_generalized_velocity().CopyToVector();
+
+    // <type> t h z0 zdot0 z zdot_t+1 gamma_z overlap
+    fmt::print("2 {} {} {} {} ", t0 + 0.5* h, 0.5 * h, x_next.get_vector()[6], x_next.get_vector()[12]);
+
     ComputeNextContinuousState(0.5 * h, v_guess, x_next_half_2_.get(), true);
+
+    fmt::print("{} {} ", x_next_half_2_->get_vector()[6],
+               x_next_half_2_->get_vector()[12]);
+    model.PrintPatchData(data);
 
     // Set the state to the result of the second half-step (since this is more
     // accurate than the full step, and we have it anyway).
     x_next.get_mutable_vector().SetFrom(x_next_half_2_->get_vector());
     context.SetTimeAndNoteContinuousStateChange(t0 + h);
 
-    // <type> t h z zdot gamma_z overlap
-    fmt::print("2 {} {} {} {} ", t0, h, x_next.get_vector()[6], x_next.get_vector()[12]);
-    v_guess = x_next.get_generalized_velocity().CopyToVector();
-    model.CalcData(v_guess, &data);
-    model.PrintPatchData(data);
     if (!this->IsFeasibleState()) {
-      fmt::print("\n");
+      fmt::print("\n\n");
       x_next.get_mutable_vector().SetFrom(x_prev_->get_vector());
       context.SetTimeAndNoteContinuousStateChange(t0);
       return false;
     }
-    fmt::print("-1\n");
+    fmt::print("-1\n\n");
 
     // Estimate the error as the difference between the full step and the
     // two half-steps.
