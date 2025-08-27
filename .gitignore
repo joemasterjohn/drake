@@ -7,6 +7,9 @@
 *~
 .#*
 *.bak
+**.pyc
+__pycache__/
+*.pyc
 # - Directories (at top level)
 /xcode/
 /.cproject/

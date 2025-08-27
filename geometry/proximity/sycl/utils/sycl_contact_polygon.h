@@ -32,129 +32,71 @@ class ComputeContactPolygonsKernel;
  * threads do not return even for invalid checks. This is becasue the kernel has
  * barriers that need to be reached by ALL threads in the work group.
  *
- * @tparam DeviceTraits Template parameter for device-specific optimizations
- * @param item SYCL work item for thread coordination
- * @param slm Shared local memory for general data storage
- * @param slm_polygon Shared local memory for polygon vertex data
- * @param slm_ints Shared local memory for integer data
- * @param narrow_phase_check_indices Global array of narrow phase check indices
- * @param gradient_W_pressure_at_Wo Pressure gradient data for elements
- * @param element_offsets Element offset data for meshes
- * @param vertex_offsets Vertex offset data for meshes
- * @param element_mesh_ids Mesh IDs for elements
- * @param elements Tetrahedron vertex indices
- * @param vertices_W World-frame vertex coordinates
- * @param inward_normals_W World-frame inward normals
- * @param geom_collision_filter_num_cols Collision filter column counts
- * @param total_checks_per_geometry Total checks per geometry
- * @param collision_filter_host_body_index Host body indices for collision
- * filter
- * @param narrow_phase_check_validity Validity flags for narrow phase checks
- * @param polygon_areas Output: computed polygon areas
- * @param polygon_centroids Output: computed polygon centroids
- * @param polygon_normals Output: computed polygon normals
- * @param polygon_g_M Output: computed g_M values
- * @param polygon_g_N Output: computed g_N values
- * @param polygon_pressure_W Output: computed pressure values
- * @param polygon_geom_index_A Output: geometry index A
- * @param polygon_geom_index_B Output: geometry index B
- * @param geometry_ids Geometry ID mapping
- * @param TOTAL_THREADS_NEEDED Total number of threads required
- * @param NUM_THREADS_PER_CHECK Number of threads per collision check
- * @param DOUBLES_PER_CHECK Number of doubles per check in shared memory
- * @param POLYGON_DOUBLES Number of doubles for polygon data
- * @param EQ_PLANE_OFFSET Offset for equilibrium plane data
- * @param VERTEX_A_OFFSET Offset for vertex A data
- * @param VERTEX_B_OFFSET Offset for vertex B data
- * @param RANDOM_SCRATCH_OFFSET Offset for scratch space
- * @param POLYGON_VERTICES Number of polygon vertices
  */
 SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
     sycl::nd_item<1> item, const sycl::local_accessor<double, 1>& slm,
     const sycl::local_accessor<double, 1>& slm_polygon,
     const sycl::local_accessor<int, 1>& slm_ints,
-    const size_t TOTAL_THREADS_NEEDED, const size_t NUM_THREADS_PER_CHECK,
-    const size_t DOUBLES_PER_CHECK, const size_t POLYGON_DOUBLES,
-    const size_t EQ_PLANE_OFFSET, const size_t VERTEX_A_OFFSET,
-    const size_t VERTEX_B_OFFSET, const size_t RANDOM_SCRATCH_OFFSET,
-    const size_t POLYGON_VERTICES, const size_t* narrow_phase_check_indices,
+    const uint32_t TOTAL_THREADS_NEEDED, const uint32_t NUM_THREADS_PER_CHECK,
+    const uint32_t DOUBLES_PER_CHECK, const uint32_t POLYGON_DOUBLES,
+    const uint32_t EQ_PLANE_OFFSET, const uint32_t VERTEX_A_OFFSET,
+    const uint32_t VERTEX_B_OFFSET, const uint32_t RANDOM_SCRATCH_OFFSET,
+    const uint32_t POLYGON_VERTICES,
     const Vector4<double>* gradient_W_pressure_at_Wo,
-    const size_t* element_offsets, const size_t* vertex_offsets,
-    const size_t* element_mesh_ids, const std::array<int, 4>* elements,
-    const Vector3<double>* vertices_W,
+    const uint32_t* vertex_offsets, const uint32_t* element_mesh_ids,
+    const std::array<int, 4>* elements, const Vector3<double>* vertices_W,
     const std::array<Vector3<double>, 4>* inward_normals_W,
-    const size_t* geom_collision_filter_num_cols,
-    const size_t* geom_collision_filter_check_offsets,
-    const size_t* collision_filter_host_body_index,
+    const uint32_t* collision_indices_A, const uint32_t* collision_indices_B,
     uint8_t* narrow_phase_check_validity, double* polygon_areas,
     Vector3<double>* polygon_centroids, Vector3<double>* polygon_normals,
     double* polygon_g_M, double* polygon_g_N, double* polygon_pressure_W,
     GeometryId* polygon_geom_index_A, GeometryId* polygon_geom_index_B,
     const GeometryId* geometry_ids) {
-  size_t global_id = item.get_global_id(0);
+  uint32_t global_id = item.get_global_id(0);
   bool valid_thread = true;
   sycl::sub_group sg = item.get_sub_group();
   // Early return for extra threads
   if (global_id >= TOTAL_THREADS_NEEDED) {
     valid_thread = false;
   }
-  size_t local_id = item.get_local_id(0);
+  uint32_t local_id = item.get_local_id(0);
   // In a group we have NUM_CHECKS_IN_WORK_GROUP checks
   // This gives us which check number in [0, NUM_CHECKS_IN_WORK_GROUP)
   // this item is working on
   // NUM_THREADS_PER_CHECK threads will have the same
   // group_check_number
   // It ranges from [0, NUM_CHECKS_IN_WORK_GROUP)
-  size_t group_local_check_number = local_id / NUM_THREADS_PER_CHECK;
+  uint32_t group_local_check_number = local_id / NUM_THREADS_PER_CHECK;
 
   // This offset is used to compute the positions each of the
   // quantities for reading and writing to slm
-  size_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
+  uint32_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
 
   // This offset is used to compute the positions each of the
   // quantities for reading and writing to slm_polygon
-  size_t slm_polygon_offset = group_local_check_number * POLYGON_DOUBLES;
+  uint32_t slm_polygon_offset = group_local_check_number * POLYGON_DOUBLES;
 
   // Check offset for slm_ints array
-  constexpr size_t RANDOM_SCRATCH_INTS = 1;
-  size_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
+  constexpr uint32_t RANDOM_SCRATCH_INTS = 1;
+  uint32_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
 
   // Each check has NUM_THREADS_PER_CHECK workers.
   // This index helps identify the check local worker id
   // It ranges for [0, NUM_THREADS_PER_CHECK)
-  size_t check_local_item_id = local_id % NUM_THREADS_PER_CHECK;
+  uint32_t check_local_item_id = local_id % NUM_THREADS_PER_CHECK;
 
   // Need to make sure that invalid threads never participate in
   // any of the computations
-  size_t narrow_phase_check_index = std::numeric_limits<size_t>::max();
-  size_t global_check_index = std::numeric_limits<size_t>::max();
-  size_t host_body_index = std::numeric_limits<size_t>::max();
-  size_t geom_local_check_number = std::numeric_limits<size_t>::max();
-  size_t A_element_index = std::numeric_limits<size_t>::max();
-  size_t B_element_index = std::numeric_limits<size_t>::max();
+  uint32_t narrow_phase_check_index = std::numeric_limits<uint32_t>::max();
+  uint32_t A_element_index = std::numeric_limits<uint32_t>::max();
+  uint32_t B_element_index = std::numeric_limits<uint32_t>::max();
 
   // Get global element ids
   if (valid_thread) {
     narrow_phase_check_index = global_id / NUM_THREADS_PER_CHECK;
 
-    // global check index
-    global_check_index = narrow_phase_check_indices[narrow_phase_check_index];
-
-    // For these checks, get the global element indicies
-    // Same logic as the broad phase collision
-    host_body_index = collision_filter_host_body_index[global_check_index];
-
-    // Same logic as broad phase
-    size_t num_of_checks_offset =
-        geom_collision_filter_check_offsets[host_body_index];
-    geom_local_check_number = global_check_index - num_of_checks_offset;
-
-    A_element_index = element_offsets[host_body_index] +
-                      geom_local_check_number /
-                          geom_collision_filter_num_cols[host_body_index];
-    B_element_index = element_offsets[host_body_index + 1] +
-                      geom_local_check_number %
-                          geom_collision_filter_num_cols[host_body_index];
+    A_element_index = collision_indices_A[narrow_phase_check_index];
+    B_element_index = collision_indices_B[narrow_phase_check_index];
   }
 
   // We only need one thread to compute the Equilibrium Plane
@@ -176,7 +118,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
     const double gradP_B_Wo_z = gradient_W_pressure_at_Wo[B_element_index][2];
     const double p_B_Wo = gradient_W_pressure_at_Wo[B_element_index][3];
 
-    constexpr size_t EQ_PLANE_DOUBLES = 8;
+    constexpr uint32_t EQ_PLANE_DOUBLES = 8;
     double eq_plane[EQ_PLANE_DOUBLES];
     bool valid_check = ComputeEquilibriumPlane(
         gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo, gradP_B_Wo_x,
@@ -202,32 +144,32 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
   // Initialize the current polygon offset inside since we need to
   // switch them around later
-  constexpr size_t POLYGON_CURRENT_DOUBLES = 48;
-  size_t POLYGON_CURRENT_OFFSET = 0;
-  size_t POLYGON_CLIPPED_OFFSET =
+  constexpr uint32_t POLYGON_CURRENT_DOUBLES = 48;
+  uint32_t POLYGON_CURRENT_OFFSET = 0;
+  uint32_t POLYGON_CLIPPED_OFFSET =
       POLYGON_CURRENT_OFFSET + POLYGON_CURRENT_DOUBLES;
 
   // Move vertices and edge vectors to slm
   // Some quantities required for indexing
-  size_t geom_index_A = std::numeric_limits<size_t>::max();
-  size_t geom_index_B = std::numeric_limits<size_t>::max();
+  uint32_t geom_index_A = std::numeric_limits<uint32_t>::max();
+  uint32_t geom_index_B = std::numeric_limits<uint32_t>::max();
 
   if (valid_thread) {
     geom_index_A = element_mesh_ids[A_element_index];
     const std::array<int, 4> tet_vertices_A = elements[A_element_index];
-    const size_t vertex_mesh_offset_A = vertex_offsets[geom_index_A];
+    const uint32_t vertex_mesh_offset_A = vertex_offsets[geom_index_A];
 
     // Vertices of element B
     geom_index_B = element_mesh_ids[B_element_index];
     const std::array<int, 4> tet_vertices_B = elements[B_element_index];
-    const size_t vertex_mesh_offset_B = vertex_offsets[geom_index_B];
+    const uint32_t vertex_mesh_offset_B = vertex_offsets[geom_index_B];
 
     // Loop is over x,y,z
 
 #pragma unroll
-    for (size_t i = 0; i < 3; i++) {
+    for (uint32_t i = 0; i < 3; i++) {
       // Quantities that we have "4" of
-      for (size_t llid = check_local_item_id; llid < 4;
+      for (uint32_t llid = check_local_item_id; llid < 4;
            llid += NUM_THREADS_PER_CHECK) {
         // All 4 vertices moved at once by our sub items
         slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + i] =
@@ -237,7 +179,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
       }
     }
     // Quantity that we have "16" of - Only set 0'th element
-    for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
+    for (uint32_t llid = check_local_item_id; llid < POLYGON_VERTICES;
          llid += NUM_THREADS_PER_CHECK) {
       slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + llid * 3] =
           std::numeric_limits<double>::max();
@@ -276,8 +218,8 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
   // B We will sequentially loop over the faces but we will use our
   // work items to parallely compute the intersection point over
   // each edge We have 4 faces, so we will have 4 jobs per check
-  for (size_t face = 0; face < 4; face++) {
-    size_t num_edges_current_polygon = 0;
+  for (uint32_t face = 0; face < 4; face++) {
+    uint32_t num_edges_current_polygon = 0;
     if (valid_thread) {
       // This is the same as the number of points in the polygon
       num_edges_current_polygon = slm_ints[slm_ints_offset];
@@ -285,7 +227,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
     // First lets find the height of each of these vertices from the
     // face of interest
-    for (size_t job = check_local_item_id; job < num_edges_current_polygon;
+    for (uint32_t job = check_local_item_id; job < num_edges_current_polygon;
          job += NUM_THREADS_PER_CHECK) {
       // Get the outward normal of the face, point on face, and
       // polygon vertex
@@ -297,10 +239,10 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
       // {face} so any of (face+1)%4, (face+2)%4, (face+3)%4 are
       // candidates for a point on the face's plane. We arbitrarily
       // choose (face + 1) % 4.
-      const size_t face_vertex_index = (face + 1) % 4;
+      const uint32_t face_vertex_index = (face + 1) % 4;
 // This loop is over x,y,z
 #pragma unroll
-      for (size_t i = 0; i < 3; i++) {
+      for (uint32_t i = 0; i < 3; i++) {
         outward_normal[i] = -inward_normals_W[B_element_index][face][i];
 
         // Get a point from the verticies of element B
@@ -333,11 +275,11 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
     // Now we will walk the current polygon and construct the
     // clipped polygon
-    for (size_t vertex_0_index = check_local_item_id;
+    for (uint32_t vertex_0_index = check_local_item_id;
          vertex_0_index < num_edges_current_polygon;
          vertex_0_index += NUM_THREADS_PER_CHECK) {
       // Get the height of vertex_1
-      const size_t vertex_1_index =
+      const uint32_t vertex_1_index =
           (vertex_0_index + 1) % num_edges_current_polygon;
 
       // Get the height of vertex_0
@@ -424,16 +366,17 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
     sycl::group_barrier(item.get_group());
 
     // Flip Current and clipped polygon
-    const size_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
+    const uint32_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
     POLYGON_CURRENT_OFFSET = POLYGON_CLIPPED_OFFSET;
     POLYGON_CLIPPED_OFFSET = temp_polygon_current_offset;
 
     // Now clean up the current polygon to remove out the
     // std::numeric_limits<double>::max() vertices
     if (check_local_item_id == 0 && valid_thread) {
-      size_t write_index = 0;
+      uint32_t write_index = 0;
       // Scan through all potential vertices
-      for (size_t read_index = 0; read_index < POLYGON_VERTICES; ++read_index) {
+      for (uint32_t read_index = 0; read_index < POLYGON_VERTICES;
+           ++read_index) {
         // Check if this vertex is valid (not max value)
         if (slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET +
                         read_index * 3 + 0] !=
@@ -461,7 +404,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
       // Fill remaining positions with max values to mark them as
       // invalid At the same time even fill in the clipped polygon
       // with max values
-      for (size_t i = write_index; i < POLYGON_VERTICES; ++i) {
+      for (uint32_t i = write_index; i < POLYGON_VERTICES; ++i) {
         slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3] =
             std::numeric_limits<double>::max();
       }
@@ -473,7 +416,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
     // Clear out the clipped polygon
     if (valid_thread) {
-      for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
+      for (uint32_t llid = check_local_item_id; llid < POLYGON_VERTICES;
            llid += NUM_THREADS_PER_CHECK) {
         slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3] =
             std::numeric_limits<double>::max();
@@ -501,17 +444,17 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
   // We use one of the polygon's vertices as our base point to cut
   // the polygon into triangles We will use the first point for this
-  size_t polygon_size = 0;
+  uint32_t polygon_size = 0;
   if (valid_thread) {
     polygon_size = slm_ints[slm_ints_offset];
   }
-  const size_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
-  const size_t CENTROID_OFFSET = VERTEX_A_OFFSET;
+  const uint32_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
+  const uint32_t CENTROID_OFFSET = VERTEX_A_OFFSET;
   double thread_area_sum = 0;
   double thread_centroid_x = 0;
   double thread_centroid_y = 0;
   double thread_centroid_z = 0;
-  for (size_t triangle_index = check_local_item_id;
+  for (uint32_t triangle_index = check_local_item_id;
        triangle_index + 2 < polygon_size;
        triangle_index += NUM_THREADS_PER_CHECK) {
     const double v0_x =
@@ -587,7 +530,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
 
   item.barrier(sycl::access::fence_space::local_space);
 
-  for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+  for (uint32_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
     if (check_local_item_id < stride &&
         check_local_item_id + stride + 2 < polygon_size) {
       slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] +=
@@ -611,7 +554,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
     // Write Polygon Area and Centroid
     const double polygon_area =
         slm_polygon[slm_polygon_offset + AREAS_OFFSET + 0] * 0.5;
-    if (polygon_area > 1e-15) {
+    if (polygon_area > 1e-18) {
       polygon_areas[narrow_phase_check_index] = polygon_area;
       const double inv_polygon_area_6 = 1.0 / (polygon_area * 6);
       const double centroid_x =
@@ -650,6 +593,8 @@ SYCL_EXTERNAL inline void ComputeContactPolygonsNoReturn(
           gradP_A_Wo_z * centroid_z + p_A_Wo;
 
       // Write Geometry Index A
+      const uint32_t geom_index_A = element_mesh_ids[A_element_index];
+      const uint32_t geom_index_B = element_mesh_ids[B_element_index];
       polygon_geom_index_A[narrow_phase_check_index] =
           geometry_ids[geom_index_A];
       // Write Geometry Index B
@@ -670,28 +615,26 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
     sycl::nd_item<1> item, const sycl::local_accessor<double, 1>& slm,
     const sycl::local_accessor<double, 1>& slm_polygon,
     const sycl::local_accessor<int, 1>& slm_ints,
-    const size_t TOTAL_THREADS_NEEDED, const size_t NUM_THREADS_PER_CHECK,
-    const size_t DOUBLES_PER_CHECK, const size_t POLYGON_DOUBLES,
-    const size_t EQ_PLANE_OFFSET, const size_t VERTEX_A_OFFSET,
-    const size_t VERTEX_B_OFFSET, const size_t RANDOM_SCRATCH_OFFSET,
-    const size_t POLYGON_VERTICES, const size_t* narrow_phase_check_indices,
+    const uint32_t TOTAL_THREADS_NEEDED, const uint32_t NUM_THREADS_PER_CHECK,
+    const uint32_t DOUBLES_PER_CHECK, const uint32_t POLYGON_DOUBLES,
+    const uint32_t EQ_PLANE_OFFSET, const uint32_t VERTEX_A_OFFSET,
+    const uint32_t VERTEX_B_OFFSET, const uint32_t RANDOM_SCRATCH_OFFSET,
+    const uint32_t POLYGON_VERTICES,
     const Vector4<double>* gradient_W_pressure_at_Wo,
-    const size_t* element_offsets, const size_t* vertex_offsets,
-    const size_t* element_mesh_ids, const std::array<int, 4>* elements,
+    const uint32_t* element_offsets, const uint32_t* vertex_offsets,
+    const uint32_t* element_mesh_ids, const std::array<int, 4>* elements,
     const Vector3<double>* vertices_W,
     const std::array<Vector3<double>, 4>* inward_normals_W,
-    const size_t* geom_collision_filter_num_cols,
-    const size_t* geom_collision_filter_check_offsets,
-    const size_t* collision_filter_host_body_index,
+    const uint32_t* collision_indices_A, const uint32_t* collision_indices_B,
     uint8_t* narrow_phase_check_validity, double* polygon_areas,
     Vector3<double>* polygon_centroids, Vector3<double>* polygon_normals,
     double* polygon_g_M, double* polygon_g_N, double* polygon_pressure_W,
     GeometryId* polygon_geom_index_A, GeometryId* polygon_geom_index_B,
     const GeometryId* geometry_ids) {
-  size_t global_id = item.get_global_id(0);
+  uint32_t global_id = item.get_global_id(0);
   // Early return for extra threads
   if (global_id >= TOTAL_THREADS_NEEDED) return;
-  size_t local_id = item.get_local_id(0);
+  uint32_t local_id = item.get_local_id(0);
   auto sub_group = item.get_sub_group();
   // In a group we have NUM_CHECKS_IN_WORK_GROUP checks
   // This gives us which check number in [0, NUM_CHECKS_IN_WORK_GROUP)
@@ -699,49 +642,32 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
   // NUM_THREADS_PER_CHECK threads will have the same
   // group_check_number
   // It ranges from [0, NUM_CHECKS_IN_WORK_GROUP)
-  size_t group_local_check_number = local_id / NUM_THREADS_PER_CHECK;
+  uint32_t group_local_check_number = local_id / NUM_THREADS_PER_CHECK;
 
   // This offset is used to compute the positions each of the
   // quantities for reading and writing to slm
-  size_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
+  uint32_t slm_offset = group_local_check_number * DOUBLES_PER_CHECK;
 
   // This offset is used to compute the positions each of the
   // quantities for reading and writing to slm_polygon
-  size_t slm_polygon_offset = group_local_check_number * POLYGON_DOUBLES;
+  uint32_t slm_polygon_offset = group_local_check_number * POLYGON_DOUBLES;
 
   // Check offset for slm_ints array
-  constexpr size_t RANDOM_SCRATCH_INTS = 1;
-  size_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
+  constexpr uint32_t RANDOM_SCRATCH_INTS = 1;
+  uint32_t slm_ints_offset = group_local_check_number * RANDOM_SCRATCH_INTS;
 
   // Each check has NUM_THREADS_PER_CHECK workers.
   // This index helps identify the check local worker id
   // It ranges for [0, NUM_THREADS_PER_CHECK)
-  size_t check_local_item_id = local_id % NUM_THREADS_PER_CHECK;
+  uint32_t check_local_item_id = local_id % NUM_THREADS_PER_CHECK;
 
   // Get global element ids
-  size_t narrow_phase_check_index = global_id / NUM_THREADS_PER_CHECK;
+  uint32_t narrow_phase_check_index = global_id / NUM_THREADS_PER_CHECK;
 
-  // global check index
-  size_t global_check_index =
-      narrow_phase_check_indices[narrow_phase_check_index];
-
-  // For these checks, get the global element indicies
-  // Same logic as the broad phase collision
-  const size_t host_body_index =
-      collision_filter_host_body_index[global_check_index];
-
-  // Same logic as broad phase
-  size_t num_of_checks_offset =
-      geom_collision_filter_check_offsets[host_body_index];
-  const size_t geom_local_check_number =
-      global_check_index - num_of_checks_offset;
-
-  const size_t A_element_index =
-      element_offsets[host_body_index] +
-      geom_local_check_number / geom_collision_filter_num_cols[host_body_index];
-  const size_t B_element_index =
-      element_offsets[host_body_index + 1] +
-      geom_local_check_number % geom_collision_filter_num_cols[host_body_index];
+  const uint32_t A_element_index =
+      collision_indices_A[narrow_phase_check_index];
+  const uint32_t B_element_index =
+      collision_indices_B[narrow_phase_check_index];
 
   // We only need one thread to compute the Equilibrium Plane
   // for each check, however we have potentially multiple threads
@@ -762,7 +688,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
     const double gradP_B_Wo_z = gradient_W_pressure_at_Wo[B_element_index][2];
     const double p_B_Wo = gradient_W_pressure_at_Wo[B_element_index][3];
 
-    constexpr size_t EQ_PLANE_DOUBLES = 8;
+    constexpr uint32_t EQ_PLANE_DOUBLES = 8;
     double eq_plane[EQ_PLANE_DOUBLES];
     bool valid_check = ComputeEquilibriumPlane(
         gradP_A_Wo_x, gradP_A_Wo_y, gradP_A_Wo_z, p_A_Wo, gradP_B_Wo_x,
@@ -786,27 +712,27 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
 
   // Initialize the current polygon offset inside since we need to
   // switch them around later
-  constexpr size_t POLYGON_CURRENT_DOUBLES = 48;
-  size_t POLYGON_CURRENT_OFFSET = 0;
-  size_t POLYGON_CLIPPED_OFFSET =
+  constexpr uint32_t POLYGON_CURRENT_DOUBLES = 48;
+  uint32_t POLYGON_CURRENT_OFFSET = 0;
+  uint32_t POLYGON_CLIPPED_OFFSET =
       POLYGON_CURRENT_OFFSET + POLYGON_CURRENT_DOUBLES;
 
   // Move vertices and edge vectors to slm
   // Some quantities required for indexing
-  const size_t geom_index_A = element_mesh_ids[A_element_index];
+  const uint32_t geom_index_A = element_mesh_ids[A_element_index];
   const std::array<int, 4>& tet_vertices_A = elements[A_element_index];
-  const size_t vertex_mesh_offset_A = vertex_offsets[geom_index_A];
+  const uint32_t vertex_mesh_offset_A = vertex_offsets[geom_index_A];
 
   // Vertices of element B
-  const size_t geom_index_B = element_mesh_ids[B_element_index];
+  const uint32_t geom_index_B = element_mesh_ids[B_element_index];
   const std::array<int, 4>& tet_vertices_B = elements[B_element_index];
-  const size_t vertex_mesh_offset_B = vertex_offsets[geom_index_B];
+  const uint32_t vertex_mesh_offset_B = vertex_offsets[geom_index_B];
 
 // Loop is over x,y,z
 #pragma unroll
-  for (size_t i = 0; i < 3; i++) {
+  for (uint32_t i = 0; i < 3; i++) {
     // Quantities that we have "4" of
-    for (size_t llid = check_local_item_id; llid < 4;
+    for (uint32_t llid = check_local_item_id; llid < 4;
          llid += NUM_THREADS_PER_CHECK) {
       // All 4 vertices moved at once by our sub items
       slm[slm_offset + VERTEX_A_OFFSET + llid * 3 + i] =
@@ -816,7 +742,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
     }
     // Quantity that we have "16" of - For now set all the verticies
     // of the polygon to double max so that we know all are stale
-    for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
+    for (uint32_t llid = check_local_item_id; llid < POLYGON_VERTICES;
          llid += NUM_THREADS_PER_CHECK) {
       slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + llid * 3 + i] =
           std::numeric_limits<double>::max();
@@ -851,13 +777,13 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
   // We will sequentially loop over the faces but we will use our work
   // items to parallely compute the intersection point over each edge
   // We have 4 faces, so we will have 4 jobs per check
-  for (size_t face = 0; face < 4; face++) {
+  for (uint32_t face = 0; face < 4; face++) {
     // This is the same as the number of points in the polygon
-    const size_t num_edges_current_polygon = slm_ints[slm_ints_offset];
+    const uint32_t num_edges_current_polygon = slm_ints[slm_ints_offset];
 
     // First lets find the height of each of these vertices from the
     // face of interest
-    for (size_t job = check_local_item_id; job < num_edges_current_polygon;
+    for (uint32_t job = check_local_item_id; job < num_edges_current_polygon;
          job += NUM_THREADS_PER_CHECK) {
       // Get the outward normal of the face, point on face, and
       // polygon vertex
@@ -869,10 +795,10 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
       // {face} so any of (face+1)%4, (face+2)%4, (face+3)%4 are
       // candidates for a point on the face's plane. We arbitrarily
       // choose (face + 1) % 4.
-      const size_t face_vertex_index = (face + 1) % 4;
+      const uint32_t face_vertex_index = (face + 1) % 4;
 // This loop is over x,y,z
 #pragma unroll
-      for (size_t i = 0; i < 3; i++) {
+      for (uint32_t i = 0; i < 3; i++) {
         outward_normal[i] = -inward_normals_W[B_element_index][face][i];
 
         // Get a point from the verticies of element B
@@ -904,11 +830,11 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
 
     // Now we will walk the current polygon and construct the clipped
     // polygon
-    for (size_t vertex_0_index = check_local_item_id;
+    for (uint32_t vertex_0_index = check_local_item_id;
          vertex_0_index < num_edges_current_polygon;
          vertex_0_index += NUM_THREADS_PER_CHECK) {
       // Get the height of vertex_1
-      const size_t vertex_1_index =
+      const uint32_t vertex_1_index =
           (vertex_0_index + 1) % num_edges_current_polygon;
 
       // Get the height of vertex_0
@@ -995,16 +921,17 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
     sycl::group_barrier(sub_group);
 
     // Flip Current and clipped polygon
-    const size_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
+    const uint32_t temp_polygon_current_offset = POLYGON_CURRENT_OFFSET;
     POLYGON_CURRENT_OFFSET = POLYGON_CLIPPED_OFFSET;
     POLYGON_CLIPPED_OFFSET = temp_polygon_current_offset;
 
     // Now clean up the current polygon to remove out the
     // std::numeric_limits<double>::max() vertices
     if (check_local_item_id == 0) {
-      size_t write_index = 0;
+      uint32_t write_index = 0;
       // Scan through all potential vertices
-      for (size_t read_index = 0; read_index < POLYGON_VERTICES; ++read_index) {
+      for (uint32_t read_index = 0; read_index < POLYGON_VERTICES;
+           ++read_index) {
         // Check if this vertex is valid (not max value)
         if (slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET +
                         read_index * 3 + 0] !=
@@ -1032,7 +959,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
       // Fill remaining positions with max values to mark them as
       // invalid At the same time even fill in the clipped polygon
       // with max values
-      for (size_t i = write_index; i < POLYGON_VERTICES; ++i) {
+      for (uint32_t i = write_index; i < POLYGON_VERTICES; ++i) {
         slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 0] =
             std::numeric_limits<double>::max();
         slm_polygon[slm_polygon_offset + POLYGON_CURRENT_OFFSET + i * 3 + 1] =
@@ -1047,7 +974,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
     sycl::group_barrier(sub_group);
 
     // Clear out the clipped polygon
-    for (size_t llid = check_local_item_id; llid < POLYGON_VERTICES;
+    for (uint32_t llid = check_local_item_id; llid < POLYGON_VERTICES;
          llid += NUM_THREADS_PER_CHECK) {
       slm_polygon[slm_polygon_offset + POLYGON_CLIPPED_OFFSET + llid * 3 + 0] =
           std::numeric_limits<double>::max();
@@ -1075,14 +1002,14 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
 
   // We use one of the polygon's vertices as our base point to cut the
   // polygon into triangles We will use the first point for this
-  const size_t polygon_size = slm_ints[slm_ints_offset];
-  const size_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
-  const size_t CENTROID_OFFSET = VERTEX_A_OFFSET;
+  const uint32_t polygon_size = slm_ints[slm_ints_offset];
+  const uint32_t AREAS_OFFSET = POLYGON_CLIPPED_OFFSET;
+  const uint32_t CENTROID_OFFSET = VERTEX_A_OFFSET;
   double thread_area_sum = 0;
   double thread_centroid_x = 0;
   double thread_centroid_y = 0;
   double thread_centroid_z = 0;
-  for (size_t triangle_index = check_local_item_id;
+  for (uint32_t triangle_index = check_local_item_id;
        triangle_index + 2 < polygon_size;
        triangle_index += NUM_THREADS_PER_CHECK) {
     const double v0_x =
@@ -1152,7 +1079,7 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
 
   sycl::group_barrier(sub_group);
 
-  for (size_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
+  for (uint32_t stride = NUM_THREADS_PER_CHECK / 2; stride > 0; stride >>= 1) {
     if (check_local_item_id < stride &&
         check_local_item_id + stride < polygon_size) {
       slm_polygon[slm_polygon_offset + AREAS_OFFSET + check_local_item_id] +=
@@ -1214,6 +1141,8 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
           gradP_A_Wo_x * centroid_x + gradP_A_Wo_y * centroid_y +
           gradP_A_Wo_z * centroid_z + p_A_Wo;
 
+      const uint32_t geom_index_A = element_mesh_ids[A_element_index];
+      const uint32_t geom_index_B = element_mesh_ids[B_element_index];
       // Write Geometry Index A
       polygon_geom_index_A[narrow_phase_check_index] =
           geometry_ids[geom_index_A];
@@ -1244,88 +1173,92 @@ SYCL_EXTERNAL inline void ComputeContactPolygons(
  * @returns SYCL event for the contact polygon computation
  */
 
-template <typename CollisionData, typename MeshData, typename PolygonData,
+template <typename DeviceCollidingIndicesMemoryChunk,
+          typename DeviceCollisionData, typename MeshData, typename PolygonData,
           DeviceType device_type>
 sycl::event LaunchContactPolygonComputation(
     sycl::queue& q_device, const std::vector<sycl::event>& dependencies,
-    size_t total_narrow_phase_checks, const CollisionData& collision_data,
-    const MeshData& mesh_data, const PolygonData& polygon_data) {
-  //   constexpr size_t NUM_THREADS_PER_CHECK =
+    uint32_t total_narrow_phase_checks,
+    const DeviceCollidingIndicesMemoryChunk& pair_chunk,
+    const DeviceCollisionData& collision_data, const MeshData& mesh_data,
+    const PolygonData& polygon_data) {
+  //   constexpr uint32_t NUM_THREADS_PER_CHECK =
   //       device_type == DeviceType::GPU ? 4 : 1;
-  constexpr size_t NUM_THREADS_PER_CHECK = 4;
+  constexpr uint32_t NUM_THREADS_PER_CHECK = 4;
 
   // Demand that NUM_THREADS_PER_CHECK is factor of 32 and less than 32
   static_assert(NUM_THREADS_PER_CHECK <= 32,
                 "NUM_THREADS_PER_CHECK must be <= 32");
   static_assert(32 % NUM_THREADS_PER_CHECK == 0,
                 "NUM_THREADS_PER_CHECK must be factor of 32");
-  constexpr size_t SUB_GROUP_SIZE = NUM_THREADS_PER_CHECK;
+  constexpr uint32_t SUB_GROUP_SIZE = NUM_THREADS_PER_CHECK;
 
   // Calculate total threads needed (4 threads per check)
-  const size_t TOTAL_THREADS_NEEDED =
+  const uint32_t TOTAL_THREADS_NEEDED =
       total_narrow_phase_checks * NUM_THREADS_PER_CHECK;
 
   // Check device work group size limits for CPU compatibility
-  size_t max_work_group_size =
+  uint32_t max_work_group_size =
       q_device.get_device().get_info<sycl::info::device::max_work_group_size>();
-  constexpr size_t LOCAL_SIZE = 128;
+  constexpr uint32_t LOCAL_SIZE = 128;
   DRAKE_DEMAND(LOCAL_SIZE <= max_work_group_size);
-  const size_t NUM_CHECKS_IN_WORK_GROUP = LOCAL_SIZE / NUM_THREADS_PER_CHECK;
+  const uint32_t NUM_CHECKS_IN_WORK_GROUP = LOCAL_SIZE / NUM_THREADS_PER_CHECK;
   // Number of work groups
-  const size_t NUM_GROUPS =
-      std::max(static_cast<size_t>(1),
+  const uint32_t NUM_GROUPS =
+      std::max(static_cast<uint32_t>(1),
                (TOTAL_THREADS_NEEDED + LOCAL_SIZE - 1) / LOCAL_SIZE);
 
   // Calculation of the number of doubles to be stored in shared memory per
   // check Offsets are required to index the local memory Two extra for gM and
   // gN
-  constexpr size_t EQ_PLANE_OFFSET = 0;
-  constexpr size_t EQ_PLANE_DOUBLES = 8;
+  constexpr uint32_t EQ_PLANE_OFFSET = 0;
+  constexpr uint32_t EQ_PLANE_DOUBLES = 8;
 
-  constexpr size_t VERTEX_A_OFFSET = EQ_PLANE_OFFSET + EQ_PLANE_DOUBLES;
-  constexpr size_t VERTEX_A_DOUBLES = 12;
-  constexpr size_t VERTEX_B_OFFSET = VERTEX_A_OFFSET + VERTEX_A_DOUBLES;
-  constexpr size_t VERTEX_B_DOUBLES = 12;
+  constexpr uint32_t VERTEX_A_OFFSET = EQ_PLANE_OFFSET + EQ_PLANE_DOUBLES;
+  constexpr uint32_t VERTEX_A_DOUBLES = 12;
+  constexpr uint32_t VERTEX_B_OFFSET = VERTEX_A_OFFSET + VERTEX_A_DOUBLES;
+  constexpr uint32_t VERTEX_B_DOUBLES = 12;
 
   // Used varylingly through the kernel to express more parallelism
-  constexpr size_t RANDOM_SCRATCH_OFFSET = VERTEX_B_OFFSET + VERTEX_B_DOUBLES;
-  constexpr size_t RANDOM_SCRATCH_DOUBLES = 8;  // 8 heights at max
+  constexpr uint32_t RANDOM_SCRATCH_OFFSET = VERTEX_B_OFFSET + VERTEX_B_DOUBLES;
+  constexpr uint32_t RANDOM_SCRATCH_DOUBLES = 8;  // 8 heights at max
 
   // Calculate total doubles for verification
-  constexpr size_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
+  constexpr uint32_t VERTEX_DOUBLES = VERTEX_A_DOUBLES + VERTEX_B_DOUBLES;
 
-  constexpr size_t DOUBLES_PER_CHECK =
+  constexpr uint32_t DOUBLES_PER_CHECK =
       EQ_PLANE_DOUBLES + VERTEX_DOUBLES + RANDOM_SCRATCH_DOUBLES;
 
-  constexpr size_t POLYGON_CURRENT_DOUBLES =
+  constexpr uint32_t POLYGON_CURRENT_DOUBLES =
       48;  // 16 vertices (although 8 is max, we need 16 because each edge can
            // produce 2 vertices which means for parallelization and indexing
            // we need 16)
-  constexpr size_t POLYGON_CLIPPED_DOUBLES = 48;  // 16 vertices
-  constexpr size_t POLYGON_DOUBLES =
+  constexpr uint32_t POLYGON_CLIPPED_DOUBLES = 48;  // 16 vertices
+  constexpr uint32_t POLYGON_DOUBLES =
       POLYGON_CURRENT_DOUBLES + POLYGON_CLIPPED_DOUBLES;
 
-  constexpr size_t POLYGON_VERTICES =
+  constexpr uint32_t POLYGON_VERTICES =
       16;  // Just useful to have this in the kernels
 
   // Additionally lets have a random scratch space for storing INTS
   // These will also be used varyingly throughout the kernel to express
   // parallelism
-  constexpr size_t RANDOM_SCRATCH_INTS = 1;
+  constexpr uint32_t RANDOM_SCRATCH_INTS = 1;
   // Launch the contact polygon computation kernel
   return q_device.submit([&](sycl::handler& h) {
     h.depends_on(dependencies);
 
     // Check local memory size constraints for CPU compatibility
-    size_t slm_size = LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK;
-    size_t slm_polygon_size =
+    uint32_t slm_size = LOCAL_SIZE / NUM_THREADS_PER_CHECK * DOUBLES_PER_CHECK;
+    uint32_t slm_polygon_size =
         LOCAL_SIZE / NUM_THREADS_PER_CHECK * POLYGON_DOUBLES;
-    size_t slm_ints_size =
+    uint32_t slm_ints_size =
         LOCAL_SIZE / NUM_THREADS_PER_CHECK * RANDOM_SCRATCH_INTS;
 
-    size_t total_local_memory = (slm_size + slm_polygon_size) * sizeof(double) +
-                                slm_ints_size * sizeof(int);
-    size_t max_local_memory =
+    uint32_t total_local_memory =
+        (slm_size + slm_polygon_size) * sizeof(double) +
+        slm_ints_size * sizeof(int);
+    uint32_t max_local_memory =
         q_device.get_device().get_info<sycl::info::device::local_mem_size>();
     if (total_local_memory > max_local_memory) {
       throw std::runtime_error("Requested local memory (" +
@@ -1343,23 +1276,16 @@ sycl::event LaunchContactPolygonComputation(
     sycl::local_accessor<double, 1> slm(slm_size, h);
     sycl::local_accessor<double, 1> slm_polygon(slm_polygon_size, h);
     sycl::local_accessor<int, 1> slm_ints(slm_ints_size, h);
-    constexpr size_t SUB_GROUP_SIZE = NUM_THREADS_PER_CHECK;
+    constexpr uint32_t SUB_GROUP_SIZE = NUM_THREADS_PER_CHECK;
     h.parallel_for<ComputeContactPolygonsKernel<device_type>>(
         sycl::nd_range<1>{NUM_GROUPS * LOCAL_SIZE, LOCAL_SIZE},
-        [=,
-         narrow_phase_check_indices = collision_data.narrow_phase_check_indices,
-         gradient_W_pressure_at_Wo = mesh_data.gradient_W_pressure_at_Wo,
-         element_offsets = mesh_data.element_offsets,
+        [=, gradient_W_pressure_at_Wo = mesh_data.gradient_W_pressure_at_Wo,
          vertex_offsets = mesh_data.vertex_offsets,
          element_mesh_ids = mesh_data.element_mesh_ids,
          elements = mesh_data.elements, vertices_W = mesh_data.vertices_W,
          inward_normals_W = mesh_data.inward_normals_W,
-         geom_collision_filter_num_cols =
-             collision_data.geom_collision_filter_num_cols,
-         geom_collision_filter_check_offsets =
-             collision_data.geom_collision_filter_check_offsets,
-         collision_filter_host_body_index =
-             collision_data.collision_filter_host_body_index,
+         collision_indices_A = pair_chunk.collision_indices_A,
+         collision_indices_B = pair_chunk.collision_indices_B,
          narrow_phase_check_validity =
              collision_data.narrow_phase_check_validity,
          polygon_areas = polygon_data.polygon_areas,
@@ -1377,7 +1303,7 @@ sycl::event LaunchContactPolygonComputation(
          POLYGON_DOUBLES = POLYGON_DOUBLES, EQ_PLANE_OFFSET = EQ_PLANE_OFFSET,
          VERTEX_A_OFFSET = VERTEX_A_OFFSET, VERTEX_B_OFFSET = VERTEX_B_OFFSET,
          RANDOM_SCRATCH_OFFSET = RANDOM_SCRATCH_OFFSET,
-         POLYGON_VERTICES = POLYGON_VERTICES]
+         POLYGON_VERTICES = POLYGON_VERTICES] [[intel::kernel_args_restrict]]
 #ifndef __NVPTX__
         [[sycl::reqd_sub_group_size(SUB_GROUP_SIZE)]]
 #endif
@@ -1390,14 +1316,12 @@ sycl::event LaunchContactPolygonComputation(
               NUM_THREADS_PER_CHECK, DOUBLES_PER_CHECK, POLYGON_DOUBLES,
               EQ_PLANE_OFFSET, VERTEX_A_OFFSET, VERTEX_B_OFFSET,
               RANDOM_SCRATCH_OFFSET, POLYGON_VERTICES,
-              narrow_phase_check_indices, gradient_W_pressure_at_Wo,
-              element_offsets, vertex_offsets, element_mesh_ids, elements,
-              vertices_W, inward_normals_W, geom_collision_filter_num_cols,
-              geom_collision_filter_check_offsets,
-              collision_filter_host_body_index, narrow_phase_check_validity,
-              polygon_areas, polygon_centroids, polygon_normals, polygon_g_M,
-              polygon_g_N, polygon_pressure_W, polygon_geom_index_A,
-              polygon_geom_index_B, geometry_ids);
+              gradient_W_pressure_at_Wo, vertex_offsets, element_mesh_ids,
+              elements, vertices_W, inward_normals_W, collision_indices_A,
+              collision_indices_B, narrow_phase_check_validity, polygon_areas,
+              polygon_centroids, polygon_normals, polygon_g_M, polygon_g_N,
+              polygon_pressure_W, polygon_geom_index_A, polygon_geom_index_B,
+              geometry_ids);
           // ComputeContactPolygons(
           //     item, slm, slm_polygon, slm_ints, TOTAL_THREADS_NEEDED,
           //     NUM_THREADS_PER_CHECK, DOUBLES_PER_CHECK, POLYGON_DOUBLES,

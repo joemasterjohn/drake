@@ -17,7 +17,7 @@ inline SYCLHydroelasticSurface CreateHydroelasticSurface(
     const double* compacted_polygon_g_M, const double* compacted_polygon_g_N,
     const GeometryId* compacted_polygon_geom_index_A,
     const GeometryId* compacted_polygon_geom_index_B,
-    const size_t total_polygons) {
+    const uint32_t total_polygons) {
   // Transfer data from device to host
   std::vector<Vector3<double>> host_centroids(total_polygons);
   std::vector<double> host_areas(total_polygons);

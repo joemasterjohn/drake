@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <memory>
 
 #include <gflags/gflags.h>
@@ -49,6 +50,7 @@ DEFINE_string(
     "based on object counts.");
 
 DEFINE_bool(print_perf, true, "Print performance statistics");
+DEFINE_bool(visualize, false, "Whether to visualize (true) or not (false).");
 
 // === OBJECT COUNT PARAMETERS ===
 DEFINE_int32(num_spheres, 0, "Number of sphere objects to create.");
@@ -153,6 +155,16 @@ using drake::multibody::CoulombFriction;
 using drake::multibody::SpatialVelocity;
 using Eigen::Vector3d;
 
+std::string GetBaseOutDir() {
+  if (const char* ws = std::getenv("BUILD_WORKSPACE_DIRECTORY")) {
+    return std::string(ws);
+  }
+  if (const char* wd = std::getenv("BUILD_WORKING_DIRECTORY")) {
+    return std::string(wd);
+  }
+  return std::filesystem::current_path().string();
+}
+
 BenchmarkConfig CreateBenchmarkConfig() {
   BenchmarkConfig config;
 
@@ -209,7 +221,8 @@ void PrintPerformanceStats(
     const drake::multibody::MultibodyPlant<double>& plant,
     const drake::geometry::SceneGraph<double>& scene_graph,
     const drake::systems::Context<double>& scene_graph_context, bool sycl_used,
-    const BenchmarkConfig& config) {
+    double advance_to_time, const BenchmarkConfig& config,
+    const std::string& out_dir) {
   // Create a descriptive name for output files
   std::string demo_name = "objects_scaling";
 
@@ -233,7 +246,12 @@ void PrintPerformanceStats(
   if (env_var != nullptr) {
     runtime_device = env_var;
   }
-  std::string out_dir = "/home/huzaifaunjhawala/drake/performance_jsons/";
+
+  // Create output directory if it doesn't exist
+  if (!std::filesystem::exists(out_dir)) {
+    std::filesystem::create_directories(out_dir);
+  }
+
   std::string run_type;
   if (runtime_device.empty()) {
     run_type = sycl_used ? "sycl-gpu" : "drake-cpu";
@@ -243,8 +261,7 @@ void PrintPerformanceStats(
     run_type = "sycl-cpu";
   }
 
-  std::string json_path =
-      out_dir + "/" + demo_name + "_" + run_type + "_problem_size.json";
+  std::string json_path = out_dir + "/" + demo_name + "_" + run_type;
 
   // Ensure output directory exists
   if (!std::filesystem::exists(out_dir)) {
@@ -253,75 +270,30 @@ void PrintPerformanceStats(
     return;
   }
 
-  fmt::print("Problem Size Stats:\n");
-  const auto& inspector = scene_graph.model_inspector();
-  int hydro_bodies = 0;
-  std::ostringstream hydro_json;
-  hydro_json << "\"hydroelastic_bodies\": [";
-  bool first = true;
-  for (int i = 0; i < plant.num_bodies(); ++i) {
-    const auto& body = plant.get_body(drake::multibody::BodyIndex(i));
-    bool has_hydro = false;
-    int tet_count = 0;
-    for (const auto& gid : plant.GetCollisionGeometriesForBody(body)) {
-      const auto* props = inspector.GetProximityProperties(gid);
-      if (props && props->HasProperty(kHydroGroup, kComplianceType)) {
-        has_hydro = true;
-      }
-      auto mesh_variant = inspector.maybe_get_hydroelastic_mesh(gid);
-      if (std::holds_alternative<const drake::geometry::VolumeMesh<double>*>(
-              mesh_variant)) {
-        const auto* mesh =
-            std::get<const drake::geometry::VolumeMesh<double>*>(mesh_variant);
-        if (mesh) tet_count += mesh->num_elements();
-      }
-    }
-    if (has_hydro) ++hydro_bodies;
-    if (tet_count > 0) {
-      if (!first) hydro_json << ",";
-      first = false;
-      hydro_json << "{ \"body\": \"" << body.name()
-                 << "\", \"tetrahedra\": " << tet_count << "}";
-    }
-  }
-  hydro_json << "]";
-  fmt::print("Number of bodies with hydroelastic contact: {}\n", hydro_bodies);
-  for (int i = 0; i < plant.num_bodies(); ++i) {
-    const auto& body = plant.get_body(drake::multibody::BodyIndex(i));
-    int tet_count = 0;
-    for (const auto& gid : plant.GetCollisionGeometriesForBody(body)) {
-      auto mesh_variant = inspector.maybe_get_hydroelastic_mesh(gid);
-      if (std::holds_alternative<const drake::geometry::VolumeMesh<double>*>(
-              mesh_variant)) {
-        const auto* mesh =
-            std::get<const drake::geometry::VolumeMesh<double>*>(mesh_variant);
-        if (mesh) tet_count += mesh->num_elements();
-      }
-    }
-    if (tet_count > 0) {
-      fmt::print("Body '{}' has {} tetrahedra in its hydroelastic mesh.\n",
-                 body.name(), tet_count);
-    }
-  }
-  drake::common::ProblemSizeLogger::GetInstance().PrintStats();
-  drake::common::ProblemSizeLogger::GetInstance().PrintStatsJson(
-      json_path, hydro_json.str());
-
-  fmt::print("Timing Stats:\n");
-  json_path =
-      out_dir + "/" + demo_name + "_" + run_type + "_timing_overall.json";
-
-  drake::common::CpuTimingLogger::GetInstance().PrintStats();
-  drake::common::CpuTimingLogger::GetInstance().PrintStatsJson(json_path);
-  json_path = out_dir + "/" + demo_name + "_" + run_type + "_timing.json";
-  const auto& query_object =
-      scene_graph.get_query_output_port().Eval<geometry::QueryObject<double>>(
-          scene_graph_context);
-  query_object.PrintSyclTimingStats();
-  query_object.PrintSyclTimingStatsJson(json_path);
+  plant.PrintPerformanceStats(scene_graph, scene_graph_context, json_path,
+                              advance_to_time);
 }
 
 int do_main() {
+  std::string base_out_dir = GetBaseOutDir();
+  // Add trailing slash if not present
+  if (base_out_dir.back() != '/') {
+    base_out_dir += '/';
+  }
+
+  if (FLAGS_print_perf || FLAGS_visualize) {
+    fmt::print("Base output directory: {}\n", base_out_dir);
+  }
+
+  std::string timing_out_dir = base_out_dir + "performance_jsons_bvh_Aug20";
+  if (FLAGS_print_perf) {
+    fmt::print("Timing output directory: {}\n", timing_out_dir);
+  }
+  std::string html_out_dir = base_out_dir + "object_scaling_html/";
+  if (FLAGS_visualize) {
+    fmt::print("HTML output directory: {}\n", html_out_dir);
+  }
+
   systems::DiagramBuilder<double> builder;
 
   multibody::MultibodyPlantConfig config;
@@ -351,14 +323,16 @@ int do_main() {
   }
 
   plant.Finalize();
-
-  auto meshcat = std::make_shared<geometry::Meshcat>();
-  visualization::ApplyVisualizationConfig(
-      visualization::VisualizationConfig{
-          .default_proximity_color = geometry::Rgba{1, 0, 0, 0.25},
-          .enable_alpha_sliders = true,
-      },
-      &builder, nullptr, nullptr, nullptr, meshcat);
+  std::shared_ptr<drake::geometry::Meshcat> meshcat{nullptr};
+  if (FLAGS_visualize) {
+    meshcat = std::make_shared<geometry::Meshcat>();
+    visualization::ApplyVisualizationConfig(
+        visualization::VisualizationConfig{
+            .default_proximity_color = geometry::Rgba{1, 0, 0, 0.25},
+            .enable_alpha_sliders = true,
+        },
+        &builder, nullptr, nullptr, nullptr, meshcat);
+  }
 
   auto diagram = builder.Build();
   auto simulator = MakeSimulatorFromGflags(*diagram);
@@ -388,24 +362,65 @@ int do_main() {
                  "the contact model is not 'hydroelastic' or "
                  "'hydroelastic_with_fallback'.\n");
     }
+  } else {
+    plant.set_sycl_for_hydroelastic_contact(false);
   }
-  meshcat->StartRecording();
+
+  std::chrono::steady_clock::time_point start_time =
+      std::chrono::steady_clock::now();
+  if (FLAGS_visualize) {
+    meshcat->StartRecording();
+  }
   simulator->AdvanceTo(FLAGS_simulation_time);
-  meshcat->StopRecording();
-  meshcat->PublishRecording();
+  std::chrono::steady_clock::time_point end_time =
+      std::chrono::steady_clock::now();
+  double advance_to_time =
+      std::chrono::duration<double>(end_time - start_time).count();
+  BenchmarkConfig benchmark_config = CreateBenchmarkConfig();
+  if (FLAGS_visualize) {
+    meshcat->StopRecording();
+    meshcat->PublishRecording();
+    if (!std::filesystem::exists(html_out_dir)) {
+      std::filesystem::create_directories(html_out_dir);
+    }
+
+    std::string device_type = FLAGS_use_sycl ? "sycl-gpu" : "drake-cpu";
+    std::string demo_name = "objects_scaling";
+    if (!FLAGS_config_name.empty()) {
+      // Use the provided config name
+      demo_name += "_" + FLAGS_config_name;
+    } else if (FLAGS_use_legacy_single_ball) {
+      // Legacy mode naming
+      demo_name += "_legacy";
+    } else {
+      // Generate name based on object counts
+      demo_name += "_s" + std::to_string(benchmark_config.num_spheres);
+      demo_name += "_c" + std::to_string(benchmark_config.num_cylinders);
+      demo_name += "_b" + std::to_string(benchmark_config.num_boxes);
+      demo_name += "_g" + std::to_string(benchmark_config.num_grippers);
+      demo_name += "_p" + std::to_string(benchmark_config.num_peppers);
+    }
+
+    std::ofstream f(html_out_dir + demo_name + "_" + device_type + ".html");
+    fmt::print("Writing meshcat html to {}\n",
+               html_out_dir + demo_name + "_" + device_type + ".html");
+    f << meshcat->StaticHtml();
+    f.close();
+  }
 
   Context<double>& mutable_root_context = simulator->get_mutable_context();
   Context<double>& scene_graph_context =
       diagram->GetMutableSubsystemContext(scene_graph, &mutable_root_context);
 
-  BenchmarkConfig benchmark_config = CreateBenchmarkConfig();
   if (FLAGS_print_perf) {
     if (FLAGS_use_sycl) {
       PrintPerformanceStats(plant, scene_graph, scene_graph_context,
-                            /*sycl_used=*/true, benchmark_config);
+                            /*sycl_used=*/true, advance_to_time,
+                            benchmark_config, timing_out_dir);
     } else {
       PrintPerformanceStats(plant, scene_graph, scene_graph_context,
-                            /*sycl_used=*/false, benchmark_config);
+                            /*sycl_used=*/false, advance_to_time,
+                            benchmark_config, timing_out_dir);
     }
   }
   return 0;
