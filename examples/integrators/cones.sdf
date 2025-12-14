@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<sdf version="1.7" xmlns:drake="http://drake.mit.edu">
+  <model name="plate_and_spatula">
+    <!-- The table is fixed to the world -->
+    <link name="table">
+      <inertial>
+        <inertia>
+          <ixx>0.12003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.12003</iyy>
+          <iyz>0</iyz>
+          <izz>0.24</izz>
+        </inertia>
+        <mass>1</mass>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+      <visual name="table_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.2 1.2 0.02</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.9 0.8 0.7 1</diffuse>
+        </material>
+      </visual>
+      <collision name="table_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.2 1.2 0.02</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+    <joint name="table_joint" type="fixed">
+      <parent>world</parent>
+      <child>table</child>
+    </joint>
+
+    <!-- The free-floating plate-->
+    <link name="cone0">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 -0.033333 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.00075</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00075</iyy>
+          <iyz>0</iyz>
+          <izz>0.0005</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+
+        <!-- The free-floating plate-->
+    <link name="cone1">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 -0.033333 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.00075</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00075</iyy>
+          <iyz>0</iyz>
+          <izz>0.0005</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone1.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone1.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+
+        <!-- The free-floating plate-->
+    <link name="cone2">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 -0.033333 0 0 0</pose>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.00075</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00075</iyy>
+          <iyz>0</iyz>
+          <izz>0.0005</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone2.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/cone2.obj</uri>
+            <scale>0.1 0.1 0.1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+
+  </model>
+</sdf>
