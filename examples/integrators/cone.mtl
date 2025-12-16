@@ -1,0 +1,7 @@
+# Blender 4.0.2 MTL File: 'None'
+# www.blender.org
+newmtl ConeMaterial
+Kd 0.2 0.8 0.8
+Ka 0 0 0
+Ks 0.2 0.2 02
+illum 2

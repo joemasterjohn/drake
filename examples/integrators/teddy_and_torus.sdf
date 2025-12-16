@@ -1,0 +1,254 @@
+<?xml version="1.0"?>
+<sdf xmlns:drake="http://drake.mit.edu" version="1.8">
+  <model name='deformable'>
+    <!-- The table is fixed to the world -->
+    <link name="table">
+      <inertial>
+        <inertia>
+          <ixx>0.12003</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.12003</iyy>
+          <iyz>0</iyz>
+          <izz>0.24</izz>
+        </inertia>
+        <mass>1</mass>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+      <visual name="table_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.2 1.2 0.02</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.9 0.8 0.7 1</diffuse>
+        </material>
+      </visual>
+      <collision name="table_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.2 1.2 0.02</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+    <joint name="table_joint" type="fixed">
+      <parent>world</parent>
+      <child>table</child>
+    </joint>
+
+    <link name='teddy0'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000014</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000007</iyy>
+          <iyz>0</iyz>
+          <izz>0.000014</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>-0.000021 0.063479 0.004986 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.vtk</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.obj</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.05 0.6 0.1 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <link name='teddy1'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000014</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000007</iyy>
+          <iyz>0</iyz>
+          <izz>0.000014</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>-0.000021 0.063479 0.004986 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.vtk</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.obj</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.05 0.6 0.1 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <link name='teddy2'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000014</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000007</iyy>
+          <iyz>0</iyz>
+          <izz>0.000014</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>-0.000021 0.063479 0.004986 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.vtk</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/teddy.obj</uri>
+            <scale>0.15 0.15 0.15</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.05 0.6 0.1 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <link name='torus1'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000016</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000016</iyy>
+          <iyz>0</iyz>
+          <izz>0.000028</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.vtk</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.obj</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.0 0.2 0.6 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <link name='torus2'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000016</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000016</iyy>
+          <iyz>0</iyz>
+          <izz>0.000028</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.vtk</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.obj</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.0 0.2 0.6 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <link name='torus3'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <inertia>
+          <ixx>0.000016</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.000016</iyy>
+          <iyz>0</iyz>
+          <izz>0.000028</izz>
+        </inertia>
+        <mass>0.1</mass>
+        <pose>0 0 0 0 0 0</pose>
+      </inertial>
+      <collision name='collision'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.vtk</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='visual'>
+        <geometry>
+          <mesh>
+            <uri>package://drake/examples/integrators/torus.obj</uri>
+            <scale>0.65 0.65 0.65</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <diffuse>0.0 0.2 0.6 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+  </model>
+</sdf>

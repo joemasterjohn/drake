@@ -3,6 +3,43 @@ load("//tools/skylark:drake_py.bzl", "drake_py_binary", "drake_py_library", "dra
 
 package(default_visibility = ["//visibility:private"])
 
+filegroup(
+    name = "models",
+    srcs = [
+        "ball_on_table.xml",
+        "clutter.xml",
+        "plate_and_spatula.sdf",
+        "teddy_and_torus.sdf",
+        "teddy.vtk",
+        "teddy.obj",
+        "torus.vtk",
+        "torus.obj",
+        "square.obj",
+        "shell.obj",
+        "shell.mtl",
+        "cone.obj",
+        "cone.mtl",
+        "cone1.obj",
+        "cone1.mtl",
+        "cone2.obj",
+        "cone2.mtl",
+        "cones.sdf",
+    ],
+    visibility = ["//:__pkg__"],
+)
+
+drake_py_binary(
+    name = "error_control_demo",
+    srcs = ["error_control_demo.py"],
+    data = [
+        ":models",
+        "@drake_models//:dishes",
+    ],
+    deps = [
+        "//bindings/pydrake",
+    ],
+)
+
 drake_py_binary(
     name = "suction_gripper",
     srcs = ["suction_gripper.py"],

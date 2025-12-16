@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<mujoco model="robot">
+  <worldbody>
+    <geom name="table_top" type="box" pos="0.0 0.0 0.0" size="10 10 0.1" rgba="0.9 0.8 0.7 1" friction="0.3"/>
+    <body>
+      <joint type="free"/>
+      <geom name="object1" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <!-- <body>
+      <joint type="free"/>
+      <geom name="object2" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object3" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object4" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object5" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object6" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object7" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object8" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object9" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body>
+    <body>
+      <joint type="free"/>
+      <geom name="object10" type="sphere" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1" rgba="1.0 1.0 1.0 1.0" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0004 0.0004 0.0004"/>
+    </body> -->
+
+    <!-- <body>
+      <joint type="free"/>
+      <geom name="box1" type="box" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1 0.1 0.00001" rgba="1 0 0 1" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0003333333341666667 0.0003333333341666667 0.0006666666666666668"/>
+    </body> -->
+
+    <!-- <body>
+      <joint type="free"/>
+      <geom name="box2" type="box" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1 0.1 0.00001" rgba="0.5 0.5 0 1" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0003333333341666667 0.0003333333341666667 0.0006666666666666668"/>
+    </body>
+
+    <body>
+      <joint type="free"/>
+      <geom name="box3" type="box" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1 0.1 0.00001" rgba="0.0 0.5 0.5 1" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0003333333341666667 0.0003333333341666667 0.0006666666666666668"/>
+    </body>
+
+    <body>
+      <joint type="free"/>
+      <geom name="box4" type="box" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1 0.1 0.00001" rgba="0.0 0.0 1.0 1" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0003333333341666667 0.0003333333341666667 0.0006666666666666668"/>
+    </body>
+
+    <body>
+      <joint type="free"/>
+      <geom name="box5" type="box" pos="0.0 0.0 0.0" euler="0 0 0" size="0.1 0.1 0.00001" rgba="0.5 0.5 0.5 1" friction="0.3"/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="0.0003333333341666667 0.0003333333341666667 0.0006666666666666668"/>
+    </body> -->
+  </worldbody>
+</mujoco>
