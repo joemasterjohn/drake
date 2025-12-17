@@ -74,7 +74,7 @@ def ball_on_table():
     #      0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     # )
     initial_state = np.array(
-        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25,
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2 + 2e-4,
          0.0, 5.0, 0.0, 0.5, 0.0, 0.0]
     )
     # # Generate non-overlapping random positions for 10 balls of radius 0.1
@@ -476,7 +476,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resolution",
         type=float,
-        default=0.0025,
+        default=0.005,
         help="Default resolution hint [m].",
     )
     parser.add_argument(
