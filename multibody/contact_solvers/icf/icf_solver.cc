@@ -1,6 +1,7 @@
 #include "drake/multibody/contact_solvers/icf/icf_solver.h"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <limits>
 #include <span>
@@ -213,6 +214,28 @@ bool IcfSolver::SolveIsland(const IcfModel<double>& model, const int island,
     const double grad_norm =
         IslandWeightedNorm(model, island, D, data->gradient());
 
+    if (std::isnan(grad_norm)) {
+      drake::log()->warn(
+          "ICF NaN diagnostic: island {}, iteration {}, grad_norm = {}, "
+          "scaled_tolerance = {}, time_step = {}",
+          island, k, grad_norm, scaled_tolerance, model.time_step());
+      for (int clique : model.partition().island_cliques(island)) {
+        const int start = model.clique_starts()[clique];
+        for (int local_dof = 0; local_dof < model.clique_size(clique);
+             ++local_dof) {
+          const int dof = start + local_dof;
+          const double scale_factor = D[dof];
+          const double gradient = data->gradient()[dof];
+          const double momentum = model.r()[dof];
+          drake::log()->warn(
+              "ICF NaN diagnostic: dof {}, M_diag = {}, D = {}, g = {}, "
+              "D_g = {}, r = {}, D_r = {}",
+              dof, model.M0()(dof, dof), scale_factor, gradient,
+              scale_factor * gradient, momentum, scale_factor * momentum);
+        }
+      }
+    }
+
     // Gradient-based convergence check. Allows for early exit if v is already
     // close enough to the solution.
     if (grad_norm < scaled_tolerance) {
@@ -359,6 +382,36 @@ std::pair<double, int> IcfSolver::PerformExactLineSearchIsland(
   const double ell0 = data.island_cost(island);  // Cost ℓ̃ᵢ(0).
   const double dell0 =
       IslandDot(model, island, data.gradient(), w);  // ∂ℓ̃ᵢ/∂α at 0.
+  if (!(dell0 < 0)) {
+    const VectorXd& D = model.scale_factor();
+    const double grad_norm =
+        IslandWeightedNorm(model, island, D, data.gradient());
+    bool gradient_is_zero = true;
+    bool direction_is_zero = true;
+    for (int clique : model.partition().island_cliques(island)) {
+      const int start = model.clique_starts()[clique];
+      for (int local_dof = 0; local_dof < model.clique_size(clique);
+           ++local_dof) {
+        const int dof = start + local_dof;
+        const double gradient = data.gradient()[dof];
+        const double direction = w[dof];
+        gradient_is_zero = gradient_is_zero && gradient == 0.0;
+        direction_is_zero = direction_is_zero && direction == 0.0;
+        drake::log()->error(
+            "ICF non-descent diagnostic: island {}, dof {}, M_diag = {}, "
+            "D = {}, g = {}, D_g = {}, w = {}, g_w = {}, r = {}, D_r = {}",
+            island, dof, model.M0()(dof, dof), D[dof], gradient,
+            D[dof] * gradient, direction, gradient * direction, model.r()[dof],
+            D[dof] * model.r()[dof]);
+      }
+    }
+    drake::log()->error(
+        "ICF non-descent diagnostic: island {}, dell0 = {}, "
+        "grad_norm = {}, grad_norm_is_nan = {}, raw_gradient_is_zero = {}, "
+        "search_direction_is_zero = {}, time_step = {}",
+        island, dell0, grad_norm, std::isnan(grad_norm), gradient_is_zero,
+        direction_is_zero, model.time_step());
+  }
   // The derivative along the linesearch direction, ∂ℓ̃ᵢ/∂α, should be negative
   // at α = 0 since the Hessian is positive definite.
   DRAKE_THROW_UNLESS(dell0 < 0, dell0);
